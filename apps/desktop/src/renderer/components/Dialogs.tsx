@@ -147,7 +147,7 @@ export function Notices({ store }: { store: Store }): preact.JSX.Element | null 
   const { notice } = useStore(store);
   if (!notice) return null;
   return (
-    <div class={`toast ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
+    <div class={`toast toast-${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
       <span>{notice.kind === 'agent' ? '● ' : ''}{notice.text}</span>
       <button class="toast-close" aria-label="Dismiss" onClick={() => store.dismissNotice()}>×</button>
     </div>

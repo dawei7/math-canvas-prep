@@ -323,6 +323,7 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
     const cuts = parts.slice(1);
     const nameWidth = name.length * 6.6 + 12;
     const room = s.x > nameWidth + 8;
+    const minusX = room ? s.x - nameWidth - 22 : s.x - 34;
     return (
       <g key={unit} class={`frame unit ${isSelected ? 'selected' : ''}`}>
         <rect
@@ -362,12 +363,17 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
                 }}
               />
               {isSelected ? (
-                <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => removeCut(first, index)} style={{ cursor: 'pointer' }}>
-                  <circle cx={s.x - 16} cy={y} r={9} fill="#fff" stroke={color} />
-                  <text x={s.x - 16} y={y + 0.5} text-anchor="middle" dominant-baseline="middle" fill={color}>
-                    −
-                  </text>
-                </g>
+                <>
+                  {/* The button sits left of the unit's name chip and the west handle, joined to its cut by a dotted line. */}
+                  <line x1={minusX + 9} x2={s.x} y1={y} y2={y} stroke={color} stroke-width={1.5} stroke-dasharray="2 3" opacity={0.7} style={{ pointerEvents: 'none' }} />
+                  <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => removeCut(first, index)} style={{ cursor: 'pointer' }}>
+                    <title>Join the two parts</title>
+                    <circle cx={minusX} cy={y} r={9} fill="#fff" stroke={color} />
+                    <text x={minusX} y={y + 0.5} text-anchor="middle" dominant-baseline="middle" style={{ fill: color }}>
+                      −
+                    </text>
+                  </g>
+                </>
               ) : null}
             </g>
           );
@@ -389,8 +395,9 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
         })}
         {isSelected ? (
           <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => addCut(first)} style={{ cursor: 'pointer' }}>
+            <title>Cut another part</title>
             <circle cx={s.x + s.w * 0.25} cy={s.y + s.h + 26} r={10} fill="#fff" stroke={color} />
-            <text x={s.x + s.w * 0.25} y={s.y + s.h + 26.5} text-anchor="middle" dominant-baseline="middle" fill={color}>
+            <text x={s.x + s.w * 0.25} y={s.y + s.h + 26.5} text-anchor="middle" dominant-baseline="middle" style={{ fill: color }}>
               +
             </text>
           </g>

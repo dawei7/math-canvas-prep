@@ -251,6 +251,34 @@ describe('the store: editing', () => {
     store.setZoom(0.01);
     expect(store.state.zoom).toBe(0.25);
   });
+
+  it('reads, in the background, the text of every page that has a frame (the list shows their first words)', async () => {
+    const { store } = await started();
+    expect(Object.keys(store.state.texts)).toEqual(['0']);
+    store.apply([exercise([0.1, 0.22, 0.9, 0.29], 1), exercise([0.1, 0.4, 0.9, 0.5], 2)]);
+    await vi.waitFor(() => expect(Object.keys(store.state.texts).sort()).toEqual(['0', '1', '2']));
+  });
+
+  it('drops text that arrives after another document was opened', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const store = new Store(
+      fakeApi({
+        pageText: async (page) => {
+          if (page === 1) await gate;
+          return texts[page] as PageText;
+        },
+      }),
+    );
+    await store.openDocument(opened());
+    const pending = store.ensureText(1);
+    await store.openDocument(opened());
+    release();
+    expect(await pending).toBe(false);
+    expect(store.state.texts[1]).toBeUndefined();
+  });
 });
 
 describe('the store: saving, agents and conflicts', () => {

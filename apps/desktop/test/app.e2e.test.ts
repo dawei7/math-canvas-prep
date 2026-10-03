@@ -213,8 +213,12 @@ describe.skipIf(!available)('the desktop app', () => {
     const before = (await frames()).length;
     await win.evaluate(() => (window as unknown as { __store: { setPage(n: number): void } }).__store.setPage(1));
     cli('frames', 'add', '--kind', 'question', '--page', '1', '--rect', '0.1,0.55,0.9,0.62');
-    await win.waitForSelector('.toast.agent', { timeout: 15000 });
-    expect(await win.locator('.toast.agent').innerText()).toContain('Updated by cli: 1 added');
+    await win.waitForSelector('.toast-agent', { timeout: 15000 });
+    expect(await win.locator('.toast-agent').innerText()).toContain('Updated by cli: 1 added');
+    // The notice is a readable bar (once it collapsed to a 30 px pill because it shared a class name with the help buttons).
+    const toast = await win.locator('.toast-agent').boundingBox();
+    expect(toast?.width).toBeGreaterThan(200);
+    expect(toast?.height).toBeLessThan(60);
     expect((await frames()).length).toBe(before + 1);
     expect(await state((s) => s['page'])).toBe(1);
     expect(await win.locator('.agent-dot').count()).toBe(1);

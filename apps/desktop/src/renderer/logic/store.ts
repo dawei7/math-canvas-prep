@@ -113,6 +113,9 @@ export interface ApplyResult {
 
 let noticeCounter = 0;
 
+/** How many pages of text are read before the editor redraws and checks again. */
+const TEXT_CHUNK = 6;
+
 /**
  * The editor's state and everything that changes it. It holds the working copy of the project and edits it with the
  * operations of the core (the same code the command line uses), keeps undo and redo, and talks to the main process only
@@ -190,6 +193,7 @@ export class Store {
     this.revalidate();
     this.api.setDirty(false);
     await this.ensureText(0);
+    void this.ensureFramePages();
   }
 
   async open(outcome: { ok: true; document: OpenedDocument } | { ok: false; message: string } | null): Promise<void> {
@@ -204,15 +208,44 @@ export class Store {
 
   // ------------------------------------------------------------------------------------------------------- reading
 
-  async ensureText(page: number): Promise<void> {
-    if (this.state.texts[page] !== undefined || this.state.doc === null) return;
-    try {
-      const text = await this.api.pageText(page);
-      this.set({ texts: { ...this.state.texts, [page]: text } });
-      this.revalidate();
-    } catch (error) {
-      this.notify('error', `Cannot read the text of page ${page + 1}: ${error instanceof Error ? error.message : String(error)}`);
+  /** Reads the text of a page (once): the page view snaps to its lines and the checks look at them. */
+  async ensureText(page: number): Promise<boolean> {
+    return this.readPages([page]);
+  }
+
+  /**
+   * Reads, in the background, the text of every page that has a frame: the frame list shows the first words of each frame
+   * and the checks need the lines of the pages they look at. Pages without frames are read when they are shown.
+   */
+  async ensureFramePages(): Promise<boolean> {
+    const pages = new Set((this.state.project?.frames ?? []).map((frame) => frame.page));
+    return this.readPages([...pages].sort((a, b) => a - b));
+  }
+
+  /** Reads the pages not read yet, a few at a time (one redraw per few pages), and says whether all could be read. */
+  private async readPages(pages: number[]): Promise<boolean> {
+    const doc = this.state.doc;
+    if (doc === null) return false;
+    const wanted = pages.filter((page) => this.state.texts[page] === undefined);
+    let failure: { page: number; error: unknown } | undefined;
+    for (let start = 0; start < wanted.length && failure === undefined; start += TEXT_CHUNK) {
+      const read: Record<number, PageText> = {};
+      for (const page of wanted.slice(start, start + TEXT_CHUNK)) {
+        try {
+          read[page] = await this.api.pageText(page);
+        } catch (error) {
+          failure = { page, error };
+          break;
+        }
+      }
+      if (this.state.doc !== doc) return false; // another document was opened meanwhile: these pages are not its pages
+      if (Object.keys(read).length > 0) {
+        this.set({ texts: { ...this.state.texts, ...read } });
+        this.revalidate();
+      }
     }
+    if (failure) this.notify('error', `Cannot read the text of page ${failure.page + 1}: ${failure.error instanceof Error ? failure.error.message : String(failure.error)}`);
+    return failure === undefined;
   }
 
   private textMap(): Map<number, PageText> {
@@ -261,6 +294,7 @@ export class Store {
       });
       this.api.setDirty(this.state.dirty);
       this.scheduleAutosave();
+      void this.ensureFramePages();
       for (const note of batch.notes.slice(0, 2)) this.notify('info', note);
       return { ok: true, created: batch.created, notes: batch.notes };
     } catch (error) {
@@ -384,6 +418,7 @@ export class Store {
     const keep = selection !== null && change.project.frames.some((frame) => frame.id === selection) ? selection : null;
     this.set({ project: change.project, base: change.project, past: [], future: [], selection: keep, agentAt: Date.now(), dirty: false });
     this.revalidate();
+    void this.ensureFramePages();
     this.notify('agent', `Updated by ${change.modifiedBy ?? 'another program'}: ${describeChange(summary)}.`);
   }
 
@@ -394,6 +429,7 @@ export class Store {
     if (choice === 'theirs') {
       this.set({ project: conflict.onDisk, base: conflict.onDisk, past: [], future: [], dirty: false, conflict: null, selection: null });
       this.revalidate();
+      void this.ensureFramePages();
       this.api.setDirty(false);
       this.notify('info', 'Took the version from disk; your unsaved edits are gone.');
     } else {

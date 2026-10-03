@@ -722,12 +722,12 @@ button:disabled {
   z-index: 40;
 }
 
-.toast.error {
+.toast-error {
   background: var(--bad);
   color: #fff;
 }
 
-.toast.agent {
+.toast-agent {
   background: var(--accent);
   color: var(--accent-ink);
 }
