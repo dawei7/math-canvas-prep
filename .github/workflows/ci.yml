@@ -1,0 +1,45 @@
+# Builds, lints and tests the toolset on Linux and Windows with the oldest and a recent Node.js.
+# It uses no secrets, publishes nothing and does not run the tests that need a window (those are described in
+# docs/DESKTOP.md); Electron's program file is therefore not downloaded.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['20', '24']
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm test
+      # The command line and the MCP server as real processes. The desktop test skips itself without Electron's program file.
+      - run: npm run test:e2e
+      - name: The generated reference documentation is current
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        run: |
+          npm run docs
+          git diff --exit-code -- docs/CLI.md docs/MCP.md

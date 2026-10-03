@@ -20,7 +20,8 @@ export default tseslint.config(
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        // The two configuration files of the test runner belong to no package: lint them with the default project.
+        projectService: { allowDefaultProject: ['vitest.config.ts', 'vitest.e2e.config.ts'] },
         tsconfigRootDir: import.meta.dirname,
       },
     },

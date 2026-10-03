@@ -2,21 +2,25 @@
 
 Prepare a PDF once, on the desktop, and hand it to *Professor Euler: Math Canvas* ready to study: every exercise, part,
 question and bookmark marked, the context that belongs to an exercise attached, and a table of contents. An AI agent does it
-through a command line or an MCP server; a person will do it in a desktop app (see Status). The result is a single **bundle** file
-(`.mcbundle`: the PDF plus its metadata) that the Android app imports straight into its library.
+through a command line or an MCP server; a person does it in a desktop app that edits the same project file, so that the two can
+work on one document. The result is a single **bundle** file (`.mcbundle`: the PDF plus its metadata) that the Android app
+imports straight into its library.
+
+![The desktop editor on a synthetic sample sheet](docs/img/desktop-editor.png)
 
 ## Status
 
 | Part | State |
 | --- | --- |
 | `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check. 266 tests. |
-| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere. 43 tests. |
-| `packages/mcp` | Works. 33 tools over stdio. 8 tests, plus end-to-end tests of the built server. |
-| `apps/desktop` | Not finished: see `docs/DESKTOP.md` for what exists. |
-| Docs | [Agent guide](docs/AGENT_GUIDE.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [dependencies](docs/DEPENDENCIES.md). |
+| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere. 43 tests, plus an end-to-end test of the built binary. |
+| `packages/mcp` | Works. 33 tools over stdio. 8 tests, plus an end-to-end test of the built server. |
+| `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file. 26 unit tests and 15 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux: see [docs/DESKTOP.md](docs/DESKTOP.md). |
+| Docs | [Agent guide](docs/AGENT_GUIDE.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [dependencies](docs/DEPENDENCIES.md). |
 
 The bundle format ([docs/BUNDLE_FORMAT.md](docs/BUNDLE_FORMAT.md)) is the contract with the Android app; the writer and the
-importer check implement every rule of it.
+importer check implement every rule of it. Whether the Android app accepts a bundle made here has been checked against the
+format's rules (the importer check) but not yet by importing one on a tablet.
 
 ## Quick start
 
@@ -28,6 +32,9 @@ cd math-canvas-prep
 npm install
 npm run build
 ```
+
+`npm install` also downloads Electron's program file (about 100 MB); set `ELECTRON_SKIP_BINARY_DOWNLOAD=1` first if you only
+want the command line and the MCP server.
 
 ### For an AI agent
 
@@ -50,9 +57,13 @@ Desktop or another client see [docs/MCP.md](docs/MCP.md). A real session with ev
 
 ### For a person
 
-Until the desktop app is finished, use the command line the same way, or let an agent do the marking and look at the result in
-the rendered images (`npx mcprep render 3 --frames --grid 0.1`). Copy the `.mcbundle` to the tablet and open it in the Math
-Canvas library.
+```console
+npm run desktop -- analysis.pdf          # or without a file name, for the welcome screen
+```
+
+Draw around the exercises (or press **Find proposals** and accept what is right), cut exercises into parts with the slicers,
+check the **Checks** tab, press **Export**, and copy the `.mcbundle` to the tablet. [docs/DESKTOP.md](docs/DESKTOP.md) explains the
+window. If an agent is marking the same PDF with the command line, its changes appear in the window as it saves them.
 
 ## What is in this repository
 
@@ -61,10 +72,11 @@ Canvas library.
 | `packages/core` | The model, validation, numbering, text-line analysis, proposals, PDF reading and rendering, the project file and the bundle reader and writer. No UI. |
 | `packages/cli` | `mcprep`, a command line for scripts and agents: inspect a PDF, add and edit frames, validate, render, export. |
 | `packages/mcp` | An MCP server exposing the same operations as tools. |
-| `apps/desktop` | The Electron app (a visual editor over the same project file). |
+| `apps/desktop` | The Electron app: a visual editor over the same project file. |
 | `schemas/` | JSON Schemas of the manifest, frames, outline and project file. |
 | `examples/` | A synthetic sample sheet, its project, its bundle and a transcript of marking it; `build-examples.mjs` rebuilds them. |
-| `docs/` | The bundle format, the project file, the CLI, the MCP tools and the agent guide. |
+| `docs/` | The bundle format, the project file, the CLI, the MCP tools, the desktop app, the dependencies and the agent guide. |
+| `.github/workflows/ci.yml` | Build, lint and tests on Linux and Windows. It publishes nothing and uses no secrets. |
 
 ## Two ways to mark a PDF
 
@@ -75,18 +87,23 @@ Canvas library.
 
 ## Privacy
 
-PDFs and projects stay on your computer. The tools make no network calls and send nothing anywhere. This repository contains no
-real textbooks or exams; its examples and test fixtures are generated.
+PDFs and projects stay on your computer. The tools make no network calls when they run, have no telemetry and send nothing
+anywhere (the desktop window enforces this: every request to the network is cancelled). The proposals are computed offline from
+the printed text, not by an AI service. This repository contains no real textbooks or exams; its examples and test fixtures are
+generated.
 
 ## Development
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources)
+npm test             # unit tests (Vitest, against the sources): 343 tests
 npm run lint
-npm run test:e2e     # the built binary and the MCP server over stdio (build first)
+npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md
+npm run docs:licenses -- --write   # refresh the tables of docs/DEPENDENCIES.md
 node examples/build-examples.mjs   # rebuild the examples after a build
+npm run desktop      # start the desktop app from the checkout
+npm run dist         # build, then package the desktop app (apps/desktop/release; unsigned)
 ```
 
 ## Licence
