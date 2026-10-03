@@ -71,8 +71,11 @@ describe('proposals on the synthetic sample', () => {
     expect(two?.parts?.style).toBe('letter');
     expect(two?.parts?.markers.map((marker) => marker.ordinal)).toEqual([1, 2, 3]);
     expect(two?.parts?.dividers).toHaveLength(2);
+    const lineA = pages[0]?.lines.find((entry) => entry.text.startsWith('(a)'));
     const lineB = pages[0]?.lines.find((entry) => entry.text.startsWith('(b)'));
-    expect(two?.parts?.dividers[0]).toBeCloseTo((lineB?.rect.top ?? 0) - 0.006, 4);
+    // The line above (a) is closer than the padding, so the cut sits exactly at its bottom instead of cutting into it.
+    expect(two?.parts?.dividers[0]).toBeCloseTo(Math.max(lineA?.rect.bottom ?? 0, (lineB?.rect.top ?? 0) - 0.006), 4);
+    expect(two?.parts?.dividers[0]).toBeGreaterThanOrEqual(lineA?.rect.bottom ?? 1);
     expect(two?.parts?.first).toBeDefined();
     expect(two?.parts?.preamble?.bottom).toBe(two?.parts?.first);
     expect(two?.parts?.preamble?.top).toBe(two?.rect.top);

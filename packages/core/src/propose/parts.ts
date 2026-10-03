@@ -118,7 +118,7 @@ export function detectParts(lines: readonly TextLine[]): PartsDetection | undefi
     }
   }
   if (!best) return undefined;
-  const starts = best.markers.map((marker) => lineStart(marker.line));
+  const starts = best.markers.map((marker) => lineStart(marker.line, AUTHORING.startPadding, lines));
   const first = best.markers[0] as PartMarker;
   const startsAtOne = first.ordinal === 1;
   const detection: PartsDetection = {

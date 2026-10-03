@@ -27,7 +27,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -b tsconfig.build.json"
+    "build": "tsc -b tsconfig.build.json && node ../../scripts/copy-assets.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "0.1.100",

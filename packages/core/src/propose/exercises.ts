@@ -537,12 +537,12 @@ export function proposeFrames(allPages: readonly PageText[], options: ProposeOpt
       const box = boxes.get(`${region.page}:${region.column}`) ?? { left: 0, right: 1 };
       const firstLine = (region.lines[0] as FlowLine).line;
       const lastEntry = region.lines[region.lines.length - 1] as FlowLine;
-      const top = lineStart(firstLine);
+      const top = lineStart(firstLine, AUTHORING.startPadding, pageOf.get(region.page)?.lines);
       const lastText = lastEntry.line.rect.bottom;
       let bottom = Math.min(1, lastText + AUTHORING.endPadding);
       const next = flow[(position.get(lastEntry) as number) + 1];
       const nextInRegion = next !== undefined && next.page === region.page && next.line.column === region.column;
-      const limit = nextInRegion ? lineStart((next as FlowLine).line) : contentLimit(pageOf.get(region.page));
+      const limit = nextInRegion ? lineStart((next as FlowLine).line, AUTHORING.startPadding, pageOf.get(region.page)?.lines) : contentLimit(pageOf.get(region.page));
       if (loose) {
         // An exercise reaches down over a figure or a table below its last line of text, but not over blank answer space.
         const ink = pageOf.get(region.page)?.ink;

@@ -25,16 +25,32 @@ export function linesInRect(lines: readonly TextLine[], rect: Rect, minInside = 
   });
 }
 
-/** Where a part that begins with this line should start: a little above it, so the line is wholly inside. */
-export function lineStart(line: TextLine, padding: number = AUTHORING.startPadding): number {
-  return Math.max(0, line.rect.top - padding);
+/** Whether the two lines overlap sideways (so that one can cut into the other when they are in the same column). */
+function overlapsSideways(a: TextLine, b: TextLine): boolean {
+  return Math.min(a.rect.right, b.rect.right) > Math.max(a.rect.left, b.rect.left);
+}
+
+/**
+ * Where a part that begins with this line should start: a little above it, so the line is wholly inside. With the
+ * `neighbours` (the other lines of the page) the start never cuts into the line above: when that line is closer than
+ * the padding, the start sits exactly at its bottom.
+ */
+export function lineStart(line: TextLine, padding: number = AUTHORING.startPadding, neighbours?: readonly TextLine[]): number {
+  let y = Math.max(0, line.rect.top - padding);
+  if (neighbours) {
+    for (const other of neighbours) {
+      if (other === line || other.rect.top >= line.rect.top) continue;
+      if (other.rect.bottom > y && other.rect.bottom <= line.rect.top + 1e-9 && overlapsSideways(other, line)) y = other.rect.bottom;
+    }
+  }
+  return y;
 }
 
 /** Moves y onto the start of the nearest line when one is within the snap distance. */
 export function snapDivider(y: number, lines: readonly TextLine[], distance: number = AUTHORING.snapDistance): number {
   let best: number | undefined;
   for (const line of lines) {
-    const start = lineStart(line);
+    const start = lineStart(line, AUTHORING.startPadding, lines);
     if (best === undefined || Math.abs(start - y) < Math.abs(best - y)) best = start;
   }
   return best !== undefined && Math.abs(best - y) <= distance ? best : y;

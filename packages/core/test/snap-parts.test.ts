@@ -59,6 +59,19 @@ describe('snapping to text lines', () => {
     expect(lineStart(line('x', 0.002))).toBe(0);
   });
 
+  it('never starts a part inside the line above it: the start sits at the bottom of that line when it is closer than the padding', () => {
+    // Lines 0.012 tall and 0.014 apart leave a gap of 0.002, less than the padding of 0.006.
+    const tight = [line('(a) first', 0.2), line('(b) second', 0.214)];
+    expect(lineStart(tight[1] as TextLine)).toBeCloseTo(0.214 - 0.006);
+    expect(lineStart(tight[1] as TextLine, 0.006, tight)).toBeCloseTo(0.212);
+    expect(snapDivider(0.215, tight)).toBeCloseTo(0.212);
+    const far = [line('(a) first', 0.2), line('(b) second', 0.25)];
+    expect(lineStart(far[1] as TextLine, 0.006, far)).toBeCloseTo(0.244);
+    // A line in another column does not count.
+    const other = [line('left', 0.2, 0.1, 0.4), line('right', 0.214, 0.6, 0.9)];
+    expect(lineStart(other[1] as TextLine, 0.006, other)).toBeCloseTo(0.208);
+  });
+
   it('lists the lines of a rect: beside it and at least half inside', () => {
     const inside = linesInRect(lines, rect(0.1, 0.119, 0.9, 0.151));
     expect(inside.map((entry) => entry.text)).toEqual(['two', 'three']);
