@@ -129,7 +129,7 @@ The window is built so that opening a document you did not write is safe, and so
   not in the packaged application.
 - There is no telemetry, no update check, no account, no AI call. The PDF is read from where it is; a copy of it is never made
   or sent.
-- It stores a list of the twelve most recent projects (title and path) in the operating system's user-data folder for the
+- It stores a list of the twelve most recent projects (title and path; one that no longer exists is not offered) in the operating system's user-data folder for the
   application, and the preferences (theme, snap, autosave) in the window's local storage. Nothing else.
 
 ## Package it
@@ -150,7 +150,7 @@ macOS and Linux targets are written down in the configuration but have not been 
 
 - `apps/desktop/test/logic.test.ts` (26 tests): the editor's state, geometry, undo, saving, conflicts, proposals,
   contents; no window needed. It runs with `npm test`.
-- `apps/desktop/test/app.e2e.test.ts` (15 tests): the built application driven by Playwright like a person (real mouse and
+- `apps/desktop/test/app.e2e.test.ts` (16 tests): the built application driven by Playwright like a person (real mouse and
   keyboard): drawing with snapping, moving, resizing, slicers, saving, an agent editing the file, the conflict dialog,
   export and import check, proposals, the lock-down. It needs a display and the built bundle, so it is not part of the
   continuous integration: `npm run build && npm run test:e2e`.

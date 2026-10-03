@@ -59,7 +59,8 @@ beforeAll(async () => {
   cli('init', 'sheet.pdf', '--title', 'Calculus Sheet 1');
   cli('propose', '--apply');
   const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined)) as Record<string, string>;
-  app = await electron.launch({ executablePath: electronPath, args: [appDir, join(work, 'sheet.mcprep.json')], env });
+  // Its own user-data folder: the test must not add its temporary projects to the recent list of the person running it.
+  app = await electron.launch({ executablePath: electronPath, args: [appDir, `--user-data-dir=${join(work, 'user-data')}`, join(work, 'sheet.mcprep.json')], env });
   win = await app.firstWindow();
   win.on('pageerror', (error) => errors.push(error.message));
   win.on('console', (message) => {
@@ -306,6 +307,16 @@ describe.skipIf(!available)('the desktop app', () => {
     expect(await win.locator('.side .rows .row').count()).toBe(0);
     expect(await state((s) => (s['validation'] as { ok: boolean }).ok)).toBe(true);
     expect((await frames()).length).toBeGreaterThan(6);
+  });
+
+  it('offers the recent projects that still exist, and not the ones that were deleted', async () => {
+    cli('init', 'sheet.pdf', '--out', 'gone.mcprep.json', '--title', 'Gone soon');
+    await openProject(join(work, 'gone.mcprep.json'));
+    const titles = async (): Promise<string[]> => (await win.evaluate(() => window.mcprep.recent())).map((entry) => entry.title);
+    expect(await titles()).toContain('Gone soon');
+    rmSync(join(work, 'gone.mcprep.json'));
+    expect(await titles()).not.toContain('Gone soon');
+    await openProject(join(work, 'sheet.mcprep.json'));
   });
 
   it('does not navigate away and opens no new windows, whatever the page tries', async () => {

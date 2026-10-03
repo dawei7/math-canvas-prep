@@ -22,7 +22,8 @@ cli('init', 'sheet.pdf', '--out', 'fresh.mcprep.json', '--title', 'Calculus Shee
 
 const electronPath = join(root, 'node_modules/electron/dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined));
-const app = await electron.launch({ executablePath: electronPath, args: [join(root, 'apps/desktop'), join(work, 'sheet.mcprep.json')], env });
+// Its own user-data folder, so that taking pictures does not change the recent list of the person who runs this.
+const app = await electron.launch({ executablePath: electronPath, args: [join(root, 'apps/desktop'), `--user-data-dir=${join(work, 'user-data')}`, join(work, 'sheet.mcprep.json')], env });
 const win = await app.firstWindow();
 await app.evaluate(({ BrowserWindow }) => {
   const [window] = BrowserWindow.getAllWindows();

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, session, shell, type MenuItemConstructorOptions } from 'electron';
@@ -54,10 +54,13 @@ let dirty = false;
 
 const recentFile = (): string => join(app.getPath('userData'), 'recent.json');
 
+/** The recent projects that still exist (a project that was moved or deleted is not offered). */
 async function readRecent(): Promise<RecentEntry[]> {
   try {
     const parsed: unknown = JSON.parse(await readFile(recentFile(), 'utf8'));
-    return Array.isArray(parsed) ? (parsed as RecentEntry[]).filter((entry) => typeof entry?.path === 'string').slice(0, 12) : [];
+    const list = Array.isArray(parsed) ? (parsed as RecentEntry[]).filter((entry) => typeof entry?.path === 'string').slice(0, 12) : [];
+    const present = await Promise.all(list.map((entry) => access(entry.path).then(() => true, () => false)));
+    return list.filter((_entry, index) => present[index]);
   } catch {
     return [];
   }
