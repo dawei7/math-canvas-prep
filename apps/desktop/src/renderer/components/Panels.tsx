@@ -224,7 +224,7 @@ function ProposePanel({ store }: { store: Store }): preact.JSX.Element {
       {state.proposals && pending.length === 0 ? <p class="empty">{decided > 0 ? `All ${decided} proposals decided.` : 'No proposals.'}</p> : null}
       <ul class="rows">
         {pending.map((proposal) => (
-          <li key={proposal.id} class="row" onClick={() => store.setPage(proposal.page)}>
+          <li key={proposal.id} class="row" onClick={() => store.showProposal(proposal.id)}>
             <span class="chip" style={{ background: KIND_COLORS[proposal.kind] }}>{proposal.id}</span>
             <span class="row-text">{proposal.title}</span>
             <span class="muted">p{proposal.page + 1}</span>

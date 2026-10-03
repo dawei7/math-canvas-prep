@@ -70,6 +70,19 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
     };
   }, [pdf, state.page, scale]);
 
+  // A page opens at its top ...
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [state.page]);
+
+  // ... unless a click in a list (frames, checks, proposals) names a frame on it: that frame is brought into view (the
+  // page is often taller than the window). This effect runs after the one above, so it wins.
+  useEffect(() => {
+    if (state.focus.tick === 0) return;
+    const target = state.focus.ghost !== null ? scroller.current?.querySelector(`[data-ghost="${state.focus.ghost}"] .body`) : scroller.current?.querySelector('.frame.selected .body');
+    target?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }, [state.focus.tick]);
+
   const project = state.project;
   const frames = project?.frames ?? [];
   const labels = useMemo(() => numberFrames(frames), [frames]);
@@ -436,8 +449,8 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
     const s = toScreen(proposal.rect, box);
     const color = colorOf(proposal.kind);
     return (
-      <g key={proposal.id} class="ghost">
-        <rect x={s.x} y={s.y} width={s.w} height={s.h} fill={color} fill-opacity={0.1} stroke={color} stroke-width={2} stroke-dasharray="3 4" style={{ pointerEvents: 'none' }} />
+      <g key={proposal.id} class="ghost" data-ghost={proposal.id}>
+        <rect class="body" x={s.x} y={s.y} width={s.w} height={s.h} fill={color} fill-opacity={0.1} stroke={color} stroke-width={2} stroke-dasharray="3 4" style={{ pointerEvents: 'none' }} />
         {chip(s.x, s.y - 12, `${proposal.id} ${Math.round(proposal.confidence * 100)}%`, color)}
         <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => store.acceptProposal(proposal.id)} style={{ cursor: 'pointer' }}>
           <circle cx={s.x + s.w - 14} cy={s.y + 14} r={10} fill="#16a34a" />

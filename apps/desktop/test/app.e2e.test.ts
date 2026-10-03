@@ -256,6 +256,22 @@ describe.skipIf(!available)('the desktop app', () => {
     expect(await win.locator('.verdict').innerText()).toContain('No errors');
   });
 
+  it('brings a frame chosen in a list into view and opens every page at its top', async () => {
+    await win.locator('.tab', { hasText: 'Frames' }).click();
+    await win.evaluate(() => (window as unknown as { __store: { setPage(n: number): void } }).__store.setPage(0));
+    await win.waitForTimeout(300);
+    // The row shows the first words of the frame, although the person has not looked at its page yet.
+    await win.locator('.side .rows .row', { hasText: 'Exercise 4' }).click();
+    await win.waitForFunction(() => (document.querySelector('.page-scroll') as HTMLElement).scrollTop > 0);
+    const scroller = await win.locator('.page-scroll').boundingBox();
+    const body = await win.locator('.frame.selected .body').first().boundingBox();
+    expect(scroller && body && body.y >= scroller.y - 1 && body.y + body.height <= scroller.y + scroller.height + 1).toBe(true);
+    await win.getByRole('button', { name: 'Next page' }).click();
+    await win.waitForFunction(() => (document.querySelector('.page-scroll') as HTMLElement).scrollTop === 0);
+    await win.getByRole('button', { name: 'Previous page' }).click();
+    await tool('Select');
+  });
+
   it('exports the bundle after showing the validation, and the importer check accepts it', async () => {
     const out = join(work, 'out.mcbundle');
     await app.evaluate(({ dialog }, path) => {

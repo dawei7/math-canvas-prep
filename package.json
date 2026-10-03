@@ -23,6 +23,7 @@
     "clean": "node scripts/clean.mjs",
     "docs:cli": "node scripts/generate-cli-docs.mjs",
     "docs:licenses": "node scripts/licenses.mjs",
+    "desktop": "npm run start --workspace @mcprep/desktop --",
     "dist": "npm run build && npm run dist --workspace @mcprep/desktop",
     "docs:mcp": "node scripts/generate-mcp-docs.mjs",
     "docs": "npm run docs:cli && npm run docs:mcp"

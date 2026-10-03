@@ -259,6 +259,22 @@ describe('the store: editing', () => {
     await vi.waitFor(() => expect(Object.keys(store.state.texts).sort()).toEqual(['0', '1', '2']));
   });
 
+  it('asks the page view to bring a frame into view when a list selects it, and the ghost of a proposal', async () => {
+    const { store } = await started();
+    store.apply([exercise([0.1, 0.22, 0.9, 0.29], 1)], { select: null });
+    const tick = store.state.focus.tick;
+    store.select('f1'); // a click on the page itself: nothing to scroll to
+    expect(store.state.focus.tick).toBe(tick);
+    store.select('f1', { jump: true }); // a click in a list
+    expect(store.state.focus.tick).toBe(tick + 1);
+    expect(store.state.page).toBe(1);
+    await store.runPropose();
+    const id = store.state.proposals?.proposals[0]?.id as string;
+    store.showProposal(id);
+    expect(store.state.focus).toEqual({ tick: tick + 2, ghost: id });
+    expect(store.state.page).toBe(store.state.proposals?.proposals[0]?.page);
+  });
+
   it('drops text that arrives after another document was opened', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {

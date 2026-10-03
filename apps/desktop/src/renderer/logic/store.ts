@@ -47,6 +47,8 @@ export interface State {
   tool: Tool;
   /** Any frame id; selecting a part selects its whole exercise. */
   selection: string | null;
+  /** Counts the times a list asked for a frame (or a proposal) to be brought into view; the page view scrolls to it. */
+  focus: { tick: number; ghost: string | null };
   snap: boolean;
   tab: Tab;
   texts: Record<number, PageText>;
@@ -81,6 +83,7 @@ const initial = (): State => ({
   zoom: 0,
   tool: 'select',
   selection: null,
+  focus: { tick: 0, ghost: null },
   snap: true,
   tab: 'frames',
   texts: {},
@@ -341,12 +344,24 @@ export class Store {
     this.set({ tool });
   }
 
+  /** Selects a frame. With `jump` (a click in a list) the page of the frame is shown and the frame is scrolled into view. */
   select(id: string | null, options: { jump?: boolean } = {}): void {
     this.set({ selection: id });
     if (options.jump && id !== null) {
       const frame = this.state.project?.frames.find((entry) => entry.id === id);
-      if (frame) this.setPage(frame.page);
+      if (frame) {
+        this.set({ focus: { tick: this.state.focus.tick + 1, ghost: null } });
+        this.setPage(frame.page);
+      }
     }
+  }
+
+  /** Shows the page of a proposal and scrolls its ghost frame into view. */
+  showProposal(id: string): void {
+    const proposal = this.state.proposals?.proposals.find((entry) => entry.id === id);
+    if (!proposal) return;
+    this.set({ focus: { tick: this.state.focus.tick + 1, ghost: id } });
+    this.setPage(proposal.page);
   }
 
   setZoom(zoom: number): void {

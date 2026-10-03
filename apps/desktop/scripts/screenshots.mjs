@@ -44,15 +44,15 @@ const shot = async (name) => {
 await win.locator('.chip', { hasText: 'E2' }).first().click();
 await shot('desktop-editor');
 
-// 2. Page 2 in the dark theme: context (dashed) and a continuation, exercise 4 selected.
+// 2. Page 2 in the dark theme: the instruction (dashed) that Exercises 3 and 4 share, exercise 3 selected.
 await win.evaluate(() => {
   window.__store.setTheme('dark');
   window.__store.setPage(1);
 });
 await win.waitForTimeout(500);
 await win.evaluate(() => {
-  const frame = window.__store.state.project.frames.find((entry) => entry.page === 1 && entry.continues);
-  window.__store.select(frame.id);
+  const frame = window.__store.state.project.frames.find((entry) => entry.page === 1 && entry.context);
+  window.__store.select(frame.id, { jump: true }); // as a click in the frame list: the frame is scrolled into view
 });
 await shot('desktop-dark');
 
