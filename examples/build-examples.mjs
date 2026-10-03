@@ -82,6 +82,16 @@ await step('Export. The bundle is written atomically and read back with the impo
 await step('Check the bundle exactly as the Android importer would.', ['import-check', 'sample.mcbundle']);
 await step('Look inside the bundle.', ['inspect-bundle', 'sample.mcbundle'], { lines: 40, note: 'Output shortened.' });
 
+// A picture for the documentation: the first page with its grid and the frames that were marked.
+mkdirSync(join(here, '..', 'docs', 'img'), { recursive: true });
+await run(['render', '0', '--frames', '--grid', '0.1', '--max-side', '760', '--out', join(here, '..', 'docs', 'img', 'sample-page0.png')], {
+  stdout: () => undefined,
+  stderr: () => undefined,
+  stdin: () => Promise.resolve(''),
+  cwd: here,
+  env: {},
+});
+
 // Fixed times in the committed project, so that rebuilding the examples gives the same files.
 const projectPath = join(here, 'sample.mcprep.json');
 const project = parseProject(JSON.parse(readFileSync(projectPath, 'utf8')), 'sample');
