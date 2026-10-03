@@ -241,7 +241,14 @@ button:disabled {
   color: var(--muted);
 }
 
+/* The "i" sits inline (in a row, next to a button); on a tool of the rail it is a badge on the corner of the round button. */
 .info-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.tool .info-wrap {
   position: absolute;
   top: -3px;
   right: 8px;

@@ -448,19 +448,25 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
   const ghostShape = (proposal: (typeof ghosts)[number]): preact.JSX.Element => {
     const s = toScreen(proposal.rect, box);
     const color = colorOf(proposal.kind);
+    // The buttons go beside the frame, in the margin, so that they do not cover the text; inside only when there is no margin.
+    const outside = s.x + s.w + 58 <= box.width;
+    const acceptX = outside ? s.x + s.w + 16 : s.x + s.w - 14;
+    const rejectX = outside ? s.x + s.w + 42 : s.x + s.w - 40;
     return (
       <g key={proposal.id} class="ghost" data-ghost={proposal.id}>
         <rect class="body" x={s.x} y={s.y} width={s.w} height={s.h} fill={color} fill-opacity={0.1} stroke={color} stroke-width={2} stroke-dasharray="3 4" style={{ pointerEvents: 'none' }} />
         {chip(s.x, s.y - 12, `${proposal.id} ${Math.round(proposal.confidence * 100)}%`, color)}
         <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => store.acceptProposal(proposal.id)} style={{ cursor: 'pointer' }}>
-          <circle cx={s.x + s.w - 14} cy={s.y + 14} r={10} fill="#16a34a" />
-          <text x={s.x + s.w - 14} y={s.y + 14.5} text-anchor="middle" dominant-baseline="middle" fill="#fff">
+          <title>Accept</title>
+          <circle cx={acceptX} cy={s.y + 14} r={10} fill="#16a34a" />
+          <text x={acceptX} y={s.y + 14.5} text-anchor="middle" dominant-baseline="middle" fill="#fff">
             ✓
           </text>
         </g>
         <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => store.rejectProposal(proposal.id)} style={{ cursor: 'pointer' }}>
-          <circle cx={s.x + s.w - 40} cy={s.y + 14} r={10} fill="#64748b" />
-          <text x={s.x + s.w - 40} y={s.y + 14.5} text-anchor="middle" dominant-baseline="middle" fill="#fff">
+          <title>Reject</title>
+          <circle cx={rejectX} cy={s.y + 14} r={10} fill="#64748b" />
+          <text x={rejectX} y={s.y + 14.5} text-anchor="middle" dominant-baseline="middle" fill="#fff">
             ✕
           </text>
         </g>

@@ -1,6 +1,6 @@
 // Takes the screenshots of docs/DESKTOP.md from the synthetic sample, by driving the built app with Playwright.
 // Needs `npm run build` and Electron's binary.   npm run screenshots --workspace @mcprep/desktop
-/* global window -- the callbacks given to `evaluate` run in the app's window, not in Node */
+/* global window, document -- the callbacks given to `evaluate` run in the app's window, not in Node */
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -36,6 +36,12 @@ await win.waitForTimeout(1500);
 const shot = async (name) => {
   await win.evaluate(() => window.__store.dismissNotice());
   await win.waitForTimeout(500);
+  // The status bar shows the project's real path, which is a temporary folder under the user's profile: show a neutral
+  // path in the picture so that no user name ends up in the repository.
+  await win.evaluate(() => {
+    const path = document.querySelector('.statusbar .path');
+    if (path) path.textContent = 'C:\\Books\\Calculus\\sheet.mcprep.json';
+  });
   await win.screenshot({ path: join(images, `${name}.png`) });
   console.log(`wrote docs/img/${name}.png`);
 };
