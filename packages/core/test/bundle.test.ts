@@ -67,7 +67,7 @@ describe('a valid bundle', () => {
     expect(report.document).toMatchObject({ title: 'Test', folder: 'Uni/Analysis', pageCount: 3, sha256: sha(sample.pdf) });
     expect(report.numbers?.map((entry) => entry.label)).toEqual(['E1']);
     expect(report.outline).toHaveLength(1);
-    expect(report.steps[5]?.detail).toContain('1 exercises');
+    expect(report.steps[5]?.detail).toContain('1 exercise, 0 questions and 0 bookmarks');
   });
 
   it('reads deflated entries too', async () => {
