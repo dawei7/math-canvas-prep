@@ -26,6 +26,7 @@
     "build": "tsc -b tsconfig.build.json"
   },
   "dependencies": {
+    "@mcprep/cli": "0.1.0",
     "@mcprep/core": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "zod": "^4.6.5"

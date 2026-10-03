@@ -1,0 +1,421 @@
+# MCP server
+
+`packages/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over **stdio**. It gives an AI agent the same
+operations as the [`mcprep` command line](CLI.md) as typed tools: create a project, look at pages (text lines with coordinates,
+rendered images with a grid), propose exercises, add and edit frames, cut parts, attach context, apply a batch atomically, validate,
+export the `.mcbundle`, check a bundle as the Android importer would. Each tool runs the command line in process and returns its JSON
+result (so the two can never disagree); the PNGs of `render_page` and `render_crop` come back as **image content**, which is how
+the model looks at its own work.
+
+How to mark a PDF well is in the [agent guide](AGENT_GUIDE.md). The server offers it as the resource `mcprep://guide`, as the tool
+`get_guide` and as the prompt `mark_pdf`, and its `instructions` summarise the conventions (zero-based pages, fractions of the
+displayed page with the origin at the top-left, positional labels that are never stored, the workflow).
+
+The server makes no network calls and sends nothing anywhere. It writes nothing but protocol messages to standard output.
+
+## Run it
+
+```console
+npm install
+npm run build
+node packages/mcp/bin/mcprep-mcp.js            # waits for a client on stdin/stdout
+node packages/mcp/bin/mcprep-mcp.js --project /path/to/book.mcprep.json   # optional default project
+```
+
+Use **absolute paths** in the configurations below: clients start the server in a folder of their own choosing. Relative paths in
+tool arguments (for example `create_project` with `pdf: "book.pdf"`) are resolved from the server's working directory; give absolute
+paths unless you set `cwd`.
+
+## Register it in a client
+
+Replace `C:/path/to/math-canvas-prep` with where you cloned the repository.
+
+### Claude Code
+
+```console
+claude mcp add math-canvas-prep -- node C:/path/to/math-canvas-prep/packages/mcp/bin/mcprep-mcp.js
+```
+
+Add `--scope user` to have it in every project, or `--scope project` to write a `.mcp.json` that you can commit. The file looks like
+this, and you can also write it by hand:
+
+```json
+{
+  "mcpServers": {
+    "math-canvas-prep": {
+      "command": "node",
+      "args": ["C:/path/to/math-canvas-prep/packages/mcp/bin/mcprep-mcp.js"]
+    }
+  }
+}
+```
+
+Then, in Claude Code, say: *"Mark the PDF C:/books/analysis.pdf for Math Canvas and file it under University/Analysis"* (the prompt
+`mark_pdf` does the same). Check that the server is up with `/mcp`.
+
+### Claude Desktop
+
+Edit `claude_desktop_config.json` (Windows: `%APPDATA%\Claude\claude_desktop_config.json`, macOS:
+`~/Library/Application Support/Claude/claude_desktop_config.json`) and restart the app:
+
+```json
+{
+  "mcpServers": {
+    "math-canvas-prep": {
+      "command": "node",
+      "args": ["C:/path/to/math-canvas-prep/packages/mcp/bin/mcprep-mcp.js"],
+      "env": { "MCPREP_PROJECT": "C:/books/analysis.mcprep.json" }
+    }
+  }
+}
+```
+
+`MCPREP_PROJECT` is optional: it sets the project that the tools work on until `create_project` or `open_project` says otherwise.
+
+### Any other MCP client
+
+Start a stdio server with the command `node` and the argument `C:/path/to/math-canvas-prep/packages/mcp/bin/mcprep-mcp.js` (some
+clients call this "command" and "args", some "stdio transport"). There are no environment variables to set. To try the server by
+hand, the MCP Inspector works: `npx @modelcontextprotocol/inspector node packages/mcp/bin/mcprep-mcp.js` (a separate tool, not a
+dependency of this repository).
+
+## Working with a person at the same time
+
+The project file is shared with the desktop app. When an agent changes it through these tools, a desktop app that has the project
+open reloads it and shows that an agent updated it; the agent's calls and the person's edits do not overwrite each other (every
+write reads the file fresh under a lock; the desktop app asks which version to keep when it has unsaved edits).
+
+## What a tool returns
+
+- A **result** as JSON text and as `structuredContent` (the same object). For commands that change the project it is the change
+  report: `applied`, `created`, `removed`, `frames` (with their labels), `counts`, `validation` (`errors`, `warnings`, `repairs`).
+- **Images** as `image/png` content next to the JSON (`render_page`, `render_crop`); the file path is in the JSON too.
+- A **failure** has `isError: true` and `{ ok: false, exitCode, error: { code, message, hint?, issues? } }`. The codes are those of the
+  command line (`E_PAGE`, `E_RECT_RANGE`, `E_REJECTED`, `E_VALIDATION`, `E_PDF_CHANGED`, `E_NO_PROJECT`, ...); the `hint` says what to do.
+- `validate` and `import_check` report errors in their *result* (`ok: false`, `wouldImport: false`), not as a failure.
+- Arguments that do not fit the schema (a rectangle with three numbers) are rejected by the protocol layer before the tool runs.
+
+<!-- generated by scripts/generate-mcp-docs.mjs: do not edit below this line -->
+
+## Tool reference
+
+33 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+
+### `create_project`
+
+Starts work on a PDF: reads it once (page count, SHA-256) and writes name.mcprep.json next to it (or at "project"). The PDF is never modified; the project refers to it by a relative path. The new project becomes the default project of this session. Use "folder" for where the document is filed in the app library (names separated by "/", at most seven levels).
+
+Arguments:
+
+- `pdf`* (string): Path of the PDF to mark.
+- `title` (string): The title the library shows (1 to 200 characters; default: the file name).
+- `folder` (string): Library folder, for example "University/Analysis/Sheets".
+- `force` (boolean): Overwrite an existing project file.
+
+### `open_project` (read-only)
+
+Makes an existing project (name.mcprep.json) the default project of this session and returns its summary (see project_info). Use it to continue work, or after a person or another agent changed the file.
+
+### `project_info` (read-only)
+
+Pages (count, sizes, /Rotate), whether the pages have a text layer (a page without one is a scan and must be marked by eye), the PDF's own outline, the project's title and folder, and how many frames there are. Call it first.
+
+Arguments:
+
+- `full_text` (boolean): Check the text layer of every page instead of a sample of 12.
+
+### `set_metadata`
+
+Changes the title the app library shows and the folder it files the document in. Without title and folder it only returns the current values.
+
+Arguments:
+
+- `title` (string)
+- `folder` (string): Names separated by "/", at most seven levels; "" removes it.
+
+### `get_page_lines` (read-only)
+
+The text lines of one page in reading order (columns left to right, each top to bottom), each with its box as page fractions (origin top-left), font size, column, and whether it is a running header or footer (and bold, with fonts=true). Use it to find where exercises start and end. An empty list means the page has no text layer: it is a scan; use render_page with a grid instead.
+
+Arguments:
+
+- `page`* (integer): Zero-based page: the first page is 0.
+- `region` (any[] | { left, top, right, bottom }): Only the lines inside this rectangle.
+- `fonts` (boolean): Also tell which lines are bold (slower).
+
+### `render_page` (read-only)
+
+Renders a page to a PNG and returns it as an image (the file path is in the result too). grid=0.1 draws a labelled grid: the labels are page coordinates (origin top-left), so you can read positions off the image. frames=true draws the project's frames with their labels (E1, E2.1, Q1, B1; dashed = continuation or context). LOOK at the image: it is how you read the layout and check your marking.
+
+Arguments:
+
+- `page`* (integer): Zero-based page: the first page is 0.
+- `grid` (number): Grid step as a fraction of the page, for example 0.1 or 0.05.
+- `frames` (boolean): Draw the frames of the project on the page.
+- `max_side` (integer): Longer side in pixels (default 1200 here).
+
+### `render_crop` (read-only)
+
+Renders one frame (its main region, or a continuation or context region), or any rectangle of a page, to a PNG and returns it as an image. This is how you CHECK a frame: the exercise number and first words must be at the top, nothing of the next exercise at the bottom, no line cut in half, no header or footer, the figure inside. With grid the labels are still page coordinates. Give "frame" (an id), or "page" and "rect".
+
+Arguments:
+
+- `frame` (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `region` (string): With frame: main (default), continues:N or context:N (N from 0).
+- `page` (integer): Zero-based page: the first page is 0.
+- `rect` (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `grid` (number): Grid step as a fraction of the page, for example 0.05 or 0.02.
+- `max_side` (integer): Longer side in pixels (default 1000 here).
+
+### `get_outline` (read-only)
+
+The project's own outline if it has one (that goes into the bundle), else the PDF's own bookmarks (the bundle then carries none and the app reads the PDF's). Entries are { title, page (zero-based), depth }.
+
+### `adopt_pdf_outline`
+
+Copies the PDF's bookmarks into the project so that they are exported and can be edited.
+
+### `derive_outline`
+
+Heuristics: a line is a heading when it is set larger than the body text, in bold, numbered like "2.1" or starts with a chapter word; depth from numbering or font size. Returns entries with confidence and evidence. With apply=true they are stored in the project (check them first).
+
+Arguments:
+
+- `apply` (boolean)
+- `min_confidence` (number)
+
+### `set_outline`
+
+Replaces the project's outline. Entries are { title (1 to 200 characters), page (zero-based), depth (0 to 8; a child is one deeper than its parent) } in reading order. An empty list stores an empty outline; use clear_outline to remove the project's outline altogether.
+
+Arguments:
+
+- `entries`* ({ title, page, depth }[])
+
+### `clear_outline`
+
+The bundle then carries no outline and the app reads the PDF's own.
+
+### `propose`
+
+Offline heuristics (no AI) over the printed text: lines that start an exercise ("Exercise 3", "Aufgabe 3", "3.", "3)"), where each ends (before the next start, a heading or a definition; over a figure; onto the next page when the text goes on), part markers (a) (b) (c) inside an exercise, instructions printed for several exercises ("Exercises 3 and 4") and definitions, theorems and remarks as bookmarks. Every proposal has a confidence and its evidence, and the result includes "operations" that create them (give them to apply_operations, after editing if you like). Nothing is applied unless apply=true. It is a starting point: check the crops.
+
+Arguments:
+
+- `pages` (string): Zero-based pages to look at, like "0,2,5-7" (default all). Try ten pages first on a big book.
+- `min_confidence` (number): Default 0.5.
+- `bookmarks` (boolean): Propose definitions, theorems, remarks as bookmarks (default true).
+- `graphics` (boolean): Render pages to find figures so that frames reach over them (default true; slower).
+- `parts` ("context" | "keep" | "none"): What to do with the statement above (a): context (default, recommended: it becomes context of the exercise and the first part starts at (a)), keep (leave it in the first part, as the app's own splitter does), none (no parts).
+- `ids` (string[]): With apply: only these proposal ids (p1, p3).
+- `apply` (boolean): Apply the proposals to the project now, as one atomic batch.
+
+### `list_frames` (read-only)
+
+All frames in reading order with id, positional label (E2.1, Q1, B3: computed, never stored), kind, page, rect, unit, part, and the number of context and continuation regions.
+
+Arguments:
+
+- `page` (integer): Zero-based page: the first page is 0.
+- `kind` ("exercise" | "question" | "bookmark"): exercise: to solve and be checked; question: to ask the AI tutor about; bookmark: a place worth coming back to (definition, theorem, worked example).
+
+### `add_frame`
+
+Adds an exercise, a question or a bookmark. An exercise contains its number and statement and everything up to but not including the next exercise's number, without page headers or footers. A rect below the minimum (0.02 wide, 0.01 tall) is enlarged around its centre. With snap the edges move off lines of text. Returns the change report (created ids, labels, validation). Use split_frame afterwards to cut an exercise into parts, add_context for an instruction printed elsewhere. For many frames use apply_operations.
+
+Arguments:
+
+- `kind`* ("exercise" | "question" | "bookmark"): exercise: to solve and be checked; question: to ask the AI tutor about; bookmark: a place worth coming back to (definition, theorem, worked example).
+- `page`* (integer): Zero-based page: the first page is 0.
+- `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `id` (string): Your own id ([A-Za-z0-9_-], up to 40 characters); default generated (f1, f2, ...).
+- `context` ({ page, rect }[]): Context regions (instruction or background printed elsewhere). Exercises only.
+- `continues` ({ page, rect }[]): Further regions of the same task, in reading order. Not for parts.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `update_frame`
+
+Changes the page, rectangle or kind of a frame (context is dropped when it stops being an exercise). A part of an exercise cannot be changed on its own: use set_area, set_dividers or merge_frames.
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `kind` ("exercise" | "question" | "bookmark"): exercise: to solve and be checked; question: to ask the AI tutor about; bookmark: a place worth coming back to (definition, theorem, worked example).
+- `page` (integer): Zero-based page: the first page is 0.
+- `rect` (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `delete_frame` (destructive)
+
+Deletes a frame; with unit=true the id is a unit id and every part of that exercise goes. A part taken out of the middle leaves no gap (the part above takes over); an exercise left with one part is an ordinary exercise again.
+
+Arguments:
+
+- `id`* (string): The frame id, or the unit id with unit=true.
+- `unit` (boolean)
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `move_frame`
+
+Moves a frame by dx, dy (fractions of the page; negative = left/up). An exercise with parts moves as a whole. Stops at the page edges.
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `dx` (number)
+- `dy` (number)
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `split_frame`
+
+Cuts an exercise into parts (a), (b), (c) = 1.1, 1.2, 1.3 that tile one area. "at" gives the y positions where the parts after the first start, each at its marker line (snap moves a divider onto the nearest line). By default the first part starts at the top of the frame, so the statement before (a) stays inside it (the Android app's own splitter). RECOMMENDED: pass "first", the y where the first part starts (the top of the (a) line); the text above becomes context of the exercise, which every check then receives. The original frame keeps its id as the first part. Can also cut an existing part again.
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `at`* (number[]): y positions (page fractions, top to bottom) where parts 2, 3, ... start.
+- `first` (number): Where the first part starts (default: the top of the frame).
+- `preamble` ("keep" | "context" | "drop"): What becomes of the text above "first": context (default when first is given) or drop.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `merge_frames`
+
+Merges all parts of a unit (unit="u3") or two or more neighbouring part ids (ids) into one frame.
+
+Arguments:
+
+- `unit` (string)
+- `ids` (string[])
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `set_dividers`
+
+Sets the cuts between the parts of an exercise on a page: moves them, adds parts (more cuts) or removes the last parts (fewer). The area of the parts stays. No cuts turns it back into one frame.
+
+Arguments:
+
+- `id`* (string): Any part of the exercise.
+- `at`* (number[]): The new cuts (y, top to bottom); empty for none.
+- `page` (integer): Zero-based page: the first page is 0.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `set_area`
+
+Sets the area of the parts: left and right apply to every part, top to the first part, bottom to the last; the cuts between parts stay where they are.
+
+Arguments:
+
+- `id`* (string): Any part of the exercise.
+- `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `add_context`
+
+Attaches a region of context (the instruction, question or background printed elsewhere) to an exercise. It is shown first when the exercise is shown and goes to the AI with every check. Use it for an instruction printed once above several exercises (add it to each), or text on another page. For an exercise with parts it is kept on the first part and applies to all of them. Up to 8 regions; exercises only.
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `page`* (integer): Zero-based page: the first page is 0.
+- `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `remove_context` (destructive)
+
+Removes one context region of an exercise (index from 0; needed when there are several) or all of them.
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `index` (integer)
+- `all` (boolean)
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `add_continuation`
+
+Adds a further region of the same task after the main region (for example where an exercise goes on in the next column or on the next page); up to 8, in reading order. Not allowed for the parts of an exercise (give each page its own parts instead).
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `page`* (integer): Zero-based page: the first page is 0.
+- `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `remove_continuation` (destructive)
+
+Removes one continuation region (index from 0; needed when there are several) or all.
+
+Arguments:
+
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `index` (integer)
+- `all` (boolean)
+- `dry_run` (boolean): Compute and validate but do not write the project.
+
+### `apply_operations`
+
+Applies a list of operations in one atomic batch with ONE validation at the end: any failure, or any new validation error, rejects the whole batch and writes nothing. This is how to mark a 60-page sheet in one call. Each operation has "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, outline.set, outline.add, outline.clear, meta.set, with the fields of the matching tools (rect as [l,t,r,b] or an object; page zero-based). An "add" may carry "ref": "a"; later operations may use "id": "@a" for the frame it created, so you need not guess generated ids. The "operations" returned by propose can be passed as they are.
+
+Arguments:
+
+- `operations`* ({ op }[]): The operations, applied in order.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `validate` (read-only)
+
+Checks the project against every rule of the bundle format. Errors (what the importer would reject; each names the frame id and the fix), repairs (what the importer fixes silently) and warnings (allowed but suspicious: overlaps, an edge cutting a line of text, a header inside a frame, ...). ok=false means errors. A failed validation is a result, not a tool failure.
+
+Arguments:
+
+- `text` (boolean): Also run the checks that read the printed lines (default true).
+
+### `export_bundle`
+
+Validates, then writes the bundle (the PDF byte for byte plus frames and outline) atomically and reads it back with the importer's own checks; a bundle that fails them is removed. Errors in the project stop the export. Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.
+
+Arguments:
+
+- `out` (string): Where to write the bundle (name.mcbundle).
+- `title` (string)
+- `folder` (string)
+- `outline` ("project" | "pdf" | "none"): Which contents to carry: the project's own outline (default), the PDF's bookmarks, or none.
+
+### `inspect_bundle` (read-only)
+
+Reads a .mcbundle: manifest, entries, frames with their labels, outline, and every problem the importer would find.
+
+Arguments:
+
+- `file`* (string): Path of the .mcbundle.
+
+### `import_check` (read-only)
+
+Does exactly what the importer does, in its six steps (archive and limits, manifest, PDF hash, PDF page count, frames and outline with repairs, what would be created), and says whether it would accept the bundle. wouldImport=false is a result, not a tool failure.
+
+Arguments:
+
+- `file`* (string): Path of the .mcbundle.
+
+### `get_guide` (read-only)
+
+The guide for agents that mark a PDF: coordinate system with a worked example, workflow, rules for exercises, parts, context, questions, bookmarks, continuations, columns, scans, how to check by looking, what not to do, a checklist. Read it before you start.
+
+### `get_schema` (read-only)
+
+The JSON Schema of bundle-manifest, frames, outline or project files.
+
+Arguments:
+
+- `name`* ("bundle-manifest" | "frames" | "outline" | "project")
