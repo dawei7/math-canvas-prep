@@ -1,0 +1,36 @@
+{
+  "name": "@mcprep/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Math Canvas Prep core: model, rules, numbering, PDF reading, proposals and the .mcbundle reader and writer. No UI.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./pure": {
+      "types": "./dist/pure.d.ts",
+      "default": "./dist/pure.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "0.1.100",
+    "pdfjs-dist": "5.6.205"
+  }
+}

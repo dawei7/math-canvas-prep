@@ -1,0 +1,31 @@
+{
+  "name": "@mcprep/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "mcprep: a scriptable, agent-friendly command line for Math Canvas Prep.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "bin": {
+    "mcprep": "./bin/mcprep.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json"
+  },
+  "dependencies": {
+    "@mcprep/core": "0.1.0"
+  }
+}

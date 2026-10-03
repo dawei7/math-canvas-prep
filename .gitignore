@@ -13,3 +13,6 @@ Thumbs.db
 # Work in progress files of the tools
 *.mcprep.lock
 .mcprep-cache/
+*.tsbuildinfo
+playwright-report/
+test-results/

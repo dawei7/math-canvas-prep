@@ -1,0 +1,38 @@
+{
+  "name": "math-canvas-prep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prepare PDFs for Professor Euler: Math Canvas: mark exercises, parts, context, questions and bookmarks on a computer and write a .mcbundle.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "packages/mcp",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "build": "tsc -b && npm run build --workspace @mcprep/desktop",
+    "typecheck": "tsc -b && npm run typecheck --workspace @mcprep/desktop",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "lint": "eslint .",
+    "clean": "node scripts/clean.mjs",
+    "docs:cli": "node scripts/generate-cli-docs.mjs",
+    "docs:licenses": "node scripts/licenses.mjs",
+    "dist": "npm run build && npm run dist --workspace @mcprep/desktop"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.43",
+    "ajv": "^8.20.0",
+    "eslint": "^10.12.0",
+    "playwright-core": "^1.63.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "~3.2.7"
+  }
+}

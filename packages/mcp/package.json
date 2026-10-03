@@ -1,0 +1,33 @@
+{
+  "name": "@mcprep/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An MCP server (stdio) that exposes Math Canvas Prep to AI agents as typed tools.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "bin": {
+    "mcprep-mcp": "./bin/mcprep-mcp.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json"
+  },
+  "dependencies": {
+    "@mcprep/core": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^4.6.5"
+  }
+}
