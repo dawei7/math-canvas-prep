@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/frames.schema.json",
+  "title": "frames.json of a Math Canvas bundle (and the frames of a project file)",
+  "description": "The marked regions of a PDF. Coordinates are fractions of the page as displayed (after /Rotate), origin top-left. This schema checks shapes and ranges; the tools also check what a schema cannot say: every rect at least 0.02 wide and 0.01 tall, pages inside the document, and the parts of one unit tiling one area per page (see docs/BUNDLE_FORMAT.md). It is stricter than the reader on purpose: it flags unknown fields so that typos are caught.",
+  "type": "object",
+  "required": ["version", "frames"],
+  "properties": {
+    "version": { "const": 1 },
+    "frames": { "type": "array", "items": { "$ref": "#/$defs/frame" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$" },
+    "rect": {
+      "type": "object",
+      "required": ["left", "top", "right", "bottom"],
+      "properties": {
+        "left": { "$ref": "#/$defs/fraction" },
+        "top": { "$ref": "#/$defs/fraction" },
+        "right": { "$ref": "#/$defs/fraction" },
+        "bottom": { "$ref": "#/$defs/fraction" }
+      },
+      "additionalProperties": false
+    },
+    "region": {
+      "type": "object",
+      "required": ["page", "rect"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 0, "description": "Zero-based page." },
+        "rect": { "$ref": "#/$defs/rect" }
+      },
+      "additionalProperties": false
+    },
+    "regions": { "type": "array", "items": { "$ref": "#/$defs/region" }, "maxItems": 8 },
+    "frame": {
+      "type": "object",
+      "required": ["id", "kind", "page", "rect"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["exercise", "question", "bookmark"] },
+        "page": { "type": "integer", "minimum": 0, "description": "Zero-based page of the main region." },
+        "rect": { "$ref": "#/$defs/rect" },
+        "continues": { "$ref": "#/$defs/regions", "description": "Further regions of the same task, in reading order. Not allowed together with unit." },
+        "unit": { "$ref": "#/$defs/id", "description": "Frames that share a unit are the parts of one exercise. Only exercises." },
+        "context": { "$ref": "#/$defs/regions", "description": "Instruction, question or background that belongs to this exercise, wherever it is printed. Only exercises." }
+      },
+      "additionalProperties": false,
+      "dependentSchemas": {
+        "unit": { "properties": { "continues": false } }
+      },
+      "if": { "properties": { "kind": { "enum": ["question", "bookmark"] } }, "required": ["kind"] },
+      "then": { "properties": { "unit": false, "context": false } }
+    }
+  }
+}

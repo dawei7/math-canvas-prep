@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/project.schema.json",
+  "title": "A Math Canvas Prep project file (*.mcprep.json)",
+  "description": "Written by the command line, the MCP server and the desktop app; documented in docs/PROJECT_FILE.md. The reader is more tolerant than this schema (a rect may also be written as an array or as left,top,right,bottom text; missing optional fields get defaults).",
+  "type": "object",
+  "required": ["format", "version", "pdf", "frames"],
+  "properties": {
+    "format": { "const": "math-canvas-prep-project" },
+    "version": { "const": 1 },
+    "revision": { "type": "integer", "minimum": 0, "description": "Incremented on every save." },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" },
+    "modifiedBy": { "type": "string", "description": "Which tool wrote the file last (cli, mcp, desktop)." },
+    "generator": {
+      "type": "object",
+      "properties": { "name": { "type": "string" }, "version": { "type": "string" } }
+    },
+    "pdf": {
+      "type": "object",
+      "required": ["path", "sha256", "bytes", "pageCount"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "description": "Relative to the project file, with forward slashes." },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "pageCount": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "folder": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "seq": { "type": "integer", "minimum": 0, "description": "Counter for generated ids (f1, f2, ... and u1, u2, ...)." },
+    "frames": { "type": "array", "items": { "$ref": "frames.schema.json#/$defs/frame" } },
+    "outline": {
+      "type": "object",
+      "required": ["entries"],
+      "properties": {
+        "source": { "enum": ["pdf", "derived", "manual"] },
+        "entries": { "$ref": "outline.schema.json#/properties/entries" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

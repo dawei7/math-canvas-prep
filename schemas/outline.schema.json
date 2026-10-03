@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/outline.schema.json",
+  "title": "outline.json of a Math Canvas bundle",
+  "description": "A table of contents in reading order. Pages are zero-based and must lie inside the document; a child follows its parent and is one deeper (a reader clamps jumps).",
+  "type": "object",
+  "required": ["version", "entries"],
+  "properties": {
+    "version": { "const": 1 },
+    "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["title", "page", "depth"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "page": { "type": "integer", "minimum": 0 },
+        "depth": { "type": "integer", "minimum": 0, "maximum": 8 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

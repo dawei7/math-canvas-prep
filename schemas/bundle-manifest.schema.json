@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/bundle-manifest.schema.json",
+  "title": "bundle.json of a Math Canvas bundle",
+  "description": "The manifest of a .mcbundle (version 1). The reader also verifies that sha256, bytes and pageCount match document.pdf.",
+  "type": "object",
+  "required": ["format", "version", "createdAt", "generator", "document", "frames"],
+  "properties": {
+    "format": { "const": "math-canvas-bundle" },
+    "version": { "const": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "targets": { "type": "string", "description": "Which readers the writer targets, for example math-canvas-bundle/1." }
+      },
+      "additionalProperties": true
+    },
+    "document": {
+      "type": "object",
+      "required": ["title", "fileName", "pdf", "sha256", "bytes", "pageCount"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200, "description": "1 to 200 characters after trimming." },
+        "fileName": { "type": "string", "description": "Informational." },
+        "pdf": { "const": "document.pdf" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0, "maximum": 536870912 },
+        "pageCount": { "type": "integer", "minimum": 1 },
+        "folder": { "type": "string", "description": "Names separated by /, at most seven levels, each up to 60 characters." }
+      },
+      "additionalProperties": true
+    },
+    "frames": { "const": "frames.json" },
+    "outline": { "const": "outline.json" }
+  },
+  "additionalProperties": true
+}
