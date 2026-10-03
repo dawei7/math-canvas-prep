@@ -128,10 +128,11 @@ The window is built so that opening a document you did not write is safe, and so
   (`default-src 'none'`, no inline script, no network). Every request to `http`, `https`, `ws`, `wss` or `ftp` is cancelled.
   Permission requests are denied. Navigation and new windows are blocked. The developer tools exist only in a checkout,
   not in the packaged application.
-- There is no telemetry, no update check, no account, no AI call. The PDF is read from where it is; a copy of it is never made
-  or sent.
-- It stores a list of the twelve most recent projects (title and path; one that no longer exists is not offered) in the operating system's user-data folder for the
-  application, and the preferences (theme, snap, autosave) in the window's local storage. Nothing else.
+- There is no telemetry, no update check, no account, no AI call. The PDF is read from where it is; the only copy that is ever
+  made is the one inside a bundle you export (and the one you copy to a folder yourself).
+- It stores a list of the twelve most recent projects (title and path; one that no longer exists is not offered) in the
+  operating system's user-data folder for the application, and the preferences (theme, snap, autosave) in the window's local
+  storage. Nothing else.
 
 ## Package it
 
@@ -142,7 +143,7 @@ npm run dist                               # builds, then also the installer: ap
 ```
 
 The output is about 450 MB unpacked and a 133 MB installer, because it contains the Chromium of Electron; it is
-git-ignored. The configuration is
+git-ignored. electron-builder downloads Electron's runtime from GitHub the first time (it keeps a cache). The configuration is
 [`apps/desktop/electron-builder.yml`](../apps/desktop/electron-builder.yml). The build is **unsigned** (this repository has
 no certificate), has Electron's default icon, and publishes nothing. Windows will warn about an unknown publisher.
 macOS and Linux targets are written down in the configuration but have not been built or tested.
