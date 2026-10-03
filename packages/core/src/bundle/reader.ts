@@ -8,7 +8,7 @@ import { parseFrames } from '../rules/frames.js';
 import { issue, McPrepError, type Issue } from '../rules/issues.js';
 import { checkOutline } from '../rules/outline.js';
 import { ENTRY_FRAMES, ENTRY_MANIFEST, ENTRY_OUTLINE, ENTRY_PDF } from './writer.js';
-import { ZipArchive, ZipError, bytesSource, fileSource, type ZipEntryInfo } from './zip.js';
+import { ZipArchive, ZipError, bytesSource, fileSource, type ByteSource, type ZipEntryInfo } from './zip.js';
 
 export interface BundleEntryInfo {
   name: string;
@@ -79,10 +79,13 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
 
   // Step 1: the archive and its limits.
   let archive: ZipArchive;
+  let byteSource: ByteSource | undefined;
   try {
-    const byteSource = typeof source === 'string' ? await fileSource(source) : bytesSource(source);
+    byteSource = typeof source === 'string' ? await fileSource(source) : bytesSource(source);
     archive = await ZipArchive.open(byteSource, { maxEntries: LIMITS.bundle.maxEntries, maxArchiveBytes: LIMITS.bundle.maxArchiveBytes });
   } catch (error) {
+    // A rejected archive must not leave its file open (on Windows an open file cannot be deleted).
+    await byteSource?.close().catch(() => undefined);
     if (error instanceof ZipError) {
       fail(error.code, error.message, 'Export the bundle again with `mcprep export`.');
       steps.push({ step: 1, name: 'archive', status: 'failed', detail: error.message });

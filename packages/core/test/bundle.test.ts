@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkBundle, type BundleReport } from '../src/bundle/reader.js';
@@ -403,6 +403,18 @@ describe('the writer', () => {
     const odd: Frame[] = [frame('a', 'exercise', 0, rect(0.1, 0.2, 0.9, 0.3)), frame('b', 'exercise', 0, rect(0.1, 0.25, 0.9, 0.35))];
     const written = await buildBundleBytes({ ...input, frames: odd, folder: 'A/B/\u0001C' });
     expect(written.issues.map((entry) => entry.code)).toEqual(expect.arrayContaining(['folder-cleaned', 'overlap']));
+  });
+
+  it('does not leave a rejected file open', async () => {
+    const dir = await tempDir();
+    const path = join(dir, 'junk.mcbundle');
+    await writeFile(path, 'not a zip at all');
+    const report = await checkBundle(path);
+    expect(report.ok).toBe(false);
+    expect(report.rejection?.code).toBe('zip-invalid');
+    // On Windows a file that is still open cannot be deleted (EPERM or EBUSY); elsewhere this only checks the report.
+    await rm(path);
+    expect(await readdir(dir)).toEqual([]);
   });
 
   it('writes a file atomically from a PDF on disk and verifies as it goes', async () => {

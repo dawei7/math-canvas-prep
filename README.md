@@ -12,7 +12,7 @@ imports straight into its library.
 
 | Part | State |
 | --- | --- |
-| `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check. 266 tests. |
+| `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check. 267 tests. |
 | `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere. 43 tests, plus an end-to-end test of the built binary. |
 | `packages/mcp` | Works. 33 tools over stdio. 8 tests, plus an end-to-end test of the built server. |
 | `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file. 26 unit tests and 15 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux: see [docs/DESKTOP.md](docs/DESKTOP.md). |
@@ -96,7 +96,7 @@ generated.
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources): 343 tests
+npm test             # unit tests (Vitest, against the sources): 344 tests
 npm run lint
 npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md

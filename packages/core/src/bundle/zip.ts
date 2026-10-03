@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { open, stat, type FileHandle } from 'node:fs/promises';
+import { open, type FileHandle } from 'node:fs/promises';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { McPrepError } from '../rules/issues.js';
 
@@ -217,23 +217,24 @@ export function bytesSource(bytes: Uint8Array): ByteSource {
 }
 
 export async function fileSource(path: string): Promise<ByteSource> {
-  let handle: FileHandle;
-  let size: number;
+  let handle: FileHandle | undefined;
   try {
     handle = await open(path, 'r');
-    size = (await stat(path)).size;
+    const { size } = await handle.stat();
+    const opened = handle;
+    return {
+      size,
+      read: async (offset, length) => {
+        const buffer = Buffer.alloc(length);
+        const { bytesRead } = await opened.read(buffer, 0, length, offset);
+        return buffer.subarray(0, bytesRead);
+      },
+      close: () => opened.close(),
+    };
   } catch (error) {
+    await handle?.close().catch(() => undefined);
     throw new McPrepError('E_FILE', `Cannot read "${path}": ${(error as Error).message}`, { cause: error });
   }
-  return {
-    size,
-    read: async (offset, length) => {
-      const buffer = Buffer.alloc(length);
-      const { bytesRead } = await handle.read(buffer, 0, length, offset);
-      return buffer.subarray(0, bytesRead);
-    },
-    close: () => handle.close(),
-  };
 }
 
 export interface ZipLimits {
