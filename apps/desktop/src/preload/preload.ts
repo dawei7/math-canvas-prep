@@ -33,6 +33,7 @@ const api: Api = {
     return () => ipcRenderer.removeListener('mcprep:menu', handler);
   },
   setDirty: (dirty) => ipcRenderer.send('mcprep:setDirty', dirty),
+  ready: () => ipcRenderer.send('mcprep:ready'),
 };
 
 contextBridge.exposeInMainWorld('mcprep', api);

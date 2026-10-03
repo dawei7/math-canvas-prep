@@ -46,6 +46,7 @@ function fakeApi(overrides: Partial<Api> = {}): Api & { saved: Project[] } {
     onDiskChange: () => () => undefined,
     onMenu: () => () => undefined,
     setDirty: () => undefined,
+    ready: () => undefined,
     ...overrides,
   };
   return Object.assign(api, { saved });
@@ -111,6 +112,11 @@ describe('geometry', () => {
     expect(frame.bottom).toBeCloseTo(line.rect.bottom + 0.004, 4);
     expect(frame.left).toBeLessThan(line.rect.left);
     expect(frame.right).toBeGreaterThan(line.rect.right);
+    // Not at the centre of the line: near its left end, and just past its end but inside the text block.
+    for (const x of [line.rect.left + 0.01, line.rect.right + 0.01]) {
+      const near = frameAtTap(page, x, line.rect.top + 0.003);
+      expect(near.top).toBeCloseTo(line.rect.top - 0.006, 4);
+    }
     const blank = frameAtTap(page, 0.5, 0.7);
     expect(blank.right - blank.left).toBeCloseTo(0.8, 2);
     expect(blank.bottom - blank.top).toBeCloseTo(0.04, 3);

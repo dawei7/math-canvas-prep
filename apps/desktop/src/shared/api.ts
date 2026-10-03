@@ -80,6 +80,8 @@ export interface Api {
   /** A command of the application menu (open, save, export, ...). */
   onMenu(listener: (command: string) => void): () => void;
   setDirty(dirty: boolean): void;
+  /** The editor has registered its listeners: messages that were waiting (a file given on the command line) can come now. */
+  ready(): void;
 }
 
 declare global {

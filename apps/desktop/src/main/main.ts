@@ -74,7 +74,15 @@ async function remember(outcome: OpenOutcome): Promise<void> {
 
 // -------------------------------------------------------------------------------------------------------------- window
 
+/** Messages for the editor wait until it says it is ready (it registers its listeners after it has started). */
+let rendererReady = false;
+const waiting: { channel: string; args: unknown[] }[] = [];
+
 function send(channel: string, ...args: unknown[]): void {
+  if (!rendererReady) {
+    waiting.push({ channel, args });
+    return;
+  }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, ...args);
 }
 
@@ -194,6 +202,10 @@ function registerIpc(): void {
   handle('reveal', (path: string) => {
     shell.showItemInFolder(String(path));
   });
+  ipcMain.on('mcprep:ready', () => {
+    rendererReady = true;
+    for (const message of waiting.splice(0)) send(message.channel, ...message.args);
+  });
   ipcMain.on('mcprep:setDirty', (_event, value: unknown) => {
     dirty = value === true;
     mainWindow?.setDocumentEdited(dirty);
@@ -252,9 +264,7 @@ app.whenReady().then(() => {
   buildMenu();
   mainWindow = createWindow();
   const argument = process.argv.slice(app.isPackaged ? 1 : 2).find((value) => /\.pdf$|\.mcprep\.json$/i.test(value));
-  if (argument !== undefined) {
-    mainWindow.webContents.once('did-finish-load', () => send('mcprep:menu', `open-path:${resolve(argument)}`));
-  }
+  if (argument !== undefined) send('mcprep:menu', `open-path:${resolve(argument)}`);
   return undefined;
 }).catch((error: unknown) => {
   dialog.showErrorBox('Math Canvas Prep could not start', error instanceof Error ? error.message : String(error));

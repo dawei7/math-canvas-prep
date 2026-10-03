@@ -1,5 +1,5 @@
 import type { Frame, PageText, Rect } from '@mcprep/core/pure';
-import { AUTHORING, LIMITS, linesInRect, lineIsBeside, rectHeight } from '@mcprep/core/pure';
+import { AUTHORING, LIMITS, linesInRect, rectHeight } from '@mcprep/core/pure';
 
 /** Where a page is on the screen: its top-left corner in CSS pixels and its size. */
 export interface PageBox {
@@ -90,7 +90,12 @@ export function partsOnPage(frames: readonly Frame[], frame: Frame): Frame[] {
  */
 export function frameAtTap(text: PageText | undefined, x: number, y: number): Rect {
   const lines = text?.lines.filter((line) => line.headerFooter !== true) ?? [];
-  const hit = lines.find((line) => lineIsBeside(line, { left: x, top: y, right: x, bottom: y }) && y >= line.rect.top - 0.004 && y <= line.rect.bottom + 0.004);
+  // The tap is on a line when it is at the height of the line and within the width of the text block the line belongs to.
+  const hit = lines.find((line) => {
+    if (y < line.rect.top - 0.004 || y > line.rect.bottom + 0.004) return false;
+    const block = lines.filter((other) => other.column === line.column);
+    return x >= Math.min(...block.map((other) => other.rect.left)) - 0.02 && x <= Math.max(...block.map((other) => other.rect.right)) + 0.02;
+  });
   if (hit) {
     const column = lines.filter((line) => line.column === hit.column);
     const left = Math.max(0, Math.min(...column.map((line) => line.rect.left)) - 0.012);
