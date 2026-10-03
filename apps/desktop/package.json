@@ -10,8 +10,10 @@
     "typecheck": "tsc -p src/main --noEmit && tsc -p src/preload --noEmit && tsc -p src/renderer --noEmit",
     "bundle": "node scripts/bundle.mjs",
     "build": "npm run typecheck && npm run bundle",
-    "start": "electron .",
-    "dist": "electron-builder --config electron-builder.yml"
+    "start": "node scripts/start.mjs",
+    "dist": "electron-builder --config electron-builder.yml",
+    "pack": "electron-builder --dir --config electron-builder.yml",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@napi-rs/canvas": "0.1.100",
@@ -19,7 +21,7 @@
   },
   "devDependencies": {
     "@mcprep/core": "0.1.0",
-    "electron": "^44.5.1",
+    "electron": "44.5.1",
     "electron-builder": "^26.17.0",
     "esbuild": "^0.28.2",
     "preact": "^10.29.8"
