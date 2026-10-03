@@ -2,7 +2,7 @@ import { flag, numberOption, pageNumber, stringOption, usage } from '../args.js'
 import type { CommandSpec, OptionSpec } from '../types.js';
 import { DRY_RUN, FORCE, GLOBAL_OPTIONS, applyAndReport } from './common.js';
 
-const SNAP: OptionSpec = { name: 'snap', type: 'boolean', description: 'Move the top and bottom edges off any line of text they cut through.' };
+const SNAP: OptionSpec = { name: 'snap', type: 'boolean', description: 'Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.' };
 const COMMON: OptionSpec[] = [DRY_RUN, FORCE, ...GLOBAL_OPTIONS];
 const reportOptions = (options: Record<string, unknown>): { dryRun?: boolean; force?: boolean } => ({ ...(options['dry-run'] === true ? { dryRun: true } : {}), ...(options['force'] === true ? { force: true } : {}) });
 

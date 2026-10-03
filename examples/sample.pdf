@@ -1,0 +1,132 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /Outlines 14 0 R /PageMode /UseOutlines >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [8 0 R 10 0 R 12 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Title <FEFF00430061006C00630075006C0075007300200053006800650065007400200031> /Producer <FEFF006D006100740068002D00630061006E007600610073002D0070007200650070002000740065007300740020007700720069007400650072> >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R /F4 7 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 956 >>
+stream
+q 1 0 0 1 0 0 cm
+BT /F1 9 Tf 72 802 Td (Sample University - Calculus I) Tj ET
+BT /F1 9 Tf 270 36 Td (Page 1 of 3) Tj ET
+BT /F2 20 Tf 72 732 Td (Calculus Sheet 1) Tj ET
+BT /F1 11 Tf 72 708 Td (Differentiation and integration \(synthetic sample\)) Tj ET
+BT /F1 11 Tf 72 642 Td (Exercise 1. Compute the derivative of f\(x\) = x^3 - 2x + 5 and evaluate) Tj ET
+BT /F1 11 Tf 72 627.15 Td (it at x = 2. Show every step of your computation.) Tj ET
+BT /F1 11 Tf 72 584.3 Td (Exercise 2. Let g\(x\) = sin\(x\) + x^2 on the interval [0, pi]. Answer the) Tj ET
+BT /F1 11 Tf 72 569.45 Td (following questions.) Tj ET
+BT /F1 11 Tf 72 554.6 Td (\(a\) Compute the derivative g'\(x\).) Tj ET
+BT /F1 11 Tf 72 539.75 Td (\(b\) Find all critical points of g in the interval [0, pi].) Tj ET
+BT /F1 11 Tf 72 524.9 Td (\(c\) Decide for each critical point whether it is a local minimum or a) Tj ET
+BT /F1 11 Tf 72 510.05 Td (     local maximum, and justify your answer.) Tj ET
+Q
+
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R /F4 7 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 873 >>
+stream
+q 1 0 0 1 0 0 cm
+BT /F1 9 Tf 72 802 Td (Sample University - Calculus I) Tj ET
+BT /F1 9 Tf 270 36 Td (Page 2 of 3) Tj ET
+BT /F2 11 Tf 72 732 Td (Instructions for Exercises 3 and 4) Tj ET
+BT /F1 11 Tf 72 717.15 Td (Justify every answer with a short proof. You may use the standard rules) Tj ET
+BT /F1 11 Tf 72 702.3 Td (of differentiation without proving them again.) Tj ET
+BT /F1 11 Tf 72 622 Td (Exercise 3. Prove that h\(x\) = |x| is not differentiable at x = 0.) Tj ET
+BT /F1 11 Tf 72 607.15 Td (Hint: compare the one-sided limits of the difference quotient.) Tj ET
+BT /F1 11 Tf 72 202 Td (Exercise 4. Let p be a polynomial of degree n >= 1 with real coefficients) Tj ET
+BT /F1 11 Tf 72 187.15 Td (and let a < b be two real numbers with p\(a\) = p\(b\) = 0. Show that the) Tj ET
+BT /F1 11 Tf 72 172.3 Td (derivative p' has at least one zero in the open interval) Tj ET
+Q
+
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R /F4 7 0 R >> >> /Contents 13 0 R >>
+endobj
+13 0 obj
+<< /Length 1015 >>
+stream
+q 1 0 0 1 0 0 cm
+0.5 w 160 372 270 110 re S
+BT /F1 9 Tf 72 802 Td (Sample University - Calculus I) Tj ET
+BT /F1 9 Tf 270 36 Td (Page 3 of 3) Tj ET
+BT /F1 11 Tf 72 746 Td (\(a, b\), counted with multiplicity. State the theorem that you use.) Tj ET
+BT /F2 11 Tf 72 662 Td (Definition 5.1 \(Derivative\)) Tj ET
+BT /F1 11 Tf 72 647.15 Td (Let f be defined near a. If the limit of \(f\(a + h\) - f\(a\)\) / h as h tends) Tj ET
+BT /F1 11 Tf 72 632.3 Td (to 0 exists, it is called the derivative of f at a and is written f'\(a\).) Tj ET
+BT /F1 11 Tf 72 552 Td (Exercise 5. Let f\(x\) = x^2 for x in [0, 2].) Tj ET
+BT /F1 11 Tf 72 537.15 Td (a\) Sketch the graph of f and mark the tangent line at x = 1.) Tj ET
+BT /F1 11 Tf 72 522.3 Td (b\) Compute the area under the graph with an integral.) Tj ET
+BT /F1 10 Tf 235 422 Td (Figure 1: the parabola) Tj ET
+BT /F1 11 Tf 72 322 Td (Remark. The tangent line at a point is the best linear approximation of) Tj ET
+BT /F1 11 Tf 72 307.15 Td (the function near that point.) Tj ET
+Q
+
+endstream
+endobj
+14 0 obj
+<< /Type /Outlines /First 15 0 R /Last 18 0 R /Count 4 >>
+endobj
+15 0 obj
+<< /Title <FEFF0044006900660066006500720065006E00740069006100740069006F006E> /Parent 14 0 R /Next 17 0 R /First 16 0 R /Last 16 0 R /Count 1 /Dest [8 0 R /XYZ 0 842 null] >>
+endobj
+16 0 obj
+<< /Title <FEFF0045007800650072006300690073006500730020003100200061006E006400200032> /Parent 15 0 R /Dest [8 0 R /XYZ 0 842 null] >>
+endobj
+17 0 obj
+<< /Title <FEFF00500072006F006F00660073> /Parent 14 0 R /Prev 15 0 R /Next 18 0 R /Dest [10 0 R /XYZ 0 842 null] >>
+endobj
+18 0 obj
+<< /Title <FEFF0044006500660069006E006900740069006F006E007300200061006E006400200061007200650061> /Parent 14 0 R /Prev 17 0 R /Dest [12 0 R /XYZ 0 842 null] >>
+endobj
+xref
+0 19
+0000000000 65535 f 
+0000000015 00000 n 
+0000000104 00000 n 
+0000000175 00000 n 
+0000000403 00000 n 
+0000000500 00000 n 
+0000000602 00000 n 
+0000000701 00000 n 
+0000000796 00000 n 
+0000000952 00000 n 
+0000001959 00000 n 
+0000002117 00000 n 
+0000003042 00000 n 
+0000003200 00000 n 
+0000004268 00000 n 
+0000004342 00000 n 
+0000004532 00000 n 
+0000004681 00000 n 
+0000004813 00000 n 
+trailer
+<< /Size 19 /Root 1 0 R /Info 3 0 R >>
+startxref
+4988
+%%EOF

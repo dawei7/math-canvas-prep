@@ -52,6 +52,8 @@ export interface CheckBundleOptions {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const count = (n: number, word: string, many = `${word}s`): string => `${n} ${n === 1 ? word : many}`;
+
 const decode = (bytes: Uint8Array): string => new TextDecoder('utf-8', { fatal: false }).decode(bytes);
 
 /**
@@ -364,7 +366,7 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         step: 6,
         name: 'library',
         status: 'ok',
-        detail: `Would add "${title}"${folder ? ` in the folder "${folder}"` : ''} with ${exercises.size} exercises, ${questions} questions and ${bookmarks} bookmarks${outline ? ` and ${outline.length} contents entries` : ''}. A PDF with the same SHA-256 already in the library is not duplicated: the app offers to add the frames to it.`,
+        detail: `Would add "${title}"${folder ? ` in the folder "${folder}"` : ''} with ${count(exercises.size, 'exercise')}, ${count(questions, 'question')} and ${count(bookmarks, 'bookmark')}${outline ? ` and ${count(outline.length, 'contents entry', 'contents entries')}` : ''}. A PDF with the same SHA-256 already in the library is not duplicated: the app offers to add the frames to it.`,
       });
     } else {
       steps.push({ step: 6, name: 'library', status: 'skipped', detail: 'Nothing would be imported.' });

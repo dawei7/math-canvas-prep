@@ -13,7 +13,7 @@ function kindOf(text: string): FrameKind {
   return text as FrameKind;
 }
 
-const SNAP: OptionSpec = { name: 'snap', type: 'boolean', description: 'Move the top and bottom edges off any line of text they cut through (a line mostly inside is taken whole, mostly outside is left out).' };
+const SNAP: OptionSpec = { name: 'snap', type: 'boolean', description: 'Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.' };
 const REPORT_OPTIONS: OptionSpec[] = [DRY_RUN, FORCE, ...GLOBAL_OPTIONS];
 
 function reportOptions(context: CommandContext): { dryRun?: boolean; force?: boolean } {

@@ -1,0 +1,123 @@
+{
+  "format": "math-canvas-prep-project",
+  "version": 1,
+  "revision": 4,
+  "createdAt": "2026-10-03T12:00:00Z",
+  "updatedAt": "2026-10-03T12:00:00Z",
+  "modifiedBy": "cli",
+  "generator": { "name": "math-canvas-prep", "version": "0.1.0" },
+  "pdf": {
+    "path": "sample.pdf",
+    "sha256": "d95704c2108654641c21351481ba4315986bc68218f3be45fbfe4a6d674695f1",
+    "bytes": 5446,
+    "pageCount": 3
+  },
+  "meta": { "title": "Calculus Sheet 1", "folder": "Examples/Calculus" },
+  "seq": 12,
+  "frames": [
+    {
+      "id": "f1",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.10901, "top": 0.2197, "right": 0.69965, "bottom": 0.26193 }
+    },
+    {
+      "id": "f2",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.10901, "top": 0.32646, "right": 0.69965, "bottom": 0.3441 },
+      "unit": "u3",
+      "context": [
+        {
+          "page": 0,
+          "rect": { "left": 0.10901, "top": 0.28823, "right": 0.69965, "bottom": 0.32646 }
+        }
+      ]
+    },
+    {
+      "id": "f4",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.10901, "top": 0.3441, "right": 0.69965, "bottom": 0.36174 },
+      "unit": "u3"
+    },
+    {
+      "id": "f5",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.10901, "top": 0.36174, "right": 0.69965, "bottom": 0.40101 },
+      "unit": "u3"
+    },
+    {
+      "id": "f6",
+      "kind": "exercise",
+      "page": 1,
+      "rect": { "left": 0.10901, "top": 0.24346, "right": 0.71869, "bottom": 0.28569 },
+      "context": [
+        {
+          "page": 1,
+          "rect": { "left": 0.10901, "top": 0.11281, "right": 0.71869, "bottom": 0.17268 }
+        }
+      ]
+    },
+    {
+      "id": "f7",
+      "kind": "exercise",
+      "page": 1,
+      "rect": { "left": 0.10901, "top": 0.74227, "right": 0.71869, "bottom": 0.80214 },
+      "continues": [
+        {
+          "page": 2,
+          "rect": { "left": 0.10901, "top": 0.09619, "right": 0.70331, "bottom": 0.12078 }
+        }
+      ],
+      "context": [
+        {
+          "page": 1,
+          "rect": { "left": 0.10901, "top": 0.11281, "right": 0.71869, "bottom": 0.17268 }
+        }
+      ]
+    },
+    {
+      "id": "f8",
+      "kind": "bookmark",
+      "page": 2,
+      "rect": { "left": 0.10901, "top": 0.19595, "right": 0.70331, "bottom": 0.25582 }
+    },
+    {
+      "id": "f9",
+      "kind": "exercise",
+      "page": 2,
+      "rect": { "left": 0.10901, "top": 0.34719, "right": 0.70331, "bottom": 0.36482 },
+      "unit": "u10",
+      "context": [
+        {
+          "page": 2,
+          "rect": { "left": 0.10901, "top": 0.32659, "right": 0.70331, "bottom": 0.34719 }
+        }
+      ]
+    },
+    {
+      "id": "f11",
+      "kind": "exercise",
+      "page": 2,
+      "rect": { "left": 0.10901, "top": 0.36482, "right": 0.70331, "bottom": 0.5615 },
+      "unit": "u10"
+    },
+    {
+      "id": "f12",
+      "kind": "question",
+      "page": 2,
+      "rect": { "left": 0.10901, "top": 0.59975, "right": 0.70331, "bottom": 0.64198 }
+    }
+  ],
+  "outline": {
+    "source": "pdf",
+    "entries": [
+      { "title": "Differentiation", "page": 0, "depth": 0 },
+      { "title": "Exercises 1 and 2", "page": 0, "depth": 1 },
+      { "title": "Proofs", "page": 1, "depth": 0 },
+      { "title": "Definitions and area", "page": 2, "depth": 0 }
+    ]
+  }
+}
