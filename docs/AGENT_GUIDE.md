@@ -104,6 +104,19 @@ top-bottom     left-right     size  col  text
 
 A real session on the sample, with every output, is in [`examples/agent-session.md`](../examples/agent-session.md).
 
+### Working next to a person
+
+The person may have the same project open in the desktop app ([DESKTOP.md](DESKTOP.md)). That changes nothing for you: keep
+using the commands (or the MCP tools).
+
+- Every command writes the project atomically under a lock, so the window never sees a half-written file. It shows what you
+  changed within a second or two and marks it as "updated by an agent". The person can review page 3 while you work on page 30.
+- If the person has unsaved edits when you save, the window asks them which version to keep: you cannot lose their edits and
+  they cannot silently lose yours.
+- Say what you changed (pages, counts, what you were unsure about): the window only says that something changed.
+- Do not try to operate the window; everything it can do is a command. Do not edit `name.mcprep.json` by hand with a text tool
+  unless you have to: the commands validate, lock and keep the file consistent.
+
 ## 5. Deciding what to mark
 
 ### Exercises
@@ -266,6 +279,8 @@ The exporter validates, writes atomically and reads the bundle back with the imp
 removed. The result lists repairs and warnings. Then tell the user, briefly:
 
 - the **path** of the bundle and the project, and that the bundle goes to the tablet and is opened in the Math Canvas library;
+- how they can **review** your marking by eye: `npm run desktop -- name.mcprep.json` opens the project in the editor, where every
+  frame can be moved or corrected by hand (then export again from there, or with `mcprep export`);
 - the **counts**: exercises (parts counted once), parts, questions, bookmarks, contents entries;
 - what you were **unsure** about (low-confidence proposals, ambiguous layouts), the pages **without a text layer**, anything left
   out on purpose, and any warnings you accepted;

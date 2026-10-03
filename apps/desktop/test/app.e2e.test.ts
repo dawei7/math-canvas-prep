@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright-core';
@@ -224,6 +224,18 @@ describe.skipIf(!available)('the desktop app', () => {
     expect(await state((s) => s['page'])).toBe(1);
     expect(await win.locator('.agent-dot').count()).toBe(1);
     expect(await state((s) => s['dirty'])).toBe(false);
+  });
+
+  it('notices a hand edit of the project file even when nobody raised the revision', async () => {
+    const path = join(work, 'sheet.mcprep.json');
+    const before = (await frames()).length;
+    const file = JSON.parse(readFileSync(path, 'utf8')) as { frames: unknown[] };
+    file.frames.push({ id: 'hand1', kind: 'question', page: 1, rect: [0.1, 0.66, 0.9, 0.72] });
+    writeFileSync(path, JSON.stringify(file, null, 2));
+    await expect.poll(async () => (await frames()).length, { timeout: 15000 }).toBe(before + 1);
+    expect(await state((s) => s['dirty'])).toBe(false);
+    cli('frames', 'delete', 'hand1');
+    await expect.poll(async () => (await frames()).length, { timeout: 15000 }).toBe(before);
   });
 
   it('asks which version to keep when an agent saves while there are unsaved edits', async () => {

@@ -112,7 +112,8 @@ The window watches the project file. When a program such as `mcprep` or an MCP c
   Nothing is merged silently.
 
 An agent that edits the file while the window is open therefore needs no special care: it can work through the command
-line as usual, and the person sees the result and can correct it by hand.
+line as usual, and the person sees the result and can correct it by hand. The window compares the content as well as the
+revision, so a change made with a text editor that did not raise the revision is noticed too.
 
 ![The dark theme: the instruction shared by Exercises 3 and 4 is context, shown dashed](img/desktop-dark.png)
 
@@ -150,7 +151,7 @@ macOS and Linux targets are written down in the configuration but have not been 
 
 - `apps/desktop/test/logic.test.ts` (26 tests): the editor's state, geometry, undo, saving, conflicts, proposals,
   contents; no window needed. It runs with `npm test`.
-- `apps/desktop/test/app.e2e.test.ts` (16 tests): the built application driven by Playwright like a person (real mouse and
+- `apps/desktop/test/app.e2e.test.ts` (17 tests): the built application driven by Playwright like a person (real mouse and
   keyboard): drawing with snapping, moving, resizing, slicers, saving, an agent editing the file, the conflict dialog,
   export and import check, proposals, the lock-down. It needs a display and the built bundle, so it is not part of the
   continuous integration: `npm run build && npm run test:e2e`.

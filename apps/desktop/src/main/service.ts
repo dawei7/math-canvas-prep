@@ -17,6 +17,9 @@ import type { DerivedHeading, DiskChange, ExportOutcome, OpenOutcome, ProposeReq
 
 const PROJECT_SUFFIX = '.mcprep.json';
 
+/** What counts as the content of a project when deciding whether somebody else changed it (as in the editor's store). */
+const signature = (project: Project): string => JSON.stringify([project.frames, project.outline ?? null, project.meta]);
+
 function errorOutcome(error: unknown): { ok: false; message: string; code?: string } {
   if (error instanceof McPrepError) return { ok: false, message: error.hint ? `${error.message} ${error.hint}` : error.message, code: error.code };
   return { ok: false, message: error instanceof Error ? error.message : String(error) };
@@ -31,8 +34,9 @@ export class DocumentService {
   private watcher: FSWatcher | undefined;
   private poll: NodeJS.Timeout | undefined;
   private debounce: NodeJS.Timeout | undefined;
-  /** The revision this process last wrote or last reported, to recognise its own saves. */
+  /** The revision and the content this process last wrote or last reported, to recognise its own saves. */
   private knownRevision = -1;
+  private knownSignature = '';
   private knownStamp = '';
   onDiskChange: ((change: DiskChange) => void) | undefined;
 
@@ -60,6 +64,7 @@ export class DocumentService {
       await this.close();
       this.session = session;
       this.knownRevision = session.project.revision;
+      this.knownSignature = signature(session.project);
       this.knownStamp = await this.stamp(session.projectPath);
       this.watch(session.projectPath);
       return { ok: true, document: { projectPath: session.projectPath, pdfPath: session.pdfPath, project: session.project, pageSizes, pdfOutline } };
@@ -105,6 +110,7 @@ export class DocumentService {
     try {
       const written = await withProjectLock(session.projectPath, () => writeProjectFile(session.projectPath, project, { modifiedBy: 'desktop', expectedRevision }));
       this.knownRevision = written.revision;
+      this.knownSignature = signature(written);
       this.knownStamp = await this.stamp(session.projectPath);
       session.project = written;
       return { ok: true, project: written };
@@ -121,6 +127,7 @@ export class DocumentService {
     const project = await readProjectFile(session.projectPath);
     session.project = project;
     this.knownRevision = project.revision;
+    this.knownSignature = signature(project);
     this.knownStamp = await this.stamp(session.projectPath);
     return project;
   }
@@ -178,8 +185,10 @@ export class DocumentService {
         return; // half-written by someone else or hand-edited with a syntax error: look again at the next change
       }
       this.knownStamp = stamp;
-      if (project.revision === this.knownRevision) return;
+      // A program that follows the rules raises the revision; a hand edit does not, so the content is compared as well.
+      if (project.revision === this.knownRevision && signature(project) === this.knownSignature) return;
       this.knownRevision = project.revision;
+      this.knownSignature = signature(project);
       this.onDiskChange?.({ project, ...(project.modifiedBy !== undefined ? { modifiedBy: project.modifiedBy } : {}) });
     };
     const schedule = (): void => {
