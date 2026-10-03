@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { McPrepError, countFrames, type FrameKind, type Operation, type RectInput } from '@mcprep/core';
+import { McPrepError, countFrames, type FrameKind, type Operation } from '@mcprep/core';
 import { flag, listOption, numberList, numberOption, pageNumber, stringOption, usage } from '../args.js';
 import { FRAME_HEADERS, frameRows, plural, summarizeFrames, table } from '../format.js';
 import type { CommandContext, CommandSpec, OptionSpec } from '../types.js';
@@ -277,4 +277,3 @@ export const framesApply: CommandSpec = {
   },
 };
 
-export type { RectInput };

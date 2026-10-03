@@ -34,7 +34,7 @@ function findCommand(argv: readonly string[]): { spec?: CommandSpec; rest: strin
   const words: string[] = [];
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i] as string;
-    if (words.length < 2 && !token.startsWith('-') && !(words.length === 0 && rest.length > 0 && false)) {
+    if (words.length < 2 && !token.startsWith('-')) {
       words.push(token);
       continue;
     }
@@ -137,6 +137,11 @@ export async function run(argv: readonly string[], io: IO = realIO()): Promise<n
   const command = spec.name;
   let session: ProjectSession | undefined;
   try {
+    // Help wins over everything else, even over options that are required.
+    if (argv.includes('--help') || argv.includes('-h')) {
+      io.stdout(`${renderCommandHelp(spec)}\n`);
+      return 0;
+    }
     const known = commandOptions(spec);
     const globalsOnly = spec.noProject === true ? GLOBAL_OPTIONS.filter((option) => option.name === 'json' || option.name === 'help') : [];
     const parsed = parseArguments([...known, ...globalsOnly.filter((option) => !known.some((own) => own.name === option.name))], orderedRest(argv, spec), command);

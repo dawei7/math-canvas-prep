@@ -1,5 +1,5 @@
 import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import {
   McPrepError,
   PdfDocument,
@@ -222,4 +222,3 @@ export const crop: CommandSpec = {
   },
 };
 
-export { basename };

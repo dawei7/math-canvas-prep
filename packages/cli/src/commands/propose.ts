@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { proposalSetToOperations, proposeFrames, type FrameProposal, type PageText, type ProposalSet } from '@mcprep/core';
-import { flag, listOption, numberOption, pageList, stringOption, usage } from '../args.js';
+import { flag, numberOption, pageList, stringOption, usage } from '../args.js';
 import { plural, rectText, round4, table } from '../format.js';
 import type { CommandSpec } from '../types.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
@@ -62,7 +62,7 @@ export const propose: CommandSpec = {
     };
     const partsOption = stringOption(context.options, 'parts') ?? 'context';
     if (!['context', 'keep', 'none'].includes(partsOption)) throw usage('--parts must be context, keep or none.');
-    const ids = listOption(context.options, 'ids').flatMap((entry) => entry.split(',')).map((entry) => entry.trim()).filter(Boolean);
+    const ids = (stringOption(context.options, 'ids') ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
     for (const id of ids) if (!keptIds.has(id)) throw usage(`There is no proposal "${id}". The proposals are ${[...keptIds].join(', ') || '(none)'}.`);
     const operations = proposalSetToOperations(set, { parts: partsOption as 'context' | 'keep' | 'none', ...(ids.length > 0 ? { only: ids } : {}) });
     const opsFile = stringOption(context.options, 'ops');

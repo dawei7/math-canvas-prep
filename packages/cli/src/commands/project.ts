@@ -11,7 +11,7 @@ import {
   type PageSize,
 } from '@mcprep/core';
 import { stringOption } from '../args.js';
-import { plural, table } from '../format.js';
+import { plural } from '../format.js';
 import type { CommandSpec } from '../types.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
 
@@ -217,4 +217,3 @@ export const relink: CommandSpec = {
   },
 };
 
-export { table };
