@@ -220,6 +220,59 @@ With a text layer, work from `mcprep lines <page>`:
 
 Without a text layer, see section 8.
 
+### Proposals for books
+
+For a textbook that is audited once as an **authority** (exercises that keep the numbers the book prints, sections for its
+contents, the answer key as hidden solution context; see [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md) section 3) three commands do what
+`propose` does for a sheet. The whole workflow, for a person and for an agent, is in [AUDIT_A_BOOK.md](AUDIT_A_BOOK.md); this is how
+they work and what to check.
+
+**`outline derive --book`** reads three things the book prints about its structure and cross-checks them: the printed contents
+(lines with dot leaders and a page number; lines that the text extraction merged are cut apart again, also a page number glued to the
+next label), the list of sections printed on each chapter opener, and the headings on the pages (a chapter opener "Chapter 3", a small
+label line "3.2" above a large heading, "3.2 Practice - Title"). Printed page numbers are mapped to pages through the page numbers in
+the footers. It proposes chapters (`id` `c3`, `label` `Chapter 3`) and sections (`id` = `label` = `3.2`) with title, zero-based page,
+`top` (where the label line is), a confidence and the evidence, and for each section where its practice set starts and ends (where the
+next section, the next chapter or the answer key starts). Titles are normalised ("&" and a slash between words read as "and", numbering
+and leaders removed); where the contents has a typo that the opener list and the headings contradict, the majority wins and the
+evidence says so; spellings that differ are listed. A book without numbered sections falls back on generic headings (`s1`, `s2`, ...) and
+then has no practice sets to read.
+
+**`exercises propose`** finds, in each practice set, the lines that start with a printed number (`5)`, `5.`, `(5)`, `5a)`; also a
+number alone on its line beside a figure, glued to the text, or without its closing mark when the sequence asks for it), keeps those
+whose numbers form a sequence and that align like the others (an indented line inside a paragraph that starts with a number is put
+aside, with its reason), and reports gaps, duplicates and stray numbers instead of hiding them. The page is cut into bands by the bold
+instructions and each band into columns by the left edges of its items, so a page with two columns in one group and three in the next
+is read correctly, also when the extraction merged the two items of a row into one line. Everything that belongs to an item goes into
+its frame: continuation lines, the rows of a fraction or a root, the labels of a figure, the figure itself (from the ink profile) and the
+lines on the next page (a continuation region). The bold instruction above a group is the `context` of every item below it, also when
+it crosses a page break (two regions); a practice set without an instruction gives no context. Each proposal has a deterministic frame
+id (`x0_1-5`: section `0.1`, label `5`), so applying twice does not duplicate.
+
+**`solutions propose`** cuts the answer key into bands by the small section markers and the headers (a band runs across all columns
+and over page breaks), reads the answers of a band with the same engine (a number that stands alone with a graph below it, an answer of
+several lines, a fraction) and matches them by (section, label) to the authoritative exercises of the project.
+
+Limits, and what to look at:
+
+- **A garbled text layer.** A stray glyph with a wrong font size (for example a "not equal" sign) can swallow the lines around it into
+  one line of unreadable text. The exercises or answers inside are missing and show up as gaps and as "no answer for ...": frame those by
+  hand (`add` with `authority`, `label` and `section`) after looking at the page.
+- **What the book itself gets wrong:** a number printed twice, a missing answer, a practice set with more exercises than the contents
+  promise. The proposal follows the print; what to do with the difference is for the owner of the audit to decide (`--max-items` caps a
+  section).
+- **Parts** ((a), (b)) are not split into exercises of their own: they stay inside the exercise that carries the number.
+- **Figures and graphs** are framed with the ink profile, which cannot tell which column a drawing belongs to: look at every kind of
+  figure item and at graph answers.
+- **Without font information** (pages read without `--fonts`) instructions are found by their position only.
+
+Check by looking, as in section 7, in a sample that covers every kind of layout: the first and the last item of every section, an item
+beside a figure, an item at the end of a page, an instruction that crosses a page break, a two-column row with fractions, a
+three-column row, a graph answer, an answer of several lines. `mcprep crop x0_1-5` crops by the deterministic id and `--region context:0`
+shows the instruction. Read the `notes` of the commands and the gaps before you look at any crop. Fix with the operations you know:
+`update` for a rectangle, `context.set` for the instruction, `delete` and `add` for an exercise that was found where there is none or
+not found; `solution.add` adds a solution region.
+
 ## 7. Check by looking
 
 `mcprep crop --all` (or `mcprep crop f3`, `mcprep crop --page 2 --rect l,t,r,b`) writes PNGs. Open each and check:

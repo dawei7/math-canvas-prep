@@ -99,7 +99,7 @@ write reads the file fresh under a lock; the desktop app asks which version to k
 
 ## Tool reference
 
-33 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+36 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
 
 ### `create_project`
 
@@ -419,3 +419,34 @@ The JSON Schema of bundle-manifest, frames, outline or project files.
 Arguments:
 
 - `name`* ("bundle-manifest" | "frames" | "outline" | "project")
+
+### `outline_derive_book`
+
+For a book that prints numbered chapters and sections (a table of contents with page numbers, chapter openers, headings like "3.2 Practice - Title"): reads the printed contents (also lines that the text extraction merged), the lists on the chapter openers and the headings on the pages, cross-checks them and proposes chapters (id c0, label "Chapter 0") and sections (id and label "0.1") with title, zero-based page, top, confidence and evidence. Titles are normalised ("&" and a slash read as "and", typos of the contents repaired when the headings agree) and every difference is reported. Each section also says where its practice set starts and ends (the start of whatever comes next). With apply=true the entries (with id, label and top) are stored as the outline of the project: do that before exercises_propose, because exercises refer to sections by id. Look at the result: gaps, sections without a practice set and spellings that differ are listed in "notes".
+
+Arguments:
+
+- `apply` (boolean): Store the proposal as the outline of the project (with ids, labels and tops).
+
+### `exercises_propose`
+
+Offline heuristics (no AI) over the printed text of every practice set (or of the sections you name): the lines that start with a printed number ("5)", "5.", "(5)", "5a)") that form a sequence and align like the others, a frame for each exercise (its text, continuation lines, the second line of a fraction, a figure beside it, lines on the next page), the bold instruction printed above a group as its context (two regions when it crosses a page break), the printed label as the exercise's name and the section. Numbers that are missing, printed twice or put aside are reported in "sections[].gaps/duplicates/rejected/notes": what the book prints is what is proposed. The result carries "operations" (add with authority "book", label, section, context; with solutions=true also the solution regions) that you can pass to apply_operations, or apply=true applies them (exercises that are already in the project are skipped, so applying twice does not duplicate). Needs the outline from outline_derive_book (apply=true) in the project. Look at render_crop images of a sample (the first and last of each section, the figures, an item at a page end, an instruction that crosses a page break) before you apply, and fix what is wrong with update_frame.
+
+Arguments:
+
+- `sections` (string[]): Only these sections, by id or label ("0.1"); default all.
+- `solutions` (boolean): Also read the answer key and give each exercise its solution regions (hidden from the learner, used to grade).
+- `max_items` (integer): At most this many exercises per section; the surplus is listed as excluded (use when the book prints more than the audit wants).
+- `ops_file` (string): Write the operations as a JSON batch to this file (for apply_operations or `mcprep frames apply`).
+- `details_file` (string): Write every proposal with its evidence, the instructions and the rejected numbers as JSON to this file.
+- `apply` (boolean): Apply the proposals to the project now, as one atomic batch.
+
+### `solutions_propose`
+
+Reads the answer key at the back of the same PDF: it is cut into bands by the small section markers ("2.3") and the headers ("Answers - Slope-Intercept") that run across all columns and over page breaks; inside a band the answers are the lines that start with a printed number, framed with their continuation lines, the second line of a fraction or the graph that stands where the answer is. Each answer is matched by (section, label) to an authoritative exercise of the project; "sections[].withoutAnswer" lists exercises without an answer and "withoutExercise" answers without an exercise. The result carries "operations" (solution.add, one per region); apply=true applies them. An exercise that already has a solution is left alone. The solution is hidden from the learner and used only to grade. Look at render_crop images of a sample of the answer regions, especially graphs and answers of several lines.
+
+Arguments:
+
+- `ops_file` (string): Write the operations as a JSON batch to this file.
+- `details_file` (string): Write every answer with its evidence and the sequences as JSON to this file.
+- `apply` (boolean): Apply the solutions to the project now, as one atomic batch.
