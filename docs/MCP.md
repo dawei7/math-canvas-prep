@@ -436,7 +436,7 @@ The guide for agents that mark a PDF: coordinate system with a worked example, w
 
 ### `get_schema` (read-only)
 
-The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) of the report of exercises_verify or of the sample of exercises_sample.
+The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export), of the report of exercises_verify or of the sample of exercises_sample.
 
 Arguments:
 
