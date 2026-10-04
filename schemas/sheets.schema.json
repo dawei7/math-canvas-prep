@@ -4,7 +4,7 @@
   "title": "The list of the contact sheets of an audit (sheets.json, written by mcprep exercises sheets)",
   "description": "Which exercises are on which sheet, in the order of the book, and a hash of what each sheet shows: a repair that changes an exercise changes the hash of its sheet, which `audit gate --sheets-seen` finds. Pages are zero-based. Plain JSON, camelCase.",
   "type": "object",
-  "required": ["format", "version", "scope", "perSheet", "solutions", "cellWidth", "exercises", "sheets"],
+  "required": ["format", "version", "scope", "perSheet", "solutions", "cellWidth", "heightCap", "maxHeight", "exercises", "sheets"],
   "properties": {
     "format": { "const": "math-canvas-sheets" },
     "version": { "const": 1 },
@@ -13,18 +13,23 @@
     "perSheet": { "type": "integer", "minimum": 1 },
     "solutions": { "type": "boolean", "description": "Whether the answers are drawn." },
     "cellWidth": { "type": "integer", "minimum": 1, "description": "The width of a cell in pixels." },
+    "heightCap": { "type": "integer", "minimum": 1, "description": "A new sheet is started when the next cell would make the sheet taller than this many pixels, whatever perSheet says (perSheet is the most cells)." },
+    "maxHeight": { "type": "integer", "minimum": 1, "description": "A sheet is never taller than this: a single cell that is taller is drawn smaller." },
     "exercises": { "type": "integer", "minimum": 0 },
     "sheets": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["number", "file", "refs", "pages", "hash"],
+        "required": ["number", "file", "refs", "pages", "hash", "height"],
         "properties": {
           "number": { "type": "integer", "minimum": 1 },
           "file": { "type": "string", "description": "sheet-0001.png, in the folder of sheets.json." },
           "refs": { "type": "array", "items": { "type": "string" }, "description": "SECTION:LABEL of the exercises on the sheet, in the order of the cells." },
           "pages": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "The pages that the regions of its cells are on." },
-          "hash": { "type": "string", "description": "SHA-256 of the regions the sheet shows." }
+          "hash": { "type": "string", "description": "SHA-256 of the regions the sheet shows." },
+          "height": { "type": "integer", "minimum": 1, "description": "How tall the sheet is, in pixels (as planned; the picture is within a few pixels of it)." },
+          "tall": { "const": true, "description": "A single cell taller than heightCap, on a sheet of its own." },
+          "scaled": { "type": "number", "exclusiveMinimum": 0, "maximum": 1, "description": "A single cell taller than maxHeight, drawn at this share of its size so that the sheet is maxHeight tall." }
         },
         "additionalProperties": false
       }

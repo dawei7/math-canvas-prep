@@ -709,7 +709,8 @@ Options:
 - `--details <file>`: Write the whole report as JSON (every finding, every section), in the format math-canvas-verify.
 - `--ink`: Also render the pages (each page that has a region, once) and report every region whose top, bottom, left or right edge runs through printed ink (`edge-on-ink`, a warning, the worst first). Slower: it draws the pages.
 - `--fail-on error|warning|none`: Exit with code 4 when there is a finding of this severity or a worse one: error (the default), warning, or none (always 0).
-- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, for a book that does not print `5.`, `5)` or `(5)`: a regular expression with the label as printed in group 1 (the same option as `exercises propose`); repeatable. It adds to what is read by default.
+- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, for a book that does not print `5.`, `5)` or `(5)`: a regular expression with the label as printed in group 1 (the same option as `exercises propose`); repeatable. It adds to what is read by default. A pattern that applies to the answers too: "Lösung 1.1.2" is `^L(?:ö|oe)sung\s+(\d+(?:\.\d+)*)` (a letter outside ASCII may be written as an escape, \u00f6).
+- `--item-pattern-file <file>`: The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis); repeatable.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
@@ -769,7 +770,7 @@ Make contact sheets of every exercise (or of a section, or of the fixed sample) 
 mcprep exercises sheets --out <folder> [options]
 ```
 
-For the exhaustive visual pass that the gate asks for: the exercises in the order of the book (all of them, the ones of --section, or the fixed sample of `exercises sample`), `--per-sheet` (default 12) to a sheet, two cells wide, each cell of a fixed width (740 pixels) and captioned SECTION:LABEL and the zero-based pages of its regions ("p. 12, 13-14"). A cell shows, one region under the other: the instruction (blue frame), the exercise (red), its continuations (orange) and, with --solutions, its answer (green). Files: sheet-0001.png, sheet-0002.png, ... and sheets.json in --out, which lists the references and the pages of every sheet and a hash of what it shows; a repair that changes an exercise changes the hash of its sheet, which `audit gate --sheets-seen` finds. Nothing is uploaded; the result is the same for the same project. `--sheet N` draws only sheet N, `--from-sheet N` the sheets from N on (sheets.json is always the whole list): use them to look again after a repair. Look at every sheet, then list the numbers in a file for the gate (1-40, say).
+For the exhaustive visual pass that the gate asks for: the exercises in the order of the book (all of them, the ones of --section, or the fixed sample of `exercises sample`), `--per-sheet` (default 12) cells at most to a sheet, two cells wide, each cell of a fixed width (740 pixels), a sheet closed as soon as the next cell would make it taller than 2,600 pixels (so that the sheets stay readable, with the answers too; a cell taller than that has a sheet of its own, drawn smaller only above 6,000 pixels, and sheets.json says so) and captioned SECTION:LABEL and the zero-based pages of its regions ("p. 12, 13-14"). A cell shows, one region under the other: the instruction (blue frame), the exercise (red), its continuations (orange) and, with --solutions, its answer (green). Files: sheet-0001.png, sheet-0002.png, ... and sheets.json in --out, which lists the references and the pages of every sheet and a hash of what it shows; a repair that changes an exercise changes the hash of its sheet, which `audit gate --sheets-seen` finds. Nothing is uploaded; the result is the same for the same project. `--sheet N` draws only sheet N, `--from-sheet N` the sheets from N on (sheets.json is always the whole list): use them to look again after a repair. Look at every sheet, then list the numbers in a file for the gate (1-40, say).
 
 Options:
 
@@ -777,7 +778,7 @@ Options:
 - `--section <id>`: Only the exercises of this section (an outline entry id); repeat the option or separate the ids with commas.
 - `--all`: Every exercise of the book (the default when neither --section nor --sample is given).
 - `--sample`: Only the exercises of the fixed sample (`mcprep exercises sample`).
-- `--per-sheet <n>`: Cells on a sheet (default 12); fewer when the exercises are long.
+- `--per-sheet <n>`: Cells on a sheet, at most (default 12); a sheet taller than 2600 pixels is closed earlier.
 - `--solutions`: Also draw the answer of each exercise (green).
 - `--sheet <n>`: Draw only this sheet (1 is the first).
 - `--from-sheet <n>`: Draw only the sheets from this one on.
@@ -1734,7 +1735,8 @@ Options:
 - `--reference <file>`: Also compare with this reference list of the book (see `mcprep book compare`): every difference must be repaired or acknowledged.
 - `--chapter-offset <n>`: Added to the chapter numbers of a reference with chapters (as for `book compare`).
 - `--ink`: Also render the pages and check the edges of the regions (`edge-on-ink`; slower).
-- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file apply as well.
+- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file (itemPatterns) apply as well. The certificate lists them with every letter outside ASCII written as an escape.
+- `--item-pattern-file <file>`: The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis).
 - `--sheets-seen <file>`: The list of the contact sheets that were looked at (JSON {"seen": [1, 2]} or text such as 1-12, 14), next to the sheets.json of `exercises sheets --all`.
 - `--status`: Only say whether the certificate on disk is for the project as it is now and whether it passed (exit code 0 only when it is current and passed); run no check.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
@@ -1774,7 +1776,8 @@ Options:
 - `--reference <file>`: Also compare with this reference list of the book (see `mcprep book compare`): every difference must be repaired or acknowledged.
 - `--chapter-offset <n>`: Added to the chapter numbers of a reference with chapters (as for `book compare`).
 - `--ink`: Also render the pages and check the edges of the regions (`edge-on-ink`; slower).
-- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file apply as well.
+- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file (itemPatterns) apply as well. The certificate lists them with every letter outside ASCII written as an escape.
+- `--item-pattern-file <file>`: The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).

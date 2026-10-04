@@ -1,6 +1,6 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { verifySession, type VerifyFinding, type VerifyReport } from '@mcprep/core';
+import { McPrepError, verifySession, type VerifyFinding, type VerifyReport } from '@mcprep/core';
 import { flag, listOption, stringOption, usage } from '../args.js';
 import { plural, tableLimited, TEXT_LIMIT } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
@@ -25,9 +25,37 @@ export function sectionIds(context: CommandContext): string[] {
     .filter((value) => value.length > 0);
 }
 
-/** The regular expressions of --item-pattern (group 1 is the label), as `exercises propose` reads them. */
-export function itemPatterns(context: CommandContext): RegExp[] {
-  return listOption(context.options, 'item-pattern').map((source) => {
+const REPLACEMENT = String.fromCharCode(0xfffd);
+/** UTF-8 read as Latin-1: a letter such as o with a diaeresis arrives as two characters, the first of them 0xC2 or 0xC3. */
+const MOJIBAKE = new RegExp(`[${String.fromCharCode(0xc2)}${String.fromCharCode(0xc3)}][${String.fromCharCode(0x80)}-${String.fromCharCode(0xbf)}]`);
+
+/** Why a pattern cannot be what was typed: a shell that could not pass a letter on puts U+FFFD in its place, or hands UTF-8 over as Latin-1. */
+function encodingProblem(source: string): string | undefined {
+  if (source.includes(REPLACEMENT)) return 'it holds the character U+FFFD, which stands for a letter that did not arrive intact';
+  if (MOJIBAKE.test(source)) return 'it holds characters that look like UTF-8 read as Latin-1 (two characters in place of one letter)';
+  return undefined;
+}
+
+/**
+ * The regular expressions of --item-pattern and of the lines of --item-pattern-file (a UTF-8 file, one expression to a line); group 1 is
+ * the label, as `exercises propose` reads them. A letter outside ASCII can be written as an escape (\u00f6) when the shell mangles it.
+ */
+export async function itemPatterns(context: CommandContext): Promise<RegExp[]> {
+  const sources = [...listOption(context.options, 'item-pattern')];
+  for (const file of listOption(context.options, 'item-pattern-file')) {
+    let text: string;
+    try {
+      text = await readFile(resolve(context.io.cwd, file), 'utf8');
+    } catch (error) {
+      throw new McPrepError('E_FILE', `Cannot read the file of patterns "${file}": ${(error as Error).message}`, { hint: 'It is a UTF-8 text file with one regular expression to a line (group 1 is the label).' });
+    }
+    sources.push(...(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0));
+  }
+  return sources.map((source) => {
+    const mangled = encodingProblem(source);
+    if (mangled !== undefined) {
+      throw usage(`--item-pattern "${source}" cannot be what was meant: ${mangled}.`, 'Write the letter as an escape (\\u00f6 for the letter o with a diaeresis), or put the pattern in a UTF-8 file and give it with --item-pattern-file.');
+    }
     try {
       const regex = new RegExp(source, 'u');
       // How many capture groups the expression has: an empty alternative always matches and shows them.
@@ -98,8 +126,9 @@ export const exercisesVerify: CommandSpec = {
       type: 'string',
       multiple: true,
       value: '<regex>',
-      description: 'How the number of an exercise or an answer starts a line, for a book that does not print `5.`, `5)` or `(5)`: a regular expression with the label as printed in group 1 (the same option as `exercises propose`); repeatable. It adds to what is read by default.',
+      description: 'How the number of an exercise or an answer starts a line, for a book that does not print `5.`, `5)` or `(5)`: a regular expression with the label as printed in group 1 (the same option as `exercises propose`); repeatable. It adds to what is read by default. A pattern that applies to the answers too: "Lösung 1.1.2" is `^L(?:ö|oe)sung\\s+(\\d+(?:\\.\\d+)*)` (a letter outside ASCII may be written as an escape, \\u00f6).',
     },
+    { name: 'item-pattern-file', type: 'string', multiple: true, value: '<file>', description: 'The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis); repeatable.' },
     ...GLOBAL_OPTIONS,
   ],
   examples: ['mcprep exercises verify', 'mcprep exercises verify --section 1.2 --section 1.3', 'mcprep exercises verify --details verify.json --fail-on warning', 'mcprep exercises verify --ink', "mcprep exercises verify --item-pattern '^Lösung\\s+(\\d+(?:\\.\\d+)*)'", 'mcprep exercises verify --json'],
@@ -109,7 +138,7 @@ export const exercisesVerify: CommandSpec = {
     const session = await context.session();
     const threshold = failOn(context);
     const ids = sectionIds(context);
-    const patterns = itemPatterns(context);
+    const patterns = await itemPatterns(context);
     const report = await verifySession(session, { ...(ids.length > 0 ? { sections: ids } : {}), ...(patterns.length > 0 ? { itemPatterns: patterns } : {}), ...(flag(context.options, 'ink') ? { ink: true } : {}) });
     const details = stringOption(context.options, 'details');
     if (details !== undefined) await writeFile(resolve(context.io.cwd, details), `${JSON.stringify(report, null, 1)}\n`);

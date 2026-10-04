@@ -13,6 +13,7 @@ import { verifySession } from '../verify/session.js';
 import { bookReference, normalizeLabel } from '../model/authority.js';
 import {
   acknowledgementProblem,
+  asciiPattern,
   bundlePathOf,
   emptyNotes,
   gatePath,
@@ -206,7 +207,7 @@ export async function runGate(session: ProjectSession, options: GateRunOptions =
     project: { name: projectStem(session.projectPath), ...hashes },
     counts: { sections: book.sections, exercises: book.authoritative, solutions: book.solutions, errors: book.errors, warnings: book.warnings, infos: book.infos, open: judged.open.length, acknowledged: judged.acknowledged.length },
     checks: collected.checks,
-    itemPatterns: patterns.map((pattern) => pattern.source),
+    itemPatterns: patterns.map((pattern) => asciiPattern(pattern.source)),
     open: judged.open,
     acknowledged: judged.acknowledged,
     staleAcknowledgements: judged.stale,

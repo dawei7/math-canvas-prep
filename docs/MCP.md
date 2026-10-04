@@ -719,14 +719,14 @@ Arguments:
 
 ### `exercises_sheets` (read-only)
 
-Makes contact sheets (PNG files) for an exhaustive visual pass: the exercises in the order of the book (all of them, those of sections, or the fixed sample of exercises_sample), per_sheet (default 12) to a sheet, two cells wide, each cell of a fixed width and captioned SECTION:LABEL and the zero-based pages of its regions ("p. 12, 13-14"). A cell shows one region under the other: the instruction (blue frame), the exercise (red), its continuations (orange) and, with solutions=true, its answer (green). Files: sheet-0001.png, ... and sheets.json in out_dir, which lists the references and pages of every sheet and a hash of what it shows. Nothing is uploaded; the same project gives the same sheets. sheet draws only that sheet, from_sheet the sheets from that one on (sheets.json is always the whole list): use them to look again after a repair. Look at every sheet, repair what is wrong, then list the sheets you looked at in a file for audit_gate (sheets_seen).
+Makes contact sheets (PNG files) for an exhaustive visual pass: the exercises in the order of the book (all of them, those of sections, or the fixed sample of exercises_sample), per_sheet (default 12) cells at most to a sheet, two cells wide, each cell of a fixed width, a sheet closed as soon as the next cell would make it taller than 2,600 pixels (a cell taller than that has a sheet of its own, drawn smaller only above 6,000 pixels; sheets.json says so), each cell captioned SECTION:LABEL and the zero-based pages of its regions ("p. 12, 13-14"). A cell shows one region under the other: the instruction (blue frame), the exercise (red), its continuations (orange) and, with solutions=true, its answer (green). Files: sheet-0001.png, ... and sheets.json in out_dir, which lists the references and pages of every sheet and a hash of what it shows. Nothing is uploaded; the same project gives the same sheets. sheet draws only that sheet, from_sheet the sheets from that one on (sheets.json is always the whole list): use them to look again after a repair. Look at every sheet, repair what is wrong, then list the sheets you looked at in a file for audit_gate (sheets_seen).
 
 Arguments:
 
 - `out_dir`* (string): The folder for the sheets and sheets.json.
 - `sections` (string[]): Only the exercises of these sections (outline entry ids).
 - `sample` (boolean): Only the exercises of the fixed sample.
-- `per_sheet` (integer): Cells on a sheet (default 12).
+- `per_sheet` (integer): Cells on a sheet, at most (default 12); a sheet taller than 2,600 pixels is closed earlier.
 - `solutions` (boolean): Also draw the answer of each exercise (green).
 - `sheet` (integer): Draw only this sheet (1 is the first).
 - `from_sheet` (integer): Draw only the sheets from this one on.

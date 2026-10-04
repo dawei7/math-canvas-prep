@@ -61,7 +61,8 @@ const SHARED: CommandSpec['options'] = [
   { name: 'reference', type: 'string', value: '<file>', description: 'Also compare with this reference list of the book (see `mcprep book compare`): every difference must be repaired or acknowledged.' },
   { name: 'chapter-offset', type: 'number', value: '<n>', description: 'Added to the chapter numbers of a reference with chapters (as for `book compare`).' },
   { name: 'ink', type: 'boolean', description: 'Also render the pages and check the edges of the regions (`edge-on-ink`; slower).' },
-  { name: 'item-pattern', type: 'string', multiple: true, value: '<regex>', description: 'How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file apply as well.' },
+  { name: 'item-pattern', type: 'string', multiple: true, value: '<regex>', description: 'How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file (itemPatterns) apply as well. The certificate lists them with every letter outside ASCII written as an escape.' },
+  { name: 'item-pattern-file', type: 'string', multiple: true, value: '<file>', description: 'The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis).' },
 ];
 
 export const auditGate: CommandSpec = {
@@ -85,7 +86,7 @@ export const auditGate: CommandSpec = {
       const sentence = { none: `There is no certificate yet (${gatePath(session.projectPath)}): run \`mcprep audit gate\`.`, stale: 'The certificate is STALE: the frames or the outline changed after the gate ran. Run `mcprep audit gate` again.', failed: `The certificate is current and the gate did NOT pass (${status.open ?? '?'} open).`, passed: 'The certificate is current and the gate passed.' }[status.status];
       return { result: status, text: sentence, ...(status.status === 'passed' ? {} : { exitCode: 4 }) };
     }
-    const patterns = itemPatterns(context);
+    const patterns = await itemPatterns(context);
     const reference = await referenceOf(context);
     const sheetsSeen = stringOption(context.options, 'sheets-seen');
     const { report } = await runGate(session, {
@@ -132,7 +133,7 @@ export const auditAck: CommandSpec = {
     const quote = stringOption(context.options, 'quote');
     const count = numberOption(context.options, 'count');
     const entry: Acknowledgement = { code, ref, reason, evidence: { ...(page !== undefined ? { page } : {}), ...(quote !== undefined ? { quote } : {}) }, by: stringOption(context.options, 'by') ?? 'agent', ...(count !== undefined ? { count } : {}) };
-    const patterns = itemPatterns(context);
+    const patterns = await itemPatterns(context);
     const reference = await referenceOf(context);
     const done = await addAcknowledgement(session, {
       entry,

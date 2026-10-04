@@ -26,7 +26,16 @@ export const SHEETS_FORMAT = 'math-canvas-sheets';
 export const SHEETS_VERSION = 1;
 
 export const SHEET_COLORS = { context: '#0060e0', main: '#e00000', continues: '#e08000', solution: '#00a000' } as const;
-export const SHEET_DEFAULTS = { perSheet: 12, cellWidth: 740 } as const;
+export const SHEET_DEFAULTS = { perSheet: 12, cellWidth: 740, heightCap: 2600, maxHeight: 6000 } as const;
+
+// How a sheet is laid out: two cells wide, a region of a page drawn this many pixels wide before it is fitted to the cell.
+const COLUMNS = 2;
+const GAP = 8;
+const CAPTION = 26;
+const PAD = 4;
+const PAGE_PIXELS = 1000;
+const MAX_PART_HEIGHT = 1100;
+const MARGIN = 0.012;
 
 export type SheetScope = 'all' | 'sample' | 'section';
 
@@ -44,6 +53,12 @@ export interface SheetEntry {
   pages: number[];
   /** What the sheet shows: a hash of the regions of its cells (a repair that moves one changes it). */
   hash: string;
+  /** How tall the sheet is, in pixels (as planned from the regions; the picture is within a few pixels of it). */
+  height: number;
+  /** A single cell taller than the cap, on a sheet of its own. */
+  tall?: true;
+  /** A single cell taller than the most a sheet may be, drawn at this share of its size (under 1) so that the sheet is that tall. */
+  scaled?: number;
 }
 
 export interface SheetsManifest {
@@ -54,6 +69,10 @@ export interface SheetsManifest {
   perSheet: number;
   solutions: boolean;
   cellWidth: number;
+  /** A new sheet is started when the next cell would make the sheet taller than this many pixels, whatever `perSheet` says (`perSheet` is the most cells). */
+  heightCap: number;
+  /** A sheet is never taller than this: a single cell that is taller is drawn smaller. */
+  maxHeight: number;
   exercises: number;
   sheets: SheetEntry[];
 }
@@ -107,6 +126,27 @@ export interface SheetsPlan {
 
 const refOf = (frame: Frame): string => bookReference(frame.section as string, normalizeLabel(frame.label as string).label);
 
+/** How tall a cell is, in pixels, from the regions it shows (the same arithmetic as the drawing, without drawing). */
+async function cellHeight(session: ProjectSession, frame: Frame, solutions: boolean, cellWidth: number): Promise<number> {
+  const doc = await session.document();
+  let total = CAPTION + PAD;
+  for (const part of partsOf(frame, solutions)) {
+    const size = await doc.pageSize(part.page);
+    const wide = (Math.min(1, part.rect.right + MARGIN) - Math.max(0, part.rect.left - MARGIN)) * PAGE_PIXELS;
+    const tall = (Math.min(1, part.rect.bottom + MARGIN) - Math.max(0, part.rect.top - MARGIN)) * size.height * (PAGE_PIXELS / size.width);
+    const k = Math.min(1, (cellWidth - 2 * PAD) / wide, MAX_PART_HEIGHT / tall);
+    total += Math.max(1, Math.round(tall * k)) + PAD;
+  }
+  return total;
+}
+
+/** The height of a sheet whose cells have these heights: two cells to a row, a row as tall as its taller cell. */
+export function sheetHeight(heights: readonly number[]): number {
+  let total = GAP;
+  for (let i = 0; i < heights.length; i += COLUMNS) total += Math.max(...heights.slice(i, i + COLUMNS)) + GAP;
+  return total;
+}
+
 /** Which exercises go on sheets and on which: the order of the book, `perSheet` to a sheet. */
 export async function planSheets(session: ProjectSession, options: SheetsOptions): Promise<SheetsPlan> {
   const project: Project = session.project;
@@ -129,22 +169,41 @@ export async function planSheets(session: ProjectSession, options: SheetsOptions
     const refs = new Set(report.exercises.map((entry) => entry.ref));
     frames = frames.filter((frame) => refs.has(refOf(frame)));
   }
+  const cellWidth = options.cellWidth ?? SHEET_DEFAULTS.cellWidth;
+  // The cells in the order of the book, a sheet closed when it has `perSheet` cells or the next would make it taller than the cap.
+  const groups: { cells: Cell[]; heights: number[] }[] = [];
+  for (const frame of frames) {
+    const height = await cellHeight(session, frame, solutions, cellWidth);
+    const last = groups[groups.length - 1];
+    if (last && last.cells.length < perSheet && sheetHeight([...last.heights, height]) <= SHEET_DEFAULTS.heightCap) {
+      last.cells.push({ ref: refOf(frame), frame });
+      last.heights.push(height);
+    } else groups.push({ cells: [{ ref: refOf(frame), frame }], heights: [height] });
+  }
   const cells = new Map<number, Cell[]>();
   const sheets: SheetEntry[] = [];
-  for (let start = 0, number = 1; start < frames.length; start += perSheet, number += 1) {
-    const chunk = frames.slice(start, start + perSheet).map((frame): Cell => ({ ref: refOf(frame), frame }));
-    cells.set(number, chunk);
+  groups.forEach((group, index) => {
+    const number = index + 1;
+    const height = sheetHeight(group.heights);
+    const tall = group.cells.length === 1 && height > SHEET_DEFAULTS.heightCap;
+    // A cell taller than the most a sheet may be is drawn smaller, by what the parts of it (all but the captions and the gaps) allow.
+    const fixed = GAP * 2 + CAPTION + PAD;
+    const scaled = tall && height > SHEET_DEFAULTS.maxHeight ? Math.floor(((SHEET_DEFAULTS.maxHeight - fixed) / (height - fixed)) * 1000) / 1000 : undefined;
+    cells.set(number, group.cells);
     sheets.push({
       number,
       file: `sheet-${String(number).padStart(4, '0')}.png`,
-      refs: chunk.map((cell) => cell.ref),
-      pages: [...new Set(chunk.flatMap((cell) => partsOf(cell.frame, solutions).map((part) => part.page)))].sort((a, b) => a - b),
+      refs: group.cells.map((cell) => cell.ref),
+      pages: [...new Set(group.cells.flatMap((cell) => partsOf(cell.frame, solutions).map((part) => part.page)))].sort((a, b) => a - b),
       hash: sheetHash(
-        chunk.map((cell) => cell.frame),
+        group.cells.map((cell) => cell.frame),
         solutions,
       ),
+      height: scaled !== undefined ? SHEET_DEFAULTS.maxHeight : height,
+      ...(tall ? { tall: true as const } : {}),
+      ...(scaled !== undefined ? { scaled } : {}),
     });
-  }
+  });
   return {
     manifest: {
       format: SHEETS_FORMAT,
@@ -153,7 +212,9 @@ export async function planSheets(session: ProjectSession, options: SheetsOptions
       ...(options.scope === 'section' ? { sections: [...(options.sections ?? [])] } : {}),
       perSheet,
       solutions,
-      cellWidth: options.cellWidth ?? SHEET_DEFAULTS.cellWidth,
+      cellWidth,
+      heightCap: SHEET_DEFAULTS.heightCap,
+      maxHeight: SHEET_DEFAULTS.maxHeight,
       exercises: frames.length,
       sheets,
     },
@@ -163,14 +224,6 @@ export async function planSheets(session: ProjectSession, options: SheetsOptions
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Drawing
-
-const COLUMNS = 2;
-const GAP = 8;
-const CAPTION = 26;
-const PAD = 4;
-/** A page is drawn this many pixels wide before it is fitted to the cell. */
-const PAGE_PIXELS = 1000;
-const MAX_PART_HEIGHT = 1100;
 
 export interface RenderSheetsOptions {
   outDir: string;
@@ -205,7 +258,7 @@ export async function renderSheets(session: ProjectSession, plan: SheetsPlan, op
         g.strokeStyle = SHEET_COLORS[part.kind];
         g.lineWidth = 3;
         g.strokeRect(fx(part.rect.left), fy(part.rect.top), fx(part.rect.right) - fx(part.rect.left), fy(part.rect.bottom) - fy(part.rect.top));
-        const k = Math.min(1, (cellWidth - 2 * PAD) / view.width, MAX_PART_HEIGHT / view.height);
+        const k = Math.min(1, (cellWidth - 2 * PAD) / view.width, MAX_PART_HEIGHT / view.height) * (sheet.scaled ?? 1);
         pieces.push({ canvas: view.canvas, width: Math.max(1, Math.round(view.width * k)), height: Math.max(1, Math.round(view.height * k)) });
       }
       drawn.push({ caption: `${cell.ref}   ${pagesCaption(parts.map((part) => part.page))}`, parts: pieces, height: CAPTION + pieces.reduce((sum, piece) => sum + piece.height + PAD, PAD) });
@@ -213,7 +266,7 @@ export async function renderSheets(session: ProjectSession, plan: SheetsPlan, op
     const rows: (typeof drawn)[] = [];
     for (let i = 0; i < drawn.length; i += COLUMNS) rows.push(drawn.slice(i, i + COLUMNS));
     const total = rows.reduce((sum, row) => sum + Math.max(...row.map((cell) => cell.height)) + GAP, GAP);
-    const surface = canvasModule.createCanvas(COLUMNS * (cellWidth + GAP) + GAP, total);
+    const surface = canvasModule.createCanvas(Math.min(COLUMNS, drawn.length) * (cellWidth + GAP) + GAP, total);
     const g = surface.getContext('2d');
     g.fillStyle = '#d8d8d8';
     g.fillRect(0, 0, surface.width, surface.height);

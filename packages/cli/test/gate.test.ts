@@ -26,6 +26,7 @@ interface Gate {
   acknowledged: { finding: Finding; acknowledgement: { code: string; ref: string; reason: string; by: string } }[];
   staleAcknowledgements: { acknowledgement: { code: string; ref: string }; why: string }[];
   unusedAcknowledgements: { code: string; ref: string }[];
+  itemPatterns: string[];
   certificate: string;
 }
 const gateOf = (done: Result): Gate => done.json.result as unknown as Gate;
@@ -62,6 +63,29 @@ describe('audit gate', () => {
     const schema = JSON.parse(readFileSync(new URL('../../../schemas/gate.schema.json', import.meta.url), 'utf8')) as object;
     const valid = new Ajv2020({ strict: true, allErrors: true, validateFormats: false }).compile(schema);
     expect(valid(written), JSON.stringify(valid.errors)).toBe(true);
+  });
+
+  it('keeps a letter outside ASCII in a pattern intact: an escape in the certificate, read from a file or the notes, refused when mangled', async () => {
+    const cli = await auditedBook();
+    const pattern = '^L(?:ö|oe)sung\\s+(\\d+)';
+    const escaped = '^L(?:\\u00f6|oe)sung\\s+(\\d+)';
+    const done = await cli(['audit', 'gate', '--item-pattern', pattern]);
+    expect(done.code).toBe(0);
+    expect(gateOf(done).itemPatterns).toEqual([escaped]);
+    // Nothing in the certificate is outside ASCII, so no program that shows or copies it can mangle the pattern.
+    expect([...(await readFile(join(cli.dir, 'book.audit-gate.json')))].every((byte) => byte < 0x80)).toBe(true);
+    // The same pattern from a UTF-8 file with a byte order mark, and from the notes file.
+    await writeFile(join(cli.dir, 'patterns.txt'), `${String.fromCharCode(0xfeff)}${pattern}\r\n\r\n`);
+    expect(gateOf(await cli(['audit', 'gate', '--item-pattern-file', 'patterns.txt'])).itemPatterns).toEqual([escaped]);
+    await writeFile(join(cli.dir, 'book.audit-notes.json'), JSON.stringify({ format: 'math-canvas-audit-notes', version: 1, itemPatterns: [escaped], acknowledgements: [] }));
+    expect(gateOf(await cli(['audit', 'gate'])).itemPatterns).toEqual([escaped]);
+    // A pattern whose letter did not arrive (U+FFFD, or UTF-8 read as Latin-1) is refused, with what to do instead.
+    for (const letters of [String.fromCharCode(0xfffd), `${String.fromCharCode(0xc3)}${String.fromCharCode(0xb6)}`]) {
+      const mangled = await cli(['audit', 'gate', '--item-pattern', `^L(?:${letters}|oe)sung\\s+(\\d+)`]);
+      expect(mangled.code).toBe(2);
+      expect(mangled.json.error?.hint).toContain('--item-pattern-file');
+    }
+    expect((await cli(['audit', 'gate', '--item-pattern-file', 'missing.txt'])).code).toBe(3);
   });
 
   it('does not pass when something is open, says what, and exits with code 4; a change makes the certificate stale', async () => {
@@ -151,19 +175,23 @@ describe('audit gate', () => {
     const cli = await auditedBook();
     const made = await cli(['exercises', 'sheets', '--out', 'sheets', '--per-sheet', '56']);
     expect(made.code).toBe(0);
+    const manifest = JSON.parse(await readFile(join(cli.dir, 'sheets', 'sheets.json'), 'utf8')) as { scope: string; exercises: number; heightCap: number; sheets: { number: number; refs: string[]; hash: string; height: number }[] };
+    const count = manifest.sheets.length;
     const files = (await readdir(join(cli.dir, 'sheets'))).sort();
-    expect(files).toEqual(['sheet-0001.png', 'sheet-0002.png', 'sheets.json']);
+    expect(files).toEqual([...manifest.sheets.map((sheet) => `sheet-${String(sheet.number).padStart(4, '0')}.png`), 'sheets.json']);
     expect(isPng(await readFile(join(cli.dir, 'sheets', 'sheet-0001.png')))).toBe(true);
-    const manifest = JSON.parse(await readFile(join(cli.dir, 'sheets', 'sheets.json'), 'utf8')) as { scope: string; exercises: number; sheets: { number: number; refs: string[]; hash: string }[] };
-    expect(manifest).toMatchObject({ scope: 'all', exercises: 112 });
-    expect(manifest.sheets.map((sheet) => sheet.refs.length)).toEqual([56, 56]);
+    expect(manifest).toMatchObject({ scope: 'all', exercises: 112, heightCap: 2600 });
+    // perSheet is the most cells; the height cap closes a sheet earlier.
+    expect(count).toBeGreaterThanOrEqual(2);
+    expect(manifest.sheets.every((sheet) => sheet.refs.length <= 56 && sheet.height <= 2600)).toBe(true);
+    expect(manifest.sheets.flatMap((sheet) => sheet.refs)).toHaveLength(112);
     expect(manifest.sheets[0]?.refs[0]).toBe('0.1:1');
     await writeFile(join(cli.dir, 'sheets', 'seen.txt'), '1');
     const unseen = await cli(['audit', 'gate', '--sheets-seen', 'sheets/seen.txt']);
     expect(unseen.code).toBe(4);
     expect(gateOf(unseen).open.map((finding) => finding.code)).toEqual(['sheets-unseen']);
-    expect(gateOf(unseen).checks.sheets).toMatchObject({ sheets: 2, seen: 1, missing: [2], current: true });
-    await writeFile(join(cli.dir, 'sheets', 'seen.txt'), '1-2');
+    expect(gateOf(unseen).checks.sheets).toMatchObject({ sheets: count, seen: 1, missing: Array.from({ length: count - 1 }, (_unused, k) => k + 2), current: true });
+    await writeFile(join(cli.dir, 'sheets', 'seen.txt'), `1-${count}`);
     expect((await cli(['audit', 'gate', '--sheets-seen', 'sheets/seen.txt'])).code).toBe(0);
     // A repair that moves an exercise makes the sheet that shows it stale.
     const frame = (await cli(['exercises', 'list', '--section', '0.2'])).json.result as unknown as { exercises?: { id: string; rect: { left: number; top: number; right: number; bottom: number } }[]; frames?: { id: string; rect: { left: number; top: number; right: number; bottom: number } }[] };

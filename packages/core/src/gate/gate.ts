@@ -30,6 +30,19 @@ export function hashProject(frames: readonly Frame[], outline: readonly OutlineE
   return { frames: framesHash, outline: outlineHash, hash: sha256(`${framesHash}\n${outlineHash}`) };
 }
 
+/**
+ * The source of a pattern with every character outside ASCII written as an escape (`\u00f6` for the letter o with a diaeresis), so that
+ * nothing that reads, shows or copies the file can mangle it. The pattern means the same.
+ */
+export function asciiPattern(source: string): string {
+  let out = '';
+  for (const char of source) {
+    const code = char.codePointAt(0) as number;
+    out += code < 0x80 ? char : code > 0xffff ? `\\u{${code.toString(16)}}` : `\\u${code.toString(16).padStart(4, '0')}`;
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Where the files are
 
