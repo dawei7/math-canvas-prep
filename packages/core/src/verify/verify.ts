@@ -11,7 +11,7 @@ import { checkContextOverlaps, checkRegionSizes, checkSharedPlaces, ownRegionsBy
 import { checkInk } from './ink.js';
 import { checkKeys } from './key.js';
 import { PageIndex } from './regions.js';
-import { buildRun, chainOf, computeLayout, pagesOfRange } from './run.js';
+import { buildRun, chainOf, computeLayout, pagesOfRange, zoneLead } from './run.js';
 import { checkSections } from './sequence.js';
 import { checkExerciseText, checkSolutionText } from './text.js';
 import { SEVERITY_RANK, VERIFY_CODES, VERIFY_FORMAT, VERIFY_VERSION, type VerifyOptions, type VerifyReport } from './types.js';
@@ -71,7 +71,7 @@ export function pagesToVerify(project: Project, options: VerifyOptions = {}): nu
     if ((frame.continues?.length ?? 0) >= LIMITS.maxRegions) pages.add((chain[chain.length - 1] as (typeof chain)[number]).page + 1);
   }
   const layout = computeLayout(project, state);
-  for (const zone of layout.zones) for (const page of pagesOfRange(zone.start, zone.end, pageCount)) pages.add(page);
+  for (const zone of layout.zones) for (const page of pagesOfRange(zoneLead(zone), zone.end, pageCount)) pages.add(page);
   if (layout.key !== undefined && chosenSections(project, options) === undefined) for (let page = layout.key.first; page <= layout.key.last; page += 1) pages.add(page);
   return [...pages].filter((page) => Number.isInteger(page) && page >= 0 && page < pageCount).sort((a, b) => a - b);
 }

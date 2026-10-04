@@ -4,7 +4,7 @@ import { draft, type Draft, type Exercise, type Where } from './common.js';
 import { excerpt } from './labels.js';
 import type { ItemStart, PieceKind } from './lineclass.js';
 import type { Piece } from './regions.js';
-import { chainOf, coveredShare, pagesOfRange, pos, type Covering, type Run, type Zone } from './run.js';
+import { chainOf, coveredShare, pagesOfRange, pos, zoneLead, type Covering, type Run, type Zone } from './run.js';
 import { sectionAtKey } from './key.js';
 import { VERIFY_LIMITS } from './types.js';
 
@@ -168,15 +168,18 @@ export function checkCoverage(run: Run): Draft[] {
     }
   }
   const pages = new Set<number>();
-  for (const zone of layout.zones) for (const page of pagesOfRange(zone.start, zone.end, pageCount)) pages.add(page);
+  for (const zone of layout.zones) for (const page of pagesOfRange(zoneLead(zone), zone.end, pageCount)) pages.add(page);
   if (layout.key !== undefined && !run.filtered) for (let page = layout.key.first; page <= Math.min(layout.key.last, pageCount - 1); page += 1) pages.add(page);
   for (const page of gapsByPage.keys()) if (page >= 0 && page < pageCount) pages.add(page);
 
-  const zoneAt = (at: number): Zone | undefined => {
-    let found: Zone | undefined;
+  /** The zone a place is in, and whether it is only in the lead above the first exercise (where a numbered line is judged, nothing else). */
+  const zoneAt = (at: number): { zone: Zone; lead: boolean } | undefined => {
+    let found: { zone: Zone; lead: boolean } | undefined;
     for (const zone of layout.zones) {
-      if (zone.start > at) break;
-      if (at < zone.end) found = zone;
+      const from = zoneLead(zone);
+      if (from > at) break;
+      if (at >= zone.start && at < zone.end) found = { zone, lead: false };
+      else if (at >= from && at < zone.start && found === undefined) found = { zone, lead: true };
     }
     return found;
   };
@@ -215,16 +218,21 @@ export function checkCoverage(run: Run): Draft[] {
       if (kind === 'furniture' || kind === 'heading' || kind === 'symbol') continue;
       const middle = (piece.rect.top + piece.rect.bottom) / 2;
       const inBand = band !== undefined && middle >= band.top - 0.01 && middle <= band.bottom + 0.04;
-      const zone = zoneAt(pos(page, middle));
+      const hit = zoneAt(pos(page, middle));
+      const zone = hit?.zone;
+      // Above the first exercise only a numbered line is looked at: the exercise before the first, that the audit missed.
+      const item = kinds.item(piece);
+      if (hit?.lead === true && (kind !== 'item' || inBand || item?.dotted === true)) continue;
       const covered = coveredShare(piece.rect, regions) >= VERIFY_LIMITS.coveredShare;
-      if (zone !== undefined && !inBand) {
+      if (zone !== undefined && hit?.lead !== true && !inBand) {
         const held = stats.get(zone) ?? { covered: 0, total: 0 };
         held.total += 1;
         if (covered) held.covered += 1;
         stats.set(zone, held);
       }
       if (covered) continue;
-      const entry: Uncovered = { piece, page, kind, item: kinds.item(piece) };
+      // A dotted number counts examples and definitions as well as exercises: in the exercises it does not make a missed exercise.
+      const entry: Uncovered = { piece, page, kind, item: item?.dotted === true && !inBand ? undefined : item };
       const gap = (gapsByPage.get(page) ?? []).find((candidate) => candidate.has(page, piece));
       if (gap) {
         const list = byGap.get(gap);

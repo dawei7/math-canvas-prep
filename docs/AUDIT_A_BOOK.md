@@ -188,6 +188,9 @@ hand:
   section) are in a region: the exercises are together. Where they stand between paragraphs of ordinary text (a lesson with exercises
   inline) the lines between them are the lesson, not text left behind: the finding `inline-section` (information) says so, and the end
   of every exercise region is checked instead (`region-open-end`, `region-holds-item`).
+- **Above the first exercise** a numbered line is looked at too, in the 8 percent of a page above it (never above the heading of the
+  section): an exercise missed at the start of the set. Nothing else above it is judged, and neither is a dotted number (`1.1.1`), which
+  counts examples and definitions as well.
 - **A line is covered** when at least half of its box lies inside regions: the main region or a continuation of any frame, an instruction
   (`context`) or a solution. A line that the text layer joined from pieces standing side by side (two columns, a fraction) is judged
   piece by piece.

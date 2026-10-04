@@ -23,6 +23,8 @@ export interface Zone {
   /** The place of the section in the outline. */
   rank: number;
   exercises: Exercise[];
+  /** Where the heading of the section is. */
+  head: number;
   start: number;
   /** Exclusive. */
   end: number;
@@ -85,11 +87,17 @@ export function computeLayout(project: Project, state: Prepared): Layout {
     let end = Math.max(node.end.page + node.end.top, lastEnd);
     if (key !== undefined) end = Math.max(Math.min(end, key.start), lastEnd);
     const answers = exercises.some((exercise) => (exercise.frame.solution ?? []).some((region) => pos(region.page, region.rect.top) >= lastEnd - 1e-6 && pos(region.page, region.rect.top) < end));
-    zones.push({ id, rank: state.sectionRank(id), exercises, start, end, lastEnd, answers });
+    zones.push({ id, rank: state.sectionRank(id), exercises, head: pos(node.start.page, node.start.top), start, end, lastEnd, answers });
   }
   zones.sort((a, b) => a.start - b.start || a.rank - b.rank);
   return { zones, key, lastExercise };
 }
+
+/** How far above its first exercise a zone looks for a numbered line that no region holds (an exercise missed at the start of the set), as a share of a page. */
+export const LEAD = 0.08;
+
+/** Where a zone is looked at from: a little above its first exercise, never above the heading of its section. */
+export const zoneLead = (zone: Zone): number => Math.max(zone.head, zone.start - LEAD);
 
 /** The zero-based pages a zone or the key reaches, inside the document. */
 export function pagesOfRange(from: number, to: number, pageCount: number): number[] {

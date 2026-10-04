@@ -105,6 +105,24 @@ describe('text left behind: the lines of the exercises of a section that no regi
     book.text(0, 72, 50, 'The lesson of the section comes first and has no region.');
     expect(all(await check(book), 'text-left-behind')).toEqual([]);
   });
+
+  it('finds an exercise missed at the start of the set: a numbered line just above the first exercise, and only a numbered one', async () => {
+    const { book } = small();
+    book.frames.shift();
+    book.text(0, 72, 85, 'The practice set starts here.');
+    book.text(0, 72, 20, '3. A numbered line high above in the lesson.');
+    const report = await check(book);
+    expect(refs(report, 'numbered-text-left-behind')).toEqual(['a:1']);
+    expect(all(report, 'text-left-behind')).toEqual([]);
+    // A dotted number counts examples and definitions too: such a line above the exercises is no exercise that was missed.
+    const dotted = small();
+    dotted.book.frames.shift();
+    dotted.book.text(0, 72, 85, '1.1.1 A rule printed above the exercises.');
+    expect(refs(await check(dotted.book), 'numbered-text-left-behind')).toEqual(['a:1']);
+    const only = small();
+    only.book.text(0, 72, 85, '1.1.1 A rule printed above the exercises.');
+    expect(all(await check(only.book), 'numbered-text-left-behind')).toEqual([]);
+  });
 });
 
 describe('the answer key: answers that no solution region holds', () => {

@@ -36,6 +36,8 @@ export interface ItemStart {
   label: string;
   /** True for a part marker (`(a)`, `a)`) that has no number of its own. */
   part: boolean;
+  /** A dotted number (`1.1.7`): its last number counts examples and definitions too, so such a line is not necessarily an exercise. */
+  dotted?: boolean;
 }
 
 /** How the line starts an item: with a number and a closing mark, a part marker, or one of the patterns of the book (group 1 is the label). */
@@ -43,7 +45,7 @@ export function startsLikeItem(text: string, patterns?: readonly RegExp[]): Item
   const number = ITEM_NUMBER.exec(text);
   if (number) return { label: foldLabel(number[1] as string), part: false };
   const dotted = ITEM_DOTTED.exec(text);
-  if (dotted) return { label: dotted[1] as string, part: false };
+  if (dotted) return { label: dotted[1] as string, part: false, dotted: true };
   const part = ITEM_PART.exec(text);
   if (part) return { label: `(${part[1] as string})`, part: true };
   for (const pattern of patterns ?? []) {
