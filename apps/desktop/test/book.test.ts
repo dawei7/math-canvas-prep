@@ -408,3 +408,70 @@ describe('the store: two kinds of exercise', () => {
     expect(store.state.project?.frames.find((frame) => frame.id === book.id)?.context).toBeUndefined();
   });
 });
+
+describe('the store: solutions, hidden from the learner', () => {
+  const key = (n: number) => ({ left: 0.1, top: 0.17 + n * 0.02, right: 0.5, bottom: 0.19 + n * 0.02 });
+
+  it('attaches a region of any page of the PDF to an exercise as its solution, and takes it away again', async () => {
+    const { store } = await started(workbook({ exercises: true }));
+    const book = store.state.project?.frames.find((frame) => frame.section === '1.1' && frame.label === '1') as Frame;
+    // The workbook already has one solution for each exercise: add a second (an answer printed on two lines of the key).
+    expect(store.addRegion('solution', book.id, 3, key(5)).ok).toBe(true);
+    expect(store.state.project?.frames.find((frame) => frame.id === book.id)?.solution).toHaveLength(2);
+    expect(store.state.dirty).toBe(true);
+    expect(frameIndex(store.state.project?.frames ?? []).pages.get(3)?.solution.filter((region) => region.frame.id === book.id)).toHaveLength(2);
+    expect(store.removeRegion('solution', book.id, 1).ok).toBe(true);
+    expect(store.state.project?.frames.find((frame) => frame.id === book.id)?.solution).toHaveLength(1);
+    expect(store.removeRegion('solution', book.id, 0).ok).toBe(true);
+    expect(store.state.project?.frames.find((frame) => frame.id === book.id)?.solution).toBeUndefined();
+    expect(store.removeRegion('solution', book.id, 0).error).toContain('no solution regions');
+    // One undo brings the last one back.
+    store.undo();
+    expect(store.state.project?.frames.find((frame) => frame.id === book.id)?.solution).toHaveLength(1);
+  });
+
+  it('works for an ordinary exercise too, but not for a question, and says why in plain words', async () => {
+    const { store } = await started(workbook());
+    store.apply([{ op: 'add', kind: 'exercise', page: 0, rect: [0.1, 0.33, 0.9, 0.35] }, { op: 'add', kind: 'question', page: 0, rect: [0.1, 0.5, 0.9, 0.52] }], { select: null });
+    const [exercise, question] = store.state.project?.frames as [Frame, Frame];
+    expect(store.addRegion('solution', exercise.id, 3, key(0)).ok).toBe(true);
+    const refused = store.addRegion('solution', question.id, 3, key(1));
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toBe(`Only exercises can have a solution; ${question.id} is a question.`);
+    expect(store.state.notice).toMatchObject({ kind: 'error' });
+  });
+
+  it('allows at most eight regions and says so', async () => {
+    const { store } = await started(workbook({ exercises: true }));
+    const book = store.state.project?.frames[0] as Frame;
+    for (let n = 1; n < 8; n += 1) expect(store.addRegion('solution', book.id, 3, key(n)).ok).toBe(true);
+    const ninth = store.addRegion('solution', book.id, 3, key(9));
+    expect(ninth.ok).toBe(false);
+    expect(ninth.error).toContain('at most 8');
+  });
+
+  it('shows a region on its page and marks it for a moment', async () => {
+    const { store } = await started(workbook({ exercises: true }));
+    const book = store.state.project?.frames[0] as Frame;
+    const region = book.solution?.[0] as { page: number; rect: Frame['rect'] };
+    store.showRegion(region.page, region.rect);
+    expect(store.state.page).toBe(3);
+    expect(store.state.focus).toMatchObject({ page: 3, region: region.rect });
+    expect(store.state.focus.until).toBeGreaterThan(Date.now());
+    store.showPlace(1, 0.1);
+    expect(store.state.focus).toMatchObject({ page: 1, y: 0.1 });
+    expect(store.state.page).toBe(1);
+  });
+
+  it('counts the exercises that have a solution, so that the ones without are known', async () => {
+    const { store } = await started(workbook({ exercises: true }));
+    const index = frameIndex(store.state.project?.frames ?? []);
+    expect(index.bookWithSolution).toBe(10);
+    const book = store.state.project?.frames[0] as Frame;
+    store.removeRegion('solution', book.id, 0);
+    const after = frameIndex(store.state.project?.frames ?? []);
+    expect(after.bookWithSolution).toBe(9);
+    expect(store.state.validation?.book).toEqual({ exercises: 10, withSolution: 9 });
+  });
+});
+

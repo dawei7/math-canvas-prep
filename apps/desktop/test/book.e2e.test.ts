@@ -264,6 +264,107 @@ describe.skipIf(!available)('auditing a book in the desktop app', () => {
     expect(await stateOf(win, (s) => s['selection'])).toBe(((await framesOf(win)).find((frame) => frame.label === '3b') as { id: string }).id);
   });
 
+  it('asks to select an exercise first when the Solution tool has none to attach to', async () => {
+    const win = (running as Running).win;
+    await gotoPage(win, 3);
+    await tool(win, 'Select');
+    await win.keyboard.press('Escape');
+    expect(await stateOf(win, (s) => s['selection'])).toBeNull();
+    await tool(win, 'Solution');
+    expect(await win.locator('.tool-hint').innerText()).toContain('Select an exercise first');
+    const answer = placeOf('1.1', '1').solution[0] as Place['solution'][number];
+    await drag(win, [answer.rect.left - 0.01, answer.rect.top - 0.003], [answer.rect.right + 0.01, answer.rect.bottom + 0.003]);
+    await win.locator('.toast').waitFor();
+    expect(await win.locator('.toast').innerText()).toContain('Select an exercise first');
+    expect((await framesOf(win)).filter((frame) => (frame.solution?.length ?? 0) > 0)).toHaveLength(0);
+  });
+
+  it('attaches the answer from the answer key to the selected exercise: select it, go to the key, draw the answer', async () => {
+    const win = (running as Running).win;
+    for (const label of ['1', '2', '3a']) {
+      const place = placeOf('1.1', label);
+      await gotoPage(win, place.page);
+      await tool(win, 'Select');
+      await click(win, place.rect.left + (place.rect.right - place.rect.left) * 0.3, (place.rect.top + place.rect.bottom) / 2);
+      await tool(win, 'Solution');
+      const hint = await win.locator('.tool-hint').innerText();
+      expect(hint).toContain(`Solution for ${label}`);
+      expect(hint).toContain('hidden from the learner');
+      // The key is on another page: the exercise stays selected while the page changes.
+      await gotoPage(win, 3);
+      const answer = place.solution[0] as Place['solution'][number];
+      await drag(win, [answer.rect.left - 0.01, answer.rect.top - 0.003], [answer.rect.right + 0.01, answer.rect.bottom + 0.003]);
+    }
+    const frames = await framesOf(win);
+    for (const label of ['1', '2', '3a']) {
+      const solution = frames.find((frame) => frame.label === label)?.solution ?? [];
+      expect(solution).toHaveLength(1);
+      expect(solution[0]?.page).toBe(3);
+    }
+    expect(frames.filter((frame) => (frame.solution?.length ?? 0) > 0)).toHaveLength(3);
+  });
+
+  it('draws the solution regions in a style of their own: green, dashed, with an S marker and the number of the exercise', async () => {
+    const win = (running as Running).win;
+    await tool(win, 'Select');
+    const bodies = win.locator('.region-solution .region-body');
+    expect(await bodies.count()).toBe(3);
+    expect(await bodies.first().getAttribute('stroke')).toBe('#15803d');
+    expect(await bodies.first().getAttribute('stroke-dasharray')).toBe('7 4');
+    expect((await win.locator('g[data-owner] .chip text').allTextContents()).sort()).toEqual(['S 1', 'S 2', 'S 3a']);
+    // A book exercise is amber and a solution green: never the same colour.
+    expect(await win.locator('g[data-owner] .chip rect').first().getAttribute('fill')).toBe('#15803d');
+  });
+
+  it('lists the solutions on the exercise, hidden from the learner, and a click on one jumps to it', async () => {
+    const win = (running as Running).win;
+    await gotoPage(win, 0);
+    await tool(win, 'Select');
+    const place = placeOf('1.1', '3a');
+    await click(win, place.rect.left + (place.rect.right - place.rect.left) * 0.3, (place.rect.top + place.rect.bottom) / 2);
+    const list = win.locator('.inspector .region-list-solution');
+    expect(await list.locator('.hidden-badge').innerText()).toBe('hidden from the learner');
+    expect(await list.locator('.region-item').count()).toBe(1);
+    expect(await list.locator('.pill-page').innerText()).toBe('p4');
+    expect(await list.locator('.pill-text').innerText()).toContain('3a. -2');
+    await list.getByRole('button', { name: 'Remove solution region 1' }).waitFor();
+    await list.locator('.region-pill').click();
+    await win.waitForFunction(() => document.querySelector('.page')?.getAttribute('data-page') === '3');
+    expect(await win.locator('.pulse').count()).toBe(1);
+    await win.locator('.inspector').getByRole('button', { name: 'About solution' }).click();
+    expect(await win.locator('.inspector .info-pop').innerText()).toContain('never sent to a tutor chat');
+  });
+
+  it('selects the exercise a solution region belongs to when the region is clicked, and removes it from the page or from the card', async () => {
+    const win = (running as Running).win;
+    await gotoPage(win, 3);
+    await tool(win, 'Select');
+    const answer = placeOf('1.1', '2').solution[0] as Place['solution'][number];
+    await click(win, (answer.rect.left + answer.rect.right) / 2, (answer.rect.top + answer.rect.bottom) / 2);
+    const two = (await framesOf(win)).find((frame) => frame.label === '2') as { id: string };
+    expect(await stateOf(win, (s) => s['selection'])).toBe(two.id);
+    // The selected exercise's own region has a button to remove it right there.
+    await win.locator('.region-solution.own .region-remove').click();
+    expect((await framesOf(win)).find((frame) => frame.label === '2')?.solution).toBeUndefined();
+    await win.keyboard.press('Control+z');
+    expect((await framesOf(win)).find((frame) => frame.label === '2')?.solution).toHaveLength(1);
+    // And from the card.
+    await win.locator('.inspector').getByRole('button', { name: 'Remove solution region 1' }).click();
+    expect((await framesOf(win)).find((frame) => frame.label === '2')?.solution).toBeUndefined();
+    await win.keyboard.press('Control+z');
+    expect((await framesOf(win)).filter((frame) => (frame.solution?.length ?? 0) > 0)).toHaveLength(3);
+  });
+
+  it('writes the solutions into the project file, where the command line lists them as the answer key', async () => {
+    const win = (running as Running).win;
+    await win.keyboard.press('Control+s');
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { dirty: boolean } } }).__store.state.dirty === false);
+    const validation = JSON.parse(cli('validate', '--json')) as { ok: boolean };
+    expect(validation.ok).toBe(true);
+    const text = JSON.stringify((JSON.parse(cli('solution', 'list', '--json')) as { result: unknown }).result);
+    for (const label of ['1', '2', '3a']) expect(text).toContain(`"label":"${label}"`);
+  });
+
   it('raised no errors in the page while all of this happened', () => {
     expect((running as Running).errors.filter((message) => !message.includes('Content Security Policy'))).toEqual([]);
   });
