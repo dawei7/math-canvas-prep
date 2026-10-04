@@ -498,44 +498,10 @@ green solution) to look at.
 
 ## Instruction block for an AI agent
 
-Paste this into the agent's task; it assumes the `mcprep` MCP server (or the command line). It is made for any model: steps 5 and 6 give
-every agent the same checks and the same sample, and step 6 says what to do when the agent cannot look at images.
-
-```text
-Audit the textbook PDF <path> for Math Canvas as an authority, entirely on this machine (do not upload the PDF or any page of it).
-First read the resource mcprep://guide (or call get_guide), then docs/AUDIT_A_BOOK.md if you have the repository.
-
-1. create_project (title = the book's title, folder = where it belongs in the library), then book_meta with the author, the licence
-   (name and address), the source address and the notice, copied from the book's own front matter.
-2. outline_derive_book. Read "notes" and every entry with confidence below 0.9. Check the number of chapters and sections against the printed
-   contents (render_page of the contents pages), the titles, the pages. If the proposal is right, outline_derive_book with apply=true;
-   if a title or a page is wrong, apply_operations with one outline.set operation that holds your corrected entries (keep id, label and top).
-3. exercises_propose with solutions=true and details_file set, without apply. Read the result: per section the count, first and last
-   number, gaps, duplicates, rejected numbers, notes. For every difference from what the book promises (a count, a missing number,
-   a number printed twice) collect the page evidence and decide: it is what the book prints, so keep it and report it, unless the tool
-   misread the page (then fix the frames).
-4. exercises_propose with solutions=true and apply=true (it can be run again: what is there is skipped, what you corrected is kept and
-   listed under "changed", replace=true overwrites it; use sections=[...] to leave out what you framed by hand). Then solutions_propose
-   for answers that were not matched.
-5. Check without looking: exercises_verify with details_file set. Read "summary", then the findings in the order given (errors first).
-   For every error render_crop the ref (frame = ref) to see the defect and correct it (update_frame, exercises_label, exercises_section,
-   solution_add, or apply_operations in one atomic batch), then call exercises_verify again, until it has no errors. Read every warning
-   and info; keep one only if you can say why (the book prints no answers for that section, a number the book itself skips).
-6. Look at the fixed sample: exercises_sample. Do not choose a sample of your own: the list is the same for every agent. For every entry
-   call render_crop with frame = ref and region = region (or set crops_dir and open the files) and check that the exercise crop starts
-   with its number, that no line is cut, that nothing of the next exercise is in it, that a figure is inside and that the instruction is
-   the right one (the entries for has-continuation and context-on-another-page also have a region continues:0 and context:N); and that
-   the answer crop shows the answer to THIS exercise. Fix what is wrong, then call exercises_verify and look again. If you cannot look
-   at images, say so in your report: exercises_verify and the list of the sample are then all you can report on, and you must not
-   write that you looked at a crop you did not see.
-7. validate (no errors), book_show (the counts per section next to the book's own), export_bundle, import_check (wouldImport must be true).
-8. Report: where the bundle is; chapters, sections, exercises, solutions; every difference from the book's own contents or from the
-   expected counts, with the page evidence; every exercise without a solution and every solution without an exercise; the last
-   exercises_verify summary and every warning you kept, with the reason; the entries of the sample you looked at (all of them); what you
-   framed by hand; what you were unsure about.
-
-Never invent an exercise, a number or an answer that the book does not print; never change the numbering to what you think it should be.
-```
+The procedure for an agent is [AGENT_RUNBOOK.md](AGENT_RUNBOOK.md): the phases, the exact calls, the decision rules, the formulas for a repair, the stop codes and the
+report. [AGENT_PROMPTS.md](AGENT_PROMPTS.md) holds the prompts that point an agent at it (the audit, the visual pass alone, the reviewer who confirms the
+acknowledgements, a resumed run). Use them instead of a list of steps of your own: two agents that follow the runbook make the same calls and reach the same
+result, and [the gate](#the-gate-proving-that-an-audit-is-complete) is the proof that the audit is complete.
 
 ## Checklist
 
