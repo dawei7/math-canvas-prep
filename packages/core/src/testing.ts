@@ -5,3 +5,4 @@ export * from './testing/pdf-writer.js';
 export * from './testing/sample.js';
 export * from './testing/book.js';
 export * from './testing/authority-sample.js';
+export * from './testing/span.js';

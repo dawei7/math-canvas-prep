@@ -136,10 +136,34 @@ export function rowHasItem(row: string, label: string, patterns?: readonly RegEx
   return false;
 }
 
-/** The part of a label that is an integer and what follows it (`5a` is 5 and `a`); undefined when it does not start with one. */
-export function parseNumeric(label: string): { n: number; suffix: string } | undefined {
-  const match = /^(\d+)(.*)$/s.exec(label);
-  return match ? { n: Number(match[1]), suffix: match[2] as string } : undefined;
+/** A label that starts with a number: the numbers of a dotted label (`1.3.10` is 1, 3 and 10), what follows them, and the first number. */
+export interface NumericLabel {
+  n: number;
+  suffix: string;
+  parts: number[];
+  /** A label of the form N.M.K: its last number is a counter that other kinds of item (an example, a definition) may share. */
+  dotted: boolean;
+}
+
+/** The numbers a label starts with and what follows them (`5a` is 5 and `a`, `1.3.10` is 1, 3, 10); undefined when it does not start with a number. */
+export function parseNumeric(label: string): NumericLabel | undefined {
+  const match = /^(\d+(?:\.\d+)*)(.*)$/s.exec(label);
+  if (!match) return undefined;
+  const parts = (match[1] as string).split('.').map(Number);
+  return { n: parts[0] as number, suffix: match[2] as string, parts, dotted: parts.length > 1 };
+}
+
+/** Numbers as numbers, number by number: 1.3.8 comes before 1.3.10, and 5 before 5a. */
+export function compareNumeric(a: Pick<NumericLabel, 'parts' | 'suffix'>, b: Pick<NumericLabel, 'parts' | 'suffix'>): number {
+  for (let i = 0; i < Math.max(a.parts.length, b.parts.length); i += 1) {
+    const x = a.parts[i];
+    const y = b.parts[i];
+    if (x === y) continue;
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    return x - y;
+  }
+  return a.suffix < b.suffix ? -1 : a.suffix > b.suffix ? 1 : 0;
 }
 
 /** The first characters of a text, for the evidence of a finding. */

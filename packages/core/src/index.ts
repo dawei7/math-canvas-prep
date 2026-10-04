@@ -14,5 +14,6 @@ export * from './bundle/reader.js';
 export * from './project/store.js';
 export * from './session.js';
 export * from './verify/session.js';
+export { measureInk, type InkMeasure, type InkRegion } from './verify/ink-measure.js';
 export * from './sample/session.js';
 export * from './assets.js';

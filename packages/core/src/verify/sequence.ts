@@ -1,6 +1,6 @@
 import { normalizeLabel } from '../model/authority.js';
 import { draft, type Draft, type Exercise, type Prepared, type Where } from './common.js';
-import { compactNumbers, parseNumeric } from './labels.js';
+import { compactNumbers, compareNumeric, parseNumeric } from './labels.js';
 import { VERIFY_LIMITS, type VerifySection } from './types.js';
 
 /**
@@ -20,9 +20,13 @@ interface Item {
   /** The integer the label starts with and what follows it, when it starts with one. */
   n: number | undefined;
   suffix: string;
+  /** All the numbers of the label (`1.3.10` is 1, 3, 10), when it starts with one. */
+  parts: number[] | undefined;
+  /** A label of the form N.M.K: its last number counts other kinds of item as well, so its gaps and its size say nothing. */
+  dotted: boolean;
 }
 
-const compareKeys = (a: { n: number; suffix: string }, b: { n: number; suffix: string }): number => a.n - b.n || (a.suffix < b.suffix ? -1 : a.suffix > b.suffix ? 1 : 0);
+const compareKeys = (a: Item, b: Item): number => compareNumeric({ parts: a.parts as number[], suffix: a.suffix }, { parts: b.parts as number[], suffix: b.suffix });
 
 function median(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -37,7 +41,7 @@ function groupBySection(exercises: readonly Exercise[]): Map<string, Item[]> {
     if (!exercise.book) continue;
     const label = normalizeLabel(exercise.frame.label as string).label;
     const numeric = parseNumeric(label);
-    const item: Item = { exercise, label, n: numeric?.n, suffix: numeric?.suffix ?? '' };
+    const item: Item = { exercise, label, n: numeric?.n, suffix: numeric?.suffix ?? '', parts: numeric?.parts, dotted: numeric?.dotted === true };
     const list = groups.get(exercise.section as string);
     if (list) list.push(item);
     else groups.set(exercise.section as string, [item]);
@@ -73,15 +77,13 @@ function columnsOf(items: readonly Item[]): Item[][] {
   return columns.map((column) => column.sort(inPlace));
 }
 
-const keyOf = (item: Item): { n: number; suffix: string } => ({ n: item.n as number, suffix: item.suffix });
-
 /** The items to take out so that the rest is in order: the longest run that is in order is kept (the earliest of equally long ones). */
 function outOfOrder(sequence: readonly Item[]): Set<Item> {
   const length = new Array<number>(sequence.length).fill(1);
   const before = new Array<number>(sequence.length).fill(-1);
   for (let i = 0; i < sequence.length; i += 1) {
     for (let j = 0; j < i; j += 1) {
-      if (compareKeys(keyOf(sequence[j] as Item), keyOf(sequence[i] as Item)) <= 0 && (length[j] as number) + 1 > (length[i] as number)) {
+      if (compareKeys(sequence[j] as Item, sequence[i] as Item) <= 0 && (length[j] as number) + 1 > (length[i] as number)) {
         length[i] = (length[j] as number) + 1;
         before[i] = j;
       }
@@ -144,7 +146,7 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
     }
 
     // --- the labels -------------------------------------------------------------------------------------------------
-    const plain = items.filter((item) => !/^\d+$/.test(item.label));
+    const plain = items.filter((item) => !/^\d+$/.test(item.label) && !(item.dotted && item.suffix === ''));
     if (plain.length > 0) {
       drafts.push(
         draft(
@@ -159,9 +161,12 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
       );
     }
 
-    const numeric = items.filter((item) => item.n !== undefined);
-    const centre = numeric.length > 0 ? median(numeric.map((item) => item.n as number)) : 0;
-    const strays = numeric.filter((item) => (item.n as number) > VERIFY_LIMITS.outlierFactor * centre);
+    // A dotted label (1.3.10) is compared as numbers, number by number; its last number is a counter that examples and
+    // definitions may share, so a gap in it is not a finding and its size says nothing about a stray number.
+    const numeric = items.filter((item) => item.parts !== undefined);
+    const whole = numeric.filter((item) => !item.dotted);
+    const centre = whole.length > 0 ? median(whole.map((item) => item.n as number)) : 0;
+    const strays = whole.filter((item) => (item.n as number) > VERIFY_LIMITS.outlierFactor * centre);
     for (const item of strays) {
       drafts.push(
         draft(
@@ -176,6 +181,7 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
       );
     }
     const regular = numeric.filter((item) => !strays.includes(item));
+    const regularWhole = regular.filter((item) => !item.dotted);
 
     const byLabel = new Map<string, Item[]>();
     for (const item of items) {
@@ -202,7 +208,7 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
     }
 
     // --- gaps ---------------------------------------------------------------------------------------------------------
-    const values = [...new Set(regular.map((item) => item.n as number))].sort((a, b) => a - b);
+    const values = [...new Set(regularWhole.map((item) => item.n as number))].sort((a, b) => a - b);
     const gaps: string[] = [];
     if (values.length >= 2) {
       const low = values[0] as number;
@@ -219,7 +225,7 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
           const run: number[] = [];
           for (let n = before + 1; n < after; n += 1) run.push(n);
           gaps.push(...run.map(String));
-          const holder = regular.find((item) => item.n === before) as Item;
+          const holder = regularWhole.find((item) => item.n === before) as Item;
           drafts.push(
             draft(
               'gap',
@@ -282,7 +288,7 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
     }
 
     // The first and the last number of the section as the book counts: in numeric order (a stray number shows here), else in reading order.
-    const counted = numeric.length > 0 ? [...numeric].sort((a, b) => compareKeys(keyOf(a), keyOf(b)) || a.exercise.order - b.exercise.order) : items;
+    const counted = numeric.length > 0 ? [...numeric].sort((a, b) => compareKeys(a, b) || a.exercise.order - b.exercise.order) : items;
     sections.push({
       id,
       label: node?.entry.label ?? null,

@@ -96,6 +96,46 @@ export async function renderPage(doc: PdfDocument, index: number, options: Rende
   return renderView(doc, index, { left: 0, top: 0, right: 1, bottom: 1 }, options, 1600);
 }
 
+/** A page as a bitmap of dark pixels (1) and light ones (0): a pixel is dark when its luminance is below `threshold` (default 150). */
+export interface DarkPicture {
+  width: number;
+  height: number;
+  dark: Uint8Array;
+}
+
+/**
+ * A whole page drawn at `scale` pixels per point (default 2, reduced for a huge page) and reduced to dark and light pixels,
+ * without making a PNG: for measuring how much ink lies along a line of the page.
+ */
+export async function renderDark(doc: PdfDocument, index: number, options: { scale?: number; threshold?: number } = {}): Promise<DarkPicture> {
+  doc.assertPage(index);
+  const { createCanvas } = await loadCanvas().catch((error: unknown) => {
+    throw new McPrepError('E_RENDER_UNAVAILABLE', `Rendering needs the @napi-rs/canvas package, which could not be loaded: ${(error as Error).message}`, {
+      hint: 'Reinstall the dependencies (npm install). Text analysis, validation and export work without rendering.',
+      cause: error,
+    });
+  });
+  const page = await doc.rawPage(index);
+  const size = await doc.pageSize(index);
+  let scale = options.scale ?? 2;
+  while (size.width * scale * size.height * scale > 12_000_000 && scale > 0.5) scale *= 0.8;
+  const viewport = page.getViewport({ scale });
+  const width = Math.max(1, Math.ceil(viewport.width));
+  const height = Math.max(1, Math.ceil(viewport.height));
+  const canvas = createCanvas(width, height);
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  await page.render({ canvasContext: context, canvas, viewport } as never).promise;
+  const data = context.getImageData(0, 0, width, height).data;
+  const threshold = options.threshold ?? 150;
+  const dark = new Uint8Array(width * height);
+  for (let at = 0, pixel = 0; pixel < dark.length; at += 4, pixel += 1) {
+    if (0.299 * (data[at] as number) + 0.587 * (data[at + 1] as number) + 0.114 * (data[at + 2] as number) < threshold) dark[pixel] = 1;
+  }
+  return { width, height, dark };
+}
+
 /** A region of a page as a PNG; the grid labels are page coordinates, so the crop can be read in page fractions. */
 export async function renderRegion(doc: PdfDocument, index: number, rect: Rect, options: RenderOptions = {}): Promise<RenderedImage> {
   doc.assertPage(index);

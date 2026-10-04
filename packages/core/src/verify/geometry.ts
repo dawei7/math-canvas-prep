@@ -72,7 +72,7 @@ export function checkSharedPlaces(byPage: ReadonlyMap<number, readonly OwnRegion
         const smaller = Math.min(rectArea(a.rect), rectArea(b.rect));
         const share = smaller > 0 ? rectArea(common) / smaller : 0;
         const height = rectHeight(common);
-        const same = a.main && b.main && rectsEqual(a.rect, b.rect, VERIFY_LIMITS.sameRegionTolerance);
+        const same = rectsEqual(a.rect, b.rect, VERIFY_LIMITS.sameRegionTolerance);
         if (!same && !(share > VERIFY_LIMITS.overlapShare && height >= VERIFY_LIMITS.overlapMinHeight)) continue;
         const hit: PairHit = { kind: same ? 'duplicate-region' : 'overlap', first, second, share, height, width: rectWidth(common) };
         const key = `${first.exercise.order}|${second.exercise.order}`;
@@ -156,23 +156,36 @@ export function checkContextOverlaps(exercises: readonly Exercise[], byPage: Rea
   return drafts;
 }
 
-/** A region taller than `maxHeight`, narrower than `minWidth` or smaller than `minArea`: not one printed exercise. */
+/**
+ * A region taller than `maxHeight`, narrower than `minWidth` or smaller than `minArea`: not one printed exercise. A continuation
+ * of an exercise that spans pages may be as tall as a page, so it is only measured for width and area.
+ */
 export function checkRegionSizes(exercises: readonly Exercise[]): Draft[] {
   const drafts: Draft[] = [];
   for (const exercise of exercises) {
     if (exercise.frame.unit !== undefined) continue;
-    const rect = exercise.frame.rect;
-    const height = rectHeight(rect);
-    const width = rectWidth(rect);
-    const area = rectArea(rect);
-    const found: string[] = [];
-    if (height > VERIFY_LIMITS.maxHeight) found.push(`height ${measure(height)} is more than ${VERIFY_LIMITS.maxHeight}`);
-    if (width < VERIFY_LIMITS.minWidth) found.push(`width ${measure(width)} is less than ${VERIFY_LIMITS.minWidth}`);
-    if (area < VERIFY_LIMITS.minArea) found.push(`area ${measure(area, 5)} is less than ${VERIFY_LIMITS.minArea}`);
-    if (found.length === 0) continue;
-    drafts.push(
-      draft('region-size', 'warning', exercise.ref, exercise.frame.page, `The region of ${exercise.ref} on page ${exercise.frame.page} is not the size of one printed exercise: ${found.join('; ')}.`, `region ${rectText(rect)}`, exercise.where),
-    );
+    const regions = [{ page: exercise.frame.page, rect: exercise.frame.rect, main: true }, ...(exercise.frame.continues ?? []).map((region) => ({ ...region, main: false }))];
+    for (const { page, rect, main } of regions) {
+      const height = rectHeight(rect);
+      const width = rectWidth(rect);
+      const area = rectArea(rect);
+      const found: string[] = [];
+      if (main && height > VERIFY_LIMITS.maxHeight) found.push(`height ${measure(height)} is more than ${VERIFY_LIMITS.maxHeight}`);
+      if (width < VERIFY_LIMITS.minWidth) found.push(`width ${measure(width)} is less than ${VERIFY_LIMITS.minWidth}`);
+      if (area < VERIFY_LIMITS.minArea) found.push(`area ${measure(area, 5)} is less than ${VERIFY_LIMITS.minArea}`);
+      if (found.length === 0) continue;
+      drafts.push(
+        draft(
+          'region-size',
+          'warning',
+          exercise.ref,
+          page,
+          `The ${main ? 'region' : 'continuation region'} of ${exercise.ref} on page ${page} is not the size of one printed exercise: ${found.join('; ')}.`,
+          `region ${rectText(rect)}`,
+          main ? exercise.where : { ...exercise.where, page, top: rect.top, left: rect.left },
+        ),
+      );
+    }
   }
   return drafts;
 }

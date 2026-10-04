@@ -703,6 +703,7 @@ Options:
 
 - `--section <id>`: Only the exercises filed under this section (an outline entry id); repeat the option, or separate the ids with commas. Ordinary exercises are then left out.
 - `--details <file>`: Write the whole report as JSON (every finding, every section), in the format math-canvas-verify.
+- `--ink`: Also render the pages (each page that has a region, once) and report every region whose top, bottom, left or right edge runs through printed ink (`edge-on-ink`, a warning, the worst first). Slower: it draws the pages.
 - `--fail-on error|warning|none`: Exit with code 4 when there is a finding of this severity or a worse one: error (the default), warning, or none (always 0).
 - `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, for a book that does not print `5.`, `5)` or `(5)`: a regular expression with the label as printed in group 1 (the same option as `exercises propose`); repeatable. It adds to what is read by default.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
@@ -716,6 +717,8 @@ Examples:
 $ mcprep exercises verify
 $ mcprep exercises verify --section 1.2 --section 1.3
 $ mcprep exercises verify --details verify.json --fail-on warning
+$ mcprep exercises verify --ink
+$ mcprep exercises verify --item-pattern '^Lösung\s+(\d+(?:\.\d+)*)'
 $ mcprep exercises verify --json
 ```
 

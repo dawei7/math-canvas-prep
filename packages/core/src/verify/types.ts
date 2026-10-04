@@ -4,6 +4,8 @@
  * every agent that runs the check on the same project, whatever model it is and whether it can look at images.
  */
 
+import type { Rect } from '../model/types.js';
+
 export const VERIFY_FORMAT = 'math-canvas-verify';
 export const VERIFY_VERSION = 1;
 
@@ -34,6 +36,22 @@ export const VERIFY_CODES = [
   { code: 'order', severities: ['warning'] },
   { code: 'no-solution', severities: ['info', 'warning'] },
   { code: 'label-outlier', severities: ['warning'] },
+  { code: 'span-gap', severities: ['error'] },
+  { code: 'continuation-order', severities: ['error'] },
+  { code: 'continuation-limit', severities: ['warning'] },
+  { code: 'numbered-text-left-behind', severities: ['error'] },
+  { code: 'answer-left-behind', severities: ['error'] },
+  { code: 'text-left-behind', severities: ['warning', 'info'] },
+  { code: 'answer-clipped', severities: ['warning'] },
+  { code: 'context-range', severities: ['error'] },
+  { code: 'context-missing', severities: ['error'] },
+  { code: 'context-not-nearest', severities: ['warning'] },
+  { code: 'solution-section-mismatch', severities: ['error'] },
+  { code: 'solution-order', severities: ['warning'] },
+  { code: 'edge-on-ink', severities: ['warning'] },
+  { code: 'region-open-end', severities: ['warning'] },
+  { code: 'region-holds-item', severities: ['error'] },
+  { code: 'inline-section', severities: ['info'] },
 ] as const;
 
 export type VerifyCode = (typeof VERIFY_CODES)[number]['code'];
@@ -58,6 +76,20 @@ export const VERIFY_LIMITS = {
   outlierFactor: 3,
   /** Characters of the text found that a finding quotes as its evidence. */
   evidenceLength: 40,
+  /** `text-left-behind` and its relatives: a piece of text is covered when at least this share of its box lies inside regions. */
+  coveredShare: 0.5,
+  /** Text left behind: lines closer than this many line heights make one block, and a line this close under a region goes on from it. */
+  blockGap: 1.7,
+  /** A section is a practice set (its text left behind is checked) when at least this share of the lines from its first exercise to its end are in regions. */
+  practiceShare: 0.6,
+  /** A practice set has at least this many exercises together. */
+  practiceMinExercises: 3,
+  /** `region-open-end`: a last line shorter than this share of the longest line of the region ends its paragraph. */
+  openEndLength: 0.8,
+  /** `region-open-end`: the line below a region goes on from it when its top is no further than this many line pitches below the region's last line. */
+  openEndPitch: 1.2,
+  /** `edge-on-ink`: an edge is on ink when more than this share of the pixels along it (in the three rows or columns around it) is dark. */
+  inkEdgeShare: 0.02,
 } as const;
 
 export interface VerifyFinding {
@@ -112,9 +144,22 @@ export interface VerifyReport {
   sections: VerifySection[];
 }
 
+/** How much of the pixels along each edge of a region is dark (0 to 1), measured on the rendered page. */
+export interface EdgeInk {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/** The ink of the edges of a region, or undefined for a region that was not measured. */
+export type InkLookup = (region: { page: number; rect: Rect }) => EdgeInk | undefined;
+
 export interface VerifyOptions {
   /** Only the exercises filed under these sections (ids of outline entries); default all. Ordinary exercises are then left out. */
   sections?: readonly string[];
+  /** The ink of the edges of the regions (`measureInk`): `edge-on-ink` is only checked when it is given. */
+  ink?: InkLookup;
   /**
    * How the number of an exercise or an answer starts a line, when the book does not print `5.`, `5)` or `(5)`: regular
    * expressions with the label as printed in group 1 (the same patterns `exercises propose --item-pattern` takes).

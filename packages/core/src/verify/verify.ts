@@ -1,9 +1,16 @@
-import type { PageText } from '../model/types.js';
+import type { PageText, Rect } from '../model/types.js';
 import type { Project } from '../project/model.js';
+import { LIMITS } from '../rules/constants.js';
 import { McPrepError } from '../rules/issues.js';
 import { prepare, type Draft, type Prepared } from './common.js';
+import { checkContexts } from './context.js';
+import { checkContinuations } from './continuation.js';
+import { checkCoverage } from './coverage.js';
 import { checkContextOverlaps, checkRegionSizes, checkSharedPlaces, ownRegionsByPage } from './geometry.js';
+import { checkInk } from './ink.js';
+import { checkKeys } from './key.js';
 import { PageIndex } from './regions.js';
+import { buildRun, chainOf, computeLayout, pagesOfRange } from './run.js';
 import { checkSections } from './sequence.js';
 import { checkExerciseText, checkSolutionText } from './text.js';
 import { SEVERITY_RANK, VERIFY_CODES, VERIFY_FORMAT, VERIFY_VERSION, type VerifyOptions, type VerifyReport } from './types.js';
@@ -38,20 +45,50 @@ function prepared(project: Project, options: VerifyOptions): Prepared {
   return prepare(project.frames, project.outline?.entries, project.pdf.pageCount, chosenSections(project, options));
 }
 
-/** The pages whose text the check reads: the page of every authoritative exercise and of every solution region. */
+/**
+ * The pages whose text the check reads: every page of an authoritative exercise (its regions, instructions and solutions), the
+ * pages of the zone of each section (from its first exercise to where it ends), the pages of the answer key, and the pages a
+ * span of regions passes over.
+ */
 export function pagesToVerify(project: Project, options: VerifyOptions = {}): number[] {
+  const state = prepared(project, options);
+  const pageCount = project.pdf.pageCount;
   const pages = new Set<number>();
-  for (const exercise of prepared(project, options).exercises) {
+  for (const exercise of state.exercises) {
     if (!exercise.book) continue;
-    pages.add(exercise.frame.page);
-    for (const region of exercise.frame.solution ?? []) pages.add(region.page);
+    const frame = exercise.frame;
+    pages.add(frame.page);
+    for (const region of frame.solution ?? []) pages.add(region.page);
+    for (const region of frame.context ?? []) pages.add(region.page);
+    const chain = chainOf(frame);
+    for (let i = 0; i < chain.length; i += 1) {
+      const region = chain[i] as (typeof chain)[number];
+      pages.add(region.page);
+      const next = chain[i + 1];
+      if (next !== undefined) for (let page = region.page; page <= next.page; page += 1) pages.add(page);
+    }
+    if ((frame.continues?.length ?? 0) >= LIMITS.maxRegions) pages.add((chain[chain.length - 1] as (typeof chain)[number]).page + 1);
   }
-  return [...pages].filter((page) => Number.isInteger(page) && page >= 0 && page < project.pdf.pageCount).sort((a, b) => a - b);
+  const layout = computeLayout(project, state);
+  for (const zone of layout.zones) for (const page of pagesOfRange(zone.start, zone.end, pageCount)) pages.add(page);
+  if (layout.key !== undefined && chosenSections(project, options) === undefined) for (let page = layout.key.first; page <= layout.key.last; page += 1) pages.add(page);
+  return [...pages].filter((page) => Number.isInteger(page) && page >= 0 && page < pageCount).sort((a, b) => a - b);
+}
+
+/** The regions whose edges `edge-on-ink` looks at: every region of every exercise that is checked. */
+export function regionsToMeasure(project: Project, options: VerifyOptions = {}): { page: number; rect: Rect }[] {
+  const regions: { page: number; rect: Rect }[] = [];
+  for (const exercise of prepared(project, options).exercises) {
+    const frame = exercise.frame;
+    regions.push(...chainOf(frame), ...(frame.context ?? []), ...(frame.solution ?? []));
+  }
+  return regions;
 }
 
 const compareDrafts = (a: Draft, b: Draft): number =>
   SEVERITY_RANK[a.finding.severity] - SEVERITY_RANK[b.finding.severity] ||
   (CODE_RANK.get(a.finding.code) as number) - (CODE_RANK.get(b.finding.code) as number) ||
+  (b.weight ?? 0) - (a.weight ?? 0) ||
   a.where.section - b.where.section ||
   a.where.page - b.where.page ||
   a.where.top - b.where.top ||
@@ -71,6 +108,7 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
   const patterns = stateless(options.itemPatterns);
   const own = ownRegionsByPage(state.exercises);
   const sectioned = checkSections(state);
+  const run = buildRun(project, state, index, patterns, chosenSections(project, options) !== undefined);
   const drafts: Draft[] = [
     ...checkExerciseText(state.exercises, index, patterns),
     ...checkSolutionText(state.exercises, index, patterns),
@@ -78,6 +116,11 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
     ...checkContextOverlaps(state.exercises, own),
     ...checkRegionSizes(state.exercises),
     ...sectioned.drafts,
+    ...checkContinuations(state.exercises),
+    ...checkCoverage(run),
+    ...checkContexts(run),
+    ...checkKeys(run),
+    ...(options.ink !== undefined ? checkInk(state.exercises, options.ink) : []),
   ];
   drafts.sort(compareDrafts);
   const findings = drafts.map((entry) => entry.finding);

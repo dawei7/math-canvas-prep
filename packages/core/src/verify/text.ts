@@ -108,8 +108,12 @@ export function checkSolutionText(exercises: readonly Exercise[], index: PageInd
       );
       continue;
     }
+    // The answer starts in its first region: that is where the label must be. A first region that is a picture (no text) cannot
+    // say, and the label may then stand in a later region; a continuation never has to hold it.
+    const main = read[0] as (typeof read)[number];
+    const candidates = isBlank(main.text) ? withText : [main];
     const cuts: (typeof withText)[number][] = [];
-    const found = withText.some((entry) => {
+    const found = candidates.some((entry) => {
       const { region, text } = entry;
       if (text.margin !== undefined && rowHasItem(text.margin, label, patterns)) {
         if (!cutsNumber(text, region.rect, label)) return true;
@@ -122,7 +126,7 @@ export function checkSolutionText(exercises: readonly Exercise[], index: PageInd
     });
     if (found) continue;
     const cut = cuts[0];
-    const shown = cut ?? (withText[0] as (typeof withText)[number]);
+    const shown = cut ?? (candidates[0] as (typeof withText)[number]);
     drafts.push(
       draft(
         'solution-label-missing',

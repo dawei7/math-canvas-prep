@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { verifySession, type VerifyFinding, type VerifyReport } from '@mcprep/core';
-import { listOption, stringOption, usage } from '../args.js';
+import { flag, listOption, stringOption, usage } from '../args.js';
 import { plural, tableLimited, TEXT_LIMIT } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
 import { GLOBAL_OPTIONS } from './common.js';
@@ -91,6 +91,7 @@ export const exercisesVerify: CommandSpec = {
   options: [
     { name: 'section', type: 'string', value: '<id>', multiple: true, description: 'Only the exercises filed under this section (an outline entry id); repeat the option, or separate the ids with commas. Ordinary exercises are then left out.' },
     { name: 'details', type: 'string', value: '<file>', description: 'Write the whole report as JSON (every finding, every section), in the format math-canvas-verify.' },
+    { name: 'ink', type: 'boolean', description: 'Also render the pages (each page that has a region, once) and report every region whose top, bottom, left or right edge runs through printed ink (`edge-on-ink`, a warning, the worst first). Slower: it draws the pages.' },
     { name: 'fail-on', type: 'string', value: 'error|warning|none', description: 'Exit with code 4 when there is a finding of this severity or a worse one: error (the default), warning, or none (always 0).' },
     {
       name: 'item-pattern',
@@ -101,7 +102,7 @@ export const exercisesVerify: CommandSpec = {
     },
     ...GLOBAL_OPTIONS,
   ],
-  examples: ['mcprep exercises verify', 'mcprep exercises verify --section 1.2 --section 1.3', 'mcprep exercises verify --details verify.json --fail-on warning', 'mcprep exercises verify --json'],
+  examples: ['mcprep exercises verify', 'mcprep exercises verify --section 1.2 --section 1.3', 'mcprep exercises verify --details verify.json --fail-on warning', 'mcprep exercises verify --ink', "mcprep exercises verify --item-pattern '^Lösung\\s+(\\d+(?:\\.\\d+)*)'", 'mcprep exercises verify --json'],
   output:
     '{ format: "math-canvas-verify", version: 1, summary: { exercises, authoritative, sections, solutions, errors, warnings, infos }, findings: [{ code, severity, ref, page, message, evidence }] (the first 300; findingsOmitted: n says how many more the --details file has), sections: [{ id, label, exercises, firstLabel, lastLabel, withSolution, gaps, duplicates }] }; the exit code is 4 when --fail-on is met',
   async run(context) {
@@ -109,7 +110,7 @@ export const exercisesVerify: CommandSpec = {
     const threshold = failOn(context);
     const ids = sectionIds(context);
     const patterns = itemPatterns(context);
-    const report = await verifySession(session, { ...(ids.length > 0 ? { sections: ids } : {}), ...(patterns.length > 0 ? { itemPatterns: patterns } : {}) });
+    const report = await verifySession(session, { ...(ids.length > 0 ? { sections: ids } : {}), ...(patterns.length > 0 ? { itemPatterns: patterns } : {}), ...(flag(context.options, 'ink') ? { ink: true } : {}) });
     const details = stringOption(context.options, 'details');
     if (details !== undefined) await writeFile(resolve(context.io.cwd, details), `${JSON.stringify(report, null, 1)}\n`);
     const cut = report.findings.length > FINDINGS_IN_RESULT;

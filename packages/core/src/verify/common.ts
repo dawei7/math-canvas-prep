@@ -17,6 +17,8 @@ export interface Where {
 export interface Draft {
   finding: VerifyFinding;
   where: Where;
+  /** Findings of one code with a greater weight come first (the worst edge on ink); without one, they follow the order of the book. */
+  weight?: number;
 }
 
 /** An exercise frame as the checks see it. */

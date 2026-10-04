@@ -102,11 +102,15 @@ describe('exercises verify', () => {
     const cli = await bookWorkspace({ exercises: true });
     // The synthetic workbook of the tests has no answers for two exercises once their solutions are cleared.
     for (const reference of ['1.2:1', '1.2:2', '1.2:3']) await cli(['solution', 'clear', reference]);
-    const done = await cli(['exercises', 'verify']);
+    // The key still prints those three answers, so the whole book has an answer left behind (an error); the section alone has only the warning.
+    const whole = await cli(['exercises', 'verify']);
+    expect(reportOf(whole).findings.some((finding) => finding.code === 'answer-left-behind')).toBe(true);
+    expect(whole.code).toBe(4);
+    const done = await cli(['exercises', 'verify', '--section', '1.2']);
     const report = reportOf(done);
     expect(report.findings.find((finding) => finding.code === 'no-solution')).toMatchObject({ severity: 'warning', ref: '1.2' });
     expect(done.code).toBe(0);
-    expect((await cli(['exercises', 'verify', '--fail-on', 'warning'])).code).toBe(4);
+    expect((await cli(['exercises', 'verify', '--section', '1.2', '--fail-on', 'warning'])).code).toBe(4);
   });
 
   it('checks the sections it is named, repeated or separated by commas, and refuses one that does not exist', async () => {

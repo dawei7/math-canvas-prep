@@ -84,11 +84,31 @@ export class Workbook {
   }
 }
 
-/** The text of every page of a PDF, as the checks take it (read with the real extraction). */
+/** The codes that the checks of whole pages, instructions, the key, spans and ink report (tested in verify-coverage.test.ts). */
+export const COVERAGE_CODES = [
+  'span-gap',
+  'continuation-order',
+  'continuation-limit',
+  'numbered-text-left-behind',
+  'answer-left-behind',
+  'text-left-behind',
+  'answer-clipped',
+  'context-range',
+  'context-missing',
+  'context-not-nearest',
+  'solution-section-mismatch',
+  'solution-order',
+  'edge-on-ink',
+  'region-open-end',
+  'region-holds-item',
+  'inline-section',
+] as const;
+
+/** The text of every page of a PDF, as the checks take it (read with the real extraction, fonts included: the tools read bold lines). */
 export async function pagesOf(pdf: Uint8Array): Promise<PageSource> {
   const doc = await PdfDocument.fromBytes(pdf);
   try {
-    const texts: PageText[] = await doc.allPageText();
+    const texts: PageText[] = await doc.allPageText({ fonts: true });
     return (page) => texts[page];
   } finally {
     await doc.close();

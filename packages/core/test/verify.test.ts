@@ -6,7 +6,7 @@ import { buildAuthoritySample } from '../src/testing/authority-sample.js';
 import { VERIFY_CODES, VERIFY_FORMAT, VERIFY_VERSION, type VerifyCode, type VerifyFinding, type VerifyReport } from '../src/verify/types.js';
 import { pagesToVerify, verifyProject, type PageSource } from '../src/verify/verify.js';
 import { rejected } from './helpers.js';
-import { Workbook, around, pagesOf, sectionEntries } from './verify-helpers.js';
+import { COVERAGE_CODES, Workbook, around, pagesOf, sectionEntries } from './verify-helpers.js';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The synthetic workbook of the authority tests: a clean book
@@ -374,7 +374,8 @@ describe('overlap, context-overlaps-frame and duplicate-region: places that are 
 
   it('reports an exercise whose continuation lies on another exercise', async () => {
     const { book, frames } = small();
-    (frames[0] as Frame).continues = [{ page: 0, rect: (frames[3] as Frame).rect }];
+    const target = (frames[3] as Frame).rect;
+    (frames[0] as Frame).continues = [{ page: 0, rect: { ...target, top: target.top + 0.002 } }];
     const report = await check(book);
     expect(find(report, 'overlap', 'a:1')?.message).toContain('its continuation');
   });
@@ -674,7 +675,7 @@ describe('the words of a book that numbers differently', () => {
 // Every code has a test
 
 /** One scenario for each code: it builds a project that must give a finding with that code. TypeScript insists on all of them. */
-const scenarios: Record<VerifyCode, () => Promise<VerifyReport>> = {
+const scenarios: Record<Exclude<VerifyCode, (typeof COVERAGE_CODES)[number]>, () => Promise<VerifyReport>> = {
   'label-not-first': async () => {
     const { book, frames } = small();
     (frames[0] as Frame).label = '9';
@@ -761,8 +762,8 @@ const scenarios: Record<VerifyCode, () => Promise<VerifyReport>> = {
 };
 
 describe('every code of a finding', () => {
-  it.each(VERIFY_CODES.map((entry) => entry.code))('is reported for a book that has its problem: %s', async (code) => {
-    const report = await scenarios[code]();
+  it.each(VERIFY_CODES.map((entry) => entry.code).filter((code) => !(COVERAGE_CODES as readonly string[]).includes(code)))('is reported for a book that has its problem: %s', async (code) => {
+    const report = await scenarios[code as keyof typeof scenarios]();
     expect(codes(report)).toContain(code);
     const severities = VERIFY_CODES.find((entry) => entry.code === code)?.severities as readonly string[];
     expect(severities).toContain(find(report, code)?.severity);
