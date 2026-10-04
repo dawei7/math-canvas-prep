@@ -176,12 +176,12 @@ export function sampleProject(project: Project, pages: PageSource, options: Samp
     }
 
     const medians = new Map<string, number>();
-    for (const [id, list] of sections) if (list.length >= SAMPLE_LIMITS.figureMinSection) medians.set(id, median(list.map((item) => rounded(rectHeight(item.frame.rect), 4))));
+    for (const [id, list] of sections) if (list.length >= SAMPLE_LIMITS.figureMinSection) medians.set(id, median(list.map((item) => rounded(rectHeight(item.frame.rect)))));
     firstWith(
       'beside-a-figure',
       (item) => {
         const centre = medians.get(item.section);
-        const height = rounded(rectHeight(item.frame.rect), 4);
+        const height = rounded(rectHeight(item.frame.rect));
         return centre !== undefined && height >= SAMPLE_LIMITS.figureHeight && height >= SAMPLE_LIMITS.figureFactor * centre;
       },
       'No exercise is much taller than the others of its section (a figure beside it).',
