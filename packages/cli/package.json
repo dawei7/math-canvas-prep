@@ -1,6 +1,6 @@
 {
   "name": "@mcprep/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "mcprep: a scriptable, agent-friendly command line for Math Canvas Prep.",
   "type": "module",
@@ -26,6 +26,6 @@
     "build": "tsc -b tsconfig.build.json"
   },
   "dependencies": {
-    "@mcprep/core": "0.1.0"
+    "@mcprep/core": "0.2.0"
   }
 }

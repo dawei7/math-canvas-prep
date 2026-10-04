@@ -1,6 +1,6 @@
 {
   "name": "@mcprep/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Math Canvas Prep: the desktop editor for marking exercises, parts, context, questions and bookmarks in a PDF.",
   "author": "Math Canvas Prep contributors",
@@ -20,7 +20,7 @@
     "pdfjs-dist": "5.6.205"
   },
   "devDependencies": {
-    "@mcprep/core": "0.1.0",
+    "@mcprep/core": "0.2.0",
     "electron": "44.5.1",
     "electron-builder": "^26.17.0",
     "esbuild": "^0.28.2",

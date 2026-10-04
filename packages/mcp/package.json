@@ -1,6 +1,6 @@
 {
   "name": "@mcprep/mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "An MCP server (stdio) that exposes Math Canvas Prep to AI agents as typed tools.",
   "type": "module",
@@ -26,8 +26,8 @@
     "build": "tsc -b tsconfig.build.json"
   },
   "dependencies": {
-    "@mcprep/cli": "0.1.0",
-    "@mcprep/core": "0.1.0",
+    "@mcprep/cli": "0.2.0",
+    "@mcprep/core": "0.2.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "zod": "^4.6.5"
   }
