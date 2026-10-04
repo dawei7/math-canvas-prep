@@ -1,3 +1,4 @@
+import { isAuthoritative } from './authority.js';
 import type { Frame, FrameKind } from './types.js';
 
 /**
@@ -5,6 +6,9 @@ import type { Frame, FrameKind } from './types.js';
  * never stored. Separately for exercises, questions and bookmarks: page by page, top before bottom, left before right;
  * the parts of one unit count once, at the position of the unit's first part (a unit of three parts at exercise
  * position 4 becomes 4.1, 4.2, 4.3). The order of the frames in the file does not matter.
+ *
+ * Authoritative exercises (authority "book") take no part in it: they are named by their printed label and their
+ * section, so they get no entry here and are not counted.
  */
 export interface FrameNumber {
   id: string;
@@ -37,7 +41,7 @@ export function numberFrames(frames: readonly Frame[]): Map<string, FrameNumber>
   for (const kind of ['exercise', 'question', 'bookmark'] as const) {
     const groups = new Map<string, Frame[]>();
     for (const frame of frames) {
-      if (frame.kind !== kind) continue;
+      if (frame.kind !== kind || isAuthoritative(frame)) continue;
       const key = kind === 'exercise' && frame.unit !== undefined ? `unit:${frame.unit}` : `frame:${frame.id}`;
       const members = groups.get(key);
       if (members) members.push(frame);
@@ -67,7 +71,7 @@ export function numberFrames(frames: readonly Frame[]): Map<string, FrameNumber>
   return result;
 }
 
-/** Counts per kind, a unit of several parts counting once for exercises. */
+/** Counts per kind, a unit of several parts counting once for exercises. Authoritative exercises are not counted here. */
 export function countFrames(frames: readonly Frame[]): Record<FrameKind, number> {
   const counts: Record<FrameKind, number> = { exercise: 0, question: 0, bookmark: 0 };
   for (const entry of numberFrames(frames).values()) {
@@ -76,9 +80,21 @@ export function countFrames(frames: readonly Frame[]): Record<FrameKind, number>
   return counts;
 }
 
-/** How many frames (parts counted one by one) there are of each kind. */
+/** How many frames (parts counted one by one, authoritative exercises included) there are of each kind. */
 export function countFramesRaw(frames: readonly Frame[]): Record<FrameKind, number> {
   const counts: Record<FrameKind, number> = { exercise: 0, question: 0, bookmark: 0 };
   for (const frame of frames) counts[frame.kind] += 1;
   return counts;
+}
+
+/** The authoritative exercises of a document: how many there are and how many carry a hidden solution. */
+export function countBook(frames: readonly Frame[]): { exercises: number; withSolution: number } {
+  let exercises = 0;
+  let withSolution = 0;
+  for (const frame of frames) {
+    if (!isAuthoritative(frame)) continue;
+    exercises += 1;
+    if (frame.solution && frame.solution.length > 0) withSolution += 1;
+  }
+  return { exercises, withSolution };
 }

@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { basename } from 'node:path';
 import { writeStreamAtomic } from '../fs/atomic.js';
-import { compareReadingOrder } from '../model/numbering.js';
+import { countBook, compareReadingOrder } from '../model/numbering.js';
+import { isAuthoritative } from '../model/authority.js';
 import { rectsEqual, roundRect } from '../model/rect.js';
-import type { BundleManifest, Frame, FramesFile, OutlineEntry, OutlineFile, Region } from '../model/types.js';
-import { stringifyJson } from '../project/serialize.js';
+import type { BundleFeature, BundleManifest, DocumentInfo, Frame, FramesFile, OutlineEntry, Region } from '../model/types.js';
+import { outlineEntryForFile, stringifyJson } from '../project/serialize.js';
 import { FORMAT, LIMITS } from '../rules/constants.js';
+import { checkBook, lintBook } from '../rules/book.js';
 import { cleanFolder, checkTitle, folderFromInput } from '../rules/document.js';
 import { checkFrames } from '../rules/frames.js';
+import { checkDocumentInfo, infoForFile } from '../rules/info.js';
 import { issue, McPrepError, type Issue } from '../rules/issues.js';
 import { lintFrames } from '../rules/lint.js';
 import { checkOutline } from '../rules/outline.js';
@@ -29,6 +32,8 @@ export interface BundleInput {
   title: string;
   /** Names separated by "/" (a backslash is accepted too). */
   folder?: string;
+  /** What the bundle says about the work: author, series, description, licence, source address, notice. */
+  info?: DocumentInfo;
   /** Informational; defaults to the file name of `pdfPath`. */
   fileName?: string;
   pageCount: number;
@@ -54,19 +59,30 @@ export interface BundleWriteResult {
   manifest: BundleManifest;
   issues: Issue[];
   counts: { frames: number; outlineEntries: number };
+  /** The authoritative exercises written, and how many of them carry a hidden solution. */
+  book: { exercises: number; withSolution: number };
 }
 
-/** The unit's context moves to its first part, a unit with one frame becomes an ordinary exercise, rects are rounded. */
+/**
+ * The unit's context moves to its first part, a unit with one frame becomes an ordinary exercise, rects are rounded.
+ * Authoritative exercises keep their authority, label and section, and every frame its solution regions.
+ */
 export function canonicalizeFrames(frames: readonly Frame[]): { frames: Frame[]; notes: Issue[] } {
   const notes: Issue[] = [];
   const copy: Frame[] = frames.map((frame) => {
     const out: Frame = { id: frame.id, kind: frame.kind, page: frame.page, rect: roundRect(frame.rect) };
+    if (frame.authority !== undefined) out.authority = frame.authority;
+    if (frame.label !== undefined) out.label = frame.label;
+    if (frame.section !== undefined) out.section = frame.section;
     if (frame.continues && frame.continues.length > 0) {
       out.continues = frame.continues.map((region) => ({ page: region.page, rect: roundRect(region.rect) }));
     }
     if (frame.unit !== undefined) out.unit = frame.unit;
     if (frame.context && frame.context.length > 0) {
       out.context = frame.context.map((region) => ({ page: region.page, rect: roundRect(region.rect) }));
+    }
+    if (frame.solution && frame.solution.length > 0) {
+      out.solution = frame.solution.map((region) => ({ page: region.page, rect: roundRect(region.rect) }));
     }
     return out;
   });
@@ -189,6 +205,10 @@ export async function prepareBundle(input: BundleInput): Promise<PreparedBundle>
     for (const item of outlineCheck.issues) (item.severity === 'error' ? blocking : issues).push(item);
     outline = outlineCheck.entries;
   }
+  // The rules that need more than one frame, or the frames and the outline together.
+  blocking.push(...checkBook(canonical.frames, outline));
+  const documentInfo = checkDocumentInfo(input.info ?? {}, { strict: true, where: 'document' });
+  for (const item of documentInfo.issues) (item.severity === 'error' ? blocking : issues).push(item);
 
   if (blocking.length > 0) {
     throw new McPrepError('E_BUNDLE_INVALID', `The bundle cannot be written: ${blocking.length} problem${blocking.length === 1 ? '' : 's'} (${blocking[0]?.message ?? ''}).`, {
@@ -196,7 +216,12 @@ export async function prepareBundle(input: BundleInput): Promise<PreparedBundle>
       issues: blocking,
     });
   }
-  issues.push(...lintFrames(canonical.frames));
+  issues.push(...lintFrames(canonical.frames), ...lintBook(canonical.frames, outline, input.pageCount));
+
+  const features: BundleFeature[] = [];
+  if (outline?.some((entry) => entry.id !== undefined)) features.push('sections');
+  if (canonical.frames.some(isAuthoritative)) features.push('authority');
+  if (canonical.frames.some((frame) => frame.solution !== undefined && frame.solution.length > 0)) features.push('solution');
 
   const fileName = input.fileName ?? (input.pdfPath ? basename(input.pdfPath) : 'document.pdf');
   const manifest: BundleManifest = {
@@ -204,6 +229,7 @@ export async function prepareBundle(input: BundleInput): Promise<PreparedBundle>
     version: FORMAT.bundleVersion,
     createdAt: (input.createdAt ?? new Date()).toISOString().replace(/\.\d{3}Z$/, 'Z'),
     generator: { name: FORMAT.generatorName, version: VERSION, targets: BUNDLE_TARGET },
+    ...(features.length > 0 ? { features } : {}),
     document: {
       title: title.title as string,
       fileName,
@@ -215,6 +241,7 @@ export async function prepareBundle(input: BundleInput): Promise<PreparedBundle>
     frames: ENTRY_FRAMES,
   };
   if (folder.folder !== undefined) manifest.document.folder = folder.folder;
+  Object.assign(manifest.document, infoForFile(documentInfo.info));
   if (outline) manifest.outline = ENTRY_OUTLINE;
 
   const framesFile: FramesFile = { version: 1, frames: canonical.frames };
@@ -226,8 +253,7 @@ export async function prepareBundle(input: BundleInput): Promise<PreparedBundle>
   );
   entries.push(jsonEntry(ENTRY_FRAMES, `${stringifyJson(framesFile)}\n`));
   if (outline) {
-    const outlineFile: OutlineFile = { version: 1, entries: outline };
-    entries.push(jsonEntry(ENTRY_OUTLINE, `${stringifyJson(outlineFile)}\n`));
+    entries.push(jsonEntry(ENTRY_OUTLINE, `${stringifyJson({ version: 1, entries: outline.map(outlineEntryForFile) })}\n`));
   }
   const total = entries.reduce((sum, entry) => sum + entry.storedSize, 0);
   if (total > LIMITS.bundle.maxArchiveBytes) {
@@ -254,5 +280,6 @@ export async function writeBundle(outPath: string, input: BundleInput): Promise<
     manifest: prepared.manifest,
     issues: prepared.issues,
     counts: { frames: prepared.frames.length, outlineEntries: prepared.outline?.length ?? 0 },
+    book: countBook(prepared.frames),
   };
 }

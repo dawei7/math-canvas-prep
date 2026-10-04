@@ -1,5 +1,5 @@
 import { isBelowMinimum, rectHeight, rectWidth } from '../model/rect.js';
-import { FRAME_KINDS, type Frame, type FrameKind, type Rect, type Region } from '../model/types.js';
+import { AUTHORITIES, FRAME_KINDS, type Authority, type Frame, type FrameKind, type Rect, type Region } from '../model/types.js';
 import { AUTHORING, LIMITS } from './constants.js';
 import { issue, type Issue } from './issues.js';
 import { checkUnits } from './units.js';
@@ -115,6 +115,33 @@ function readFrame(item: unknown, index: number, state: ReadState): Frame | unde
   const main = readRegion({ page: item['page'], rect: item['rect'] }, name, 'the frame', state);
   const continues = readRegionList(item['continues'], name, 'continues', state);
   const context = readRegionList(item['context'], name, 'context', state);
+  const solution = readRegionList(item['solution'], name, 'solution', state);
+
+  let authority: Authority | undefined;
+  const rawAuthority = item['authority'];
+  if (rawAuthority !== undefined && !(rawAuthority === null && options.strictShapes !== true)) {
+    if (typeof rawAuthority !== 'string' || !(AUTHORITIES as readonly string[]).includes(rawAuthority)) {
+      issues.push(
+        issue('error', 'bad-authority', `The authority of ${name} must be "book" (or left out), not ${JSON.stringify(rawAuthority)}.`, {
+          ...base,
+          fix: 'Write "authority": "book" for an exercise audited from the book, or remove the field for an ordinary exercise.',
+        }),
+      );
+    } else {
+      authority = rawAuthority as Authority;
+    }
+  }
+  const readText = (field: 'label' | 'section'): string | undefined => {
+    const raw = item[field];
+    if (raw === undefined || (raw === null && options.strictShapes !== true)) return undefined;
+    if (typeof raw !== 'string') {
+      issues.push(issue('error', `bad-${field}`, `The ${field} of ${name} must be a text, not ${JSON.stringify(raw)}.`, { ...base, fix: `Write the ${field} as a text.` }));
+      return undefined;
+    }
+    return raw;
+  };
+  const label = readText('label');
+  const section = readText('section');
 
   let unit: string | undefined;
   const rawUnit = item['unit'];
@@ -149,6 +176,60 @@ function readFrame(item: unknown, index: number, state: ReadState): Frame | unde
         }),
       );
     }
+    if (authority !== undefined && kind !== 'exercise') {
+      issues.push(
+        issue('error', 'authority-not-exercise', `${name} is a ${String(kind)} but has an authority; only exercises can be authoritative.`, {
+          ...base,
+          fix: 'Remove authority, label and section, or make the frame an exercise.',
+        }),
+      );
+    }
+    if (solution && solution.length > 0 && kind !== 'exercise') {
+      issues.push(
+        issue('error', 'solution-not-exercise', `${name} is a ${String(kind)} but has solution regions; only exercises can have a solution.`, {
+          ...base,
+          fix: 'Remove the solution or make the frame an exercise.',
+        }),
+      );
+    }
+  }
+  if (authority !== undefined) {
+    if (unit !== undefined) {
+      issues.push(
+        issue('error', 'authority-unit', `${name} is an authoritative exercise but also a part of unit "${unit}"; an authoritative exercise is a single exercise and has no parts.`, {
+          ...base,
+          unit,
+          fix: 'Remove the unit. The parts of a printed exercise (5a, 5b) are separate exercises with separate labels; what they share, the statement printed once above them, is attached to each as context.',
+        }),
+      );
+    }
+    if (label === undefined) {
+      issues.push(issue('error', 'label-missing', `${name} is an authoritative exercise but has no label.`, { ...base, fix: 'Give it the number the book prints, for example --label 5a.' }));
+    } else if (!LIMITS.labelPattern.test(label)) {
+      issues.push(
+        issue('error', 'bad-label', `The label of ${name} (${JSON.stringify(label)}) must be 1 to ${LIMITS.labelMax} characters: it starts with a letter or digit and continues with letters, digits, spaces and . _ - ( ) /`, {
+          ...base,
+          fix: 'Write the number exactly as the book prints it, without the closing "." or ")": 5, 5a, A.3.',
+        }),
+      );
+    }
+    if (section === undefined) {
+      issues.push(issue('error', 'section-missing', `${name} is an authoritative exercise but has no section.`, { ...base, fix: 'Give it the id of the outline entry (the section) it belongs to, for example --section 1.2.' }));
+    } else if (!LIMITS.sectionIdPattern.test(section)) {
+      issues.push(
+        issue('error', 'bad-section', `The section of ${name} (${JSON.stringify(section)}) must be the id of an outline entry: 1 to ${LIMITS.sectionIdMax} characters of A-Z a-z 0-9 . _ - starting with a letter or digit.`, {
+          ...base,
+          fix: 'Use the id as `mcprep outline` lists it.',
+        }),
+      );
+    }
+  } else {
+    if (label !== undefined) {
+      issues.push(issue('error', 'label-without-authority', `${name} has a label but no authority; only authoritative exercises have one.`, { ...base, fix: 'Add "authority": "book" (and a section), or remove the label.' }));
+    }
+    if (section !== undefined) {
+      issues.push(issue('error', 'section-without-authority', `${name} has a section but no authority; only authoritative exercises have one.`, { ...base, fix: 'Add "authority": "book" (and a label), or remove the section.' }));
+    }
   }
   if (unit !== undefined && continues && continues.length > 0) {
     issues.push(
@@ -171,13 +252,17 @@ function readFrame(item: unknown, index: number, state: ReadState): Frame | unde
   if (continues && continues.length > 0) frame.continues = continues;
   if (unit !== undefined) frame.unit = unit;
   if (context && context.length > 0) frame.context = context;
+  if (authority !== undefined) frame.authority = authority;
+  if (label !== undefined) frame.label = label;
+  if (section !== undefined) frame.section = section;
+  if (solution && solution.length > 0) frame.solution = solution;
   return frame;
 }
 
 function readRegionList(
   raw: unknown,
   name: string,
-  field: 'continues' | 'context',
+  field: 'continues' | 'context' | 'solution',
   state: ReadState,
 ): Region[] | undefined {
   if (raw === undefined || (raw === null && state.options.strictShapes !== true)) return undefined;
@@ -187,11 +272,12 @@ function readRegionList(
     );
     return undefined;
   }
-  if (raw.length > LIMITS.maxRegions) {
+  const most = field === 'solution' ? LIMITS.maxSolutionRegions : LIMITS.maxRegions;
+  if (raw.length > most) {
     state.issues.push(
-      issue('error', 'too-many-regions', `${name} has ${raw.length} "${field}" regions; at most ${LIMITS.maxRegions} are allowed.`, {
+      issue('error', 'too-many-regions', `${name} has ${raw.length} "${field}" regions; at most ${most} are allowed.`, {
         frameId: name,
-        fix: `Merge regions that are next to each other so at most ${LIMITS.maxRegions} remain.`,
+        fix: `Merge regions that are next to each other so at most ${most} remain.`,
       }),
     );
     return undefined;

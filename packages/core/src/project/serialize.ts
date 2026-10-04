@@ -1,10 +1,11 @@
 import { compareReadingOrder } from '../model/numbering.js';
-import { parseRect, roundRect } from '../model/rect.js';
-import { FRAME_KINDS, type Frame, type OutlineEntry, type Region } from '../model/types.js';
+import { parseRect, roundNumber, roundRect } from '../model/rect.js';
+import { FRAME_KINDS, type Authority, type Frame, type OutlineEntry, type Region } from '../model/types.js';
 import { FORMAT } from '../rules/constants.js';
+import { infoForFile } from '../rules/info.js';
 import { McPrepError } from '../rules/issues.js';
 import { VERSION } from '../version.js';
-import type { OutlineSource, Project, ProjectMeta, ProjectOutline, ProjectPdf } from './model.js';
+import { highestSequence, type OutlineSource, type Project, type ProjectMeta, type ProjectOutline, type ProjectPdf } from './model.js';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -63,7 +64,43 @@ export function coerceFrame(raw: unknown, index: number): Frame {
   }
   const context = readRegions(raw['context'], `${path} (${id}).context`);
   if (context && context.length > 0) frame.context = context;
+  // An authority this version does not know is kept as it is, so that `validate` can name it; the other fields likewise.
+  const authority = raw['authority'];
+  if (authority !== undefined && authority !== null) {
+    if (typeof authority !== 'string') throw bad(`${path} (${id}).authority`, 'must be a string ("book").');
+    frame.authority = authority as Authority;
+  }
+  for (const field of ['label', 'section'] as const) {
+    const value = raw[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'string') throw bad(`${path} (${id}).${field}`, 'must be a string.');
+    frame[field] = value;
+  }
+  const solution = readRegions(raw['solution'], `${path} (${id}).solution`);
+  if (solution && solution.length > 0) frame.solution = solution;
   return frame;
+}
+
+function readOptionalText(raw: Record<string, unknown>, key: string, path: string): string | undefined {
+  const value = raw[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw bad(`${path}.${key}`, 'must be a string.');
+  return value.trim().length > 0 ? value : undefined;
+}
+
+/** Reads the optional document info of `meta`: author, series, description, license, sourceUrl, notice. */
+function readMetaInfo(raw: Record<string, unknown>, meta: ProjectMeta): void {
+  for (const key of ['author', 'series', 'description', 'sourceUrl', 'notice'] as const) {
+    const value = readOptionalText(raw, key, 'meta');
+    if (value !== undefined) meta[key] = value;
+  }
+  const license = raw['license'];
+  if (license === undefined || license === null) return;
+  if (!isRecord(license)) throw bad('meta.license', 'must be an object with a name and an optional url.');
+  const name = readOptionalText(license, 'name', 'meta.license');
+  if (name === undefined) throw bad('meta.license.name', 'must be a non-empty string.');
+  const url = readOptionalText(license, 'url', 'meta.license');
+  meta.license = url !== undefined ? { name, url } : { name };
 }
 
 function readOutline(raw: unknown): ProjectOutline | undefined {
@@ -77,7 +114,21 @@ function readOutline(raw: unknown): ProjectOutline | undefined {
     if (typeof title !== 'string') throw bad(`outline.entries[${index}].title`, 'must be a string.');
     if (typeof page !== 'number') throw bad(`outline.entries[${index}].page`, 'must be a number (zero-based).');
     if (typeof depth !== 'number') throw bad(`outline.entries[${index}].depth`, 'must be a number.');
-    return { title, page, depth };
+    const result: OutlineEntry = { title, page, depth };
+    const { id, label, top } = entry as Record<string, unknown>;
+    if (id !== undefined && id !== null) {
+      if (typeof id !== 'string') throw bad(`outline.entries[${index}].id`, 'must be a string.');
+      result.id = id;
+    }
+    if (label !== undefined && label !== null) {
+      if (typeof label !== 'string') throw bad(`outline.entries[${index}].label`, 'must be a string.');
+      result.label = label;
+    }
+    if (top !== undefined && top !== null) {
+      if (typeof top !== 'number' || !Number.isFinite(top)) throw bad(`outline.entries[${index}].top`, 'must be a number from 0 to 1.');
+      result.top = top;
+    }
+    return result;
   });
   const source = raw['source'];
   const known: OutlineSource[] = ['pdf', 'derived', 'manual'];
@@ -98,18 +149,6 @@ const KNOWN_KEYS = new Set([
   'outline',
   'seq',
 ]);
-
-/** Highest number N in ids of the form f<N> or u<N>; the counter must not go below it. */
-function highestSequence(frames: readonly Frame[]): number {
-  let highest = 0;
-  for (const frame of frames) {
-    for (const id of [frame.id, frame.unit]) {
-      const match = id === undefined ? null : /^[fu](\d+)$/.exec(id);
-      if (match) highest = Math.max(highest, Number(match[1]));
-    }
-  }
-  return highest;
-}
 
 /**
  * Reads a project from parsed JSON, tolerantly (missing optional fields get defaults, unknown fields are kept) and with
@@ -144,7 +183,7 @@ export function parseProject(raw: unknown, fallbackTitle: string): Project {
   const metaRaw = raw['meta'];
   const meta: ProjectMeta = { title: fallbackTitle };
   if (metaRaw !== undefined) {
-    if (!isRecord(metaRaw)) throw bad('meta', 'must be an object with title and optional folder.');
+    if (!isRecord(metaRaw)) throw bad('meta', 'must be an object with title and optional folder, author, series, description, license, sourceUrl and notice.');
     if (metaRaw['title'] !== undefined) {
       if (typeof metaRaw['title'] !== 'string') throw bad('meta.title', 'must be a string.');
       meta.title = metaRaw['title'];
@@ -153,6 +192,7 @@ export function parseProject(raw: unknown, fallbackTitle: string): Project {
       if (typeof metaRaw['folder'] !== 'string') throw bad('meta.folder', 'must be a string.');
       if (metaRaw['folder'].trim().length > 0) meta.folder = metaRaw['folder'];
     }
+    readMetaInfo(metaRaw, meta);
   }
 
   const framesRaw = raw['frames'] ?? [];
@@ -232,6 +272,9 @@ export function stringifyJson(value: unknown, width = 100, level = 0): string {
 
 function frameForFile(frame: Frame): Record<string, unknown> {
   const out: Record<string, unknown> = { id: frame.id, kind: frame.kind, page: frame.page, rect: roundRect(frame.rect) };
+  if (frame.authority !== undefined) out['authority'] = frame.authority;
+  if (frame.label !== undefined) out['label'] = frame.label;
+  if (frame.section !== undefined) out['section'] = frame.section;
   if (frame.unit !== undefined) out['unit'] = frame.unit;
   if (frame.continues && frame.continues.length > 0) {
     out['continues'] = frame.continues.map((region) => ({ page: region.page, rect: roundRect(region.rect) }));
@@ -239,7 +282,26 @@ function frameForFile(frame: Frame): Record<string, unknown> {
   if (frame.context && frame.context.length > 0) {
     out['context'] = frame.context.map((region) => ({ page: region.page, rect: roundRect(region.rect) }));
   }
+  if (frame.solution && frame.solution.length > 0) {
+    out['solution'] = frame.solution.map((region) => ({ page: region.page, rect: roundRect(region.rect) }));
+  }
   return out;
+}
+
+/** An outline entry as the files write it: title, page, depth, then id, label and top when there are any. */
+export function outlineEntryForFile(entry: OutlineEntry): Record<string, unknown> {
+  const out: Record<string, unknown> = { title: entry.title, page: entry.page, depth: entry.depth };
+  if (entry.id !== undefined) out['id'] = entry.id;
+  if (entry.label !== undefined) out['label'] = entry.label;
+  if (entry.top !== undefined) out['top'] = roundNumber(entry.top);
+  return out;
+}
+
+/** `meta` as the project file writes it: title and folder, then the document info in a fixed order. */
+function metaForFile(meta: ProjectMeta): Record<string, unknown> {
+  const out: Record<string, unknown> = { title: meta.title };
+  if (meta.folder !== undefined) out['folder'] = meta.folder;
+  return { ...out, ...infoForFile(meta) };
 }
 
 /** The text of the project file: stable key order, frames in reading order, rects rounded to 5 decimals. */
@@ -255,11 +317,11 @@ export function serializeProject(project: Project): string {
   if (project.modifiedBy !== undefined) document['modifiedBy'] = project.modifiedBy;
   document['generator'] = project.generator;
   document['pdf'] = project.pdf;
-  document['meta'] = project.meta;
+  document['meta'] = metaForFile(project.meta);
   document['seq'] = project.seq;
   document['frames'] = ordered.map(frameForFile);
   if (project.outline) {
-    document['outline'] = { source: project.outline.source, entries: project.outline.entries };
+    document['outline'] = { source: project.outline.source, entries: project.outline.entries.map(outlineEntryForFile) };
   }
   for (const [key, value] of Object.entries(project.extra)) document[key] = value;
   return `${stringifyJson(document)}\n`;

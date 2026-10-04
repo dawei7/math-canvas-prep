@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/dawei7/math-canvas-prep/schemas/outline.schema.json",
   "title": "outline.json of a Math Canvas bundle",
-  "description": "A table of contents in reading order. Pages are zero-based and must lie inside the document; a child follows its parent and is one deeper (a reader clamps jumps).",
+  "description": "A table of contents in reading order. Pages are zero-based and must lie inside the document; a child follows its parent and is one deeper (a reader clamps jumps). The entries that exercises refer to are the sections of the book: they have an id, and the ids are unique (which a schema cannot say; the tools check it).",
   "type": "object",
   "required": ["version", "entries"],
   "properties": {
@@ -17,7 +17,10 @@
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 200 },
         "page": { "type": "integer", "minimum": 0 },
-        "depth": { "type": "integer", "minimum": 0, "maximum": 8 }
+        "depth": { "type": "integer", "minimum": 0, "maximum": 8 },
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$", "description": "Unique among the entries: the key by which a frame's section finds its entry." },
+        "label": { "type": "string", "maxLength": 24, "description": "The number printed with the heading, such as 1.1 or Chapter 3." },
+        "top": { "type": "number", "minimum": 0, "maximum": 1, "description": "Where the heading starts on its page, measured from the top." }
       },
       "additionalProperties": false
     }

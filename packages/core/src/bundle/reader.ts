@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { numberFrames, type FrameNumber } from '../model/numbering.js';
-import type { BundleManifest, Frame, OutlineEntry } from '../model/types.js';
+import { countBook, numberFrames, type FrameNumber } from '../model/numbering.js';
+import { BUNDLE_FEATURES, type BundleManifest, type DocumentInfo, type Frame, type OutlineEntry } from '../model/types.js';
 import { PdfDocument } from '../pdf/document.js';
+import { checkBook } from '../rules/book.js';
 import { FORMAT, LIMITS } from '../rules/constants.js';
 import { checkTitle, cleanFolder } from '../rules/document.js';
 import { parseFrames } from '../rules/frames.js';
+import { checkDocumentInfo } from '../rules/info.js';
 import { issue, McPrepError, type Issue } from '../rules/issues.js';
 import { checkOutline } from '../rules/outline.js';
 import { ENTRY_FRAMES, ENTRY_MANIFEST, ENTRY_OUTLINE, ENTRY_PDF } from './writer.js';
@@ -37,8 +39,10 @@ export interface BundleReport {
   steps: ImportStep[];
   archive?: { bytes: number; entries: BundleEntryInfo[] };
   manifest?: BundleManifest;
-  /** What the library would show for the document. */
-  document?: { title: string; folder?: string; fileName: string; pageCount: number; bytes: number; sha256: string };
+  /** What the library would show for the document, with the author, licence and notice the manifest carries. */
+  document?: DocumentInfo & { title: string; folder?: string; fileName: string; pageCount: number; bytes: number; sha256: string };
+  /** The optional parts of the format the writer says it used (`sections`, `authority`, `solution`); informational. */
+  features?: string[];
   frames?: Frame[];
   numbers?: FrameNumber[];
   outline?: OutlineEntry[];
@@ -164,6 +168,8 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
     let pageCount = 0;
     let fileName = '';
     let folder: string | undefined;
+    let info: DocumentInfo = {};
+    let features: string[] | undefined;
     if (manifestRaw) {
       if (manifestRaw['format'] !== FORMAT.bundleFormat) {
         fail('manifest-format', `bundle.json has "format": ${JSON.stringify(manifestRaw['format'])}; it must be "${FORMAT.bundleFormat}".`);
@@ -208,6 +214,19 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         }
         if (document['pdf'] !== undefined && document['pdf'] !== ENTRY_PDF) {
           warnings.push(issue('warning', 'manifest-pdf-name', `document.pdf is ${JSON.stringify(document['pdf'])}; the importer always reads the entry "${ENTRY_PDF}".`));
+        }
+        const checkedInfo = checkDocumentInfo(document, { strict: false, where: 'document' });
+        info = checkedInfo.info;
+        addIssues(checkedInfo.issues);
+      }
+      const rawFeatures = manifestRaw['features'];
+      if (rawFeatures !== undefined) {
+        if (Array.isArray(rawFeatures) && rawFeatures.every((item) => typeof item === 'string')) {
+          features = rawFeatures as string[];
+          const unknown = features.filter((name) => !(BUNDLE_FEATURES as readonly string[]).includes(name));
+          if (unknown.length > 0) warnings.push(issue('warning', 'manifest-features-unknown', `bundle.json lists the features ${unknown.map((name) => JSON.stringify(name)).join(', ')}, which this reader does not know; they are informational and ignored.`));
+        } else {
+          warnings.push(issue('warning', 'manifest-features', '"features" should be a list of texts (sections, authority, solution); it is informational and ignored.'));
         }
       }
       if (manifestRaw['frames'] !== undefined && manifestRaw['frames'] !== ENTRY_FRAMES) {
@@ -338,6 +357,9 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         else throw error;
       }
     }
+    // Authoritative exercises: the pair (section, label) is unique and every section is an id of the outline.
+    // (Not judged when the outline itself could not be read: that error is the one to fix first.)
+    if (!(outlineEntry && outline === undefined)) addIssues(checkBook(frames, outline));
     const frameErrors = errors.length - stepFive;
     steps.push({
       step: 5,
@@ -360,16 +382,20 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         else if (number.kind === 'question') questions += 1;
         else bookmarks += 1;
       }
-      out.document = { title, fileName, pageCount: framePages || pageCount, bytes: bytesDeclared, sha256 };
+      out.document = { title, fileName, pageCount: framePages || pageCount, bytes: bytesDeclared, sha256, ...info };
       if (folder !== undefined) out.document.folder = folder;
+      if (features !== undefined) out.features = features;
       out.frames = frames;
       out.numbers = [...numbers.values()];
       if (outline) out.outline = outline;
+      const book = countBook(frames);
+      const sections = new Set(frames.map((frame) => (frame.authority === 'book' ? frame.section : undefined)).filter((section): section is string => section !== undefined)).size;
+      const bookText = book.exercises > 0 ? `, ${count(book.exercises, 'authoritative exercise')} in ${count(sections, 'section')} (${book.withSolution} with a hidden solution)` : '';
       steps.push({
         step: 6,
         name: 'library',
         status: 'ok',
-        detail: `Would add "${title}"${folder ? ` in the folder "${folder}"` : ''} with ${count(exercises.size, 'exercise')}, ${count(questions, 'question')} and ${count(bookmarks, 'bookmark')}${outline ? ` and ${count(outline.length, 'contents entry', 'contents entries')}` : ''}. A PDF with the same SHA-256 already in the library is not duplicated: the app offers to add the frames to it.`,
+        detail: `Would add "${title}"${folder ? ` in the folder "${folder}"` : ''} with ${count(exercises.size, 'exercise')}, ${count(questions, 'question')} and ${count(bookmarks, 'bookmark')}${bookText}${outline ? ` and ${count(outline.length, 'contents entry', 'contents entries')}` : ''}. A PDF with the same SHA-256 already in the library is not duplicated: the app offers to add the frames to it${book.exercises > 0 ? ' (an authoritative exercise whose section and label the document already has is skipped, the others are added)' : ''}.`,
       });
     } else {
       steps.push({ step: 6, name: 'library', status: 'skipped', detail: 'Nothing would be imported.' });
