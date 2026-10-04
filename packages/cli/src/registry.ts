@@ -2,7 +2,7 @@ import { bookExport, bookMeta, bookShow } from './commands/book.js';
 import { exportBundle, importCheck, inspectBundle } from './commands/bundle.js';
 import { exercisesPropose, solutionsPropose } from './commands/audit.js';
 import { bookCompare } from './commands/compare.js';
-import { auditAck, auditGate } from './commands/gate.js';
+import { auditAck, auditConfirm, auditGate, auditReview } from './commands/gate.js';
 import { exercisesSheets } from './commands/sheets.js';
 import { contextAdd, contextRemove, continuesAdd, continuesRemove } from './commands/context.js';
 import { guide, schema } from './commands/docs.js';
@@ -71,6 +71,8 @@ export const COMMANDS: CommandSpec[] = [
   bookCompare,
   auditGate,
   auditAck,
+  auditConfirm,
+  auditReview,
   meta,
   relink,
   validate,

@@ -12,21 +12,21 @@ import { sheetHash, SHEETS_FORMAT, type SheetsManifest } from '../sheets/sheets.
 import { verifySession } from '../verify/session.js';
 import { bookReference, normalizeLabel } from '../model/authority.js';
 import {
-  acknowledgementProblem,
   asciiPattern,
   bundlePathOf,
   emptyNotes,
   gatePath,
   hashProject,
   judge,
-  matches,
   notesPath,
   parseNotes,
   projectStem,
   referenceFindings,
+  unconfirmedNotes,
   verifyFindings,
 } from './gate.js';
-import { GATE_FORMAT, GATE_VERSION, NOTES_FORMAT, NOTES_VERSION, type Acknowledgement, type AuditNotes, type GateFinding, type GateReport, type GateStatus } from './types.js';
+import { GATE_FORMAT, GATE_VERSION, type Acknowledgement, type AuditNotes, type GateFinding, type GateReport, type GateStatus } from './types.js';
+import { checkVisual } from './visual.js';
 
 /** Running the gate on a project: the checks, the notes, the certificate. */
 
@@ -38,6 +38,8 @@ export interface GateRunOptions {
   reference?: { file: string; sections: readonly ReferenceSection[] };
   /** The file in which the sheets that were looked at are listed. */
   sheetsSeen?: string;
+  /** The visual record: one entry per exercise, written by whoever looked at it (see `checkVisual`). */
+  visual?: string;
   now?: Date;
 }
 
@@ -164,6 +166,7 @@ export async function collectFindings(session: ProjectSession, options: GateRunO
     reference: null,
     bundle: null,
     sheets: null,
+    visual: null,
   };
   if (options.reference !== undefined) {
     const summary = buildBookSummary({ title: session.project.meta.title, info: session.project.meta, pageCount: session.project.pdf.pageCount, frames: session.project.frames, outline: session.project.outline?.entries });
@@ -188,6 +191,13 @@ export async function collectFindings(session: ProjectSession, options: GateRunO
     findings.push(...sheets.findings);
     checks.sheets = sheets.summary;
   }
+  if (options.visual !== undefined && options.sheets !== false) {
+    const visual = await checkVisual(session, options.visual, options.itemPatterns ?? []);
+    findings.push(...visual.findings);
+    checks.visual = visual.summary;
+  }
+  // The sheets are the exhaustive pass only when the record of what was seen covers every exercise, one entry for each.
+  if (checks.sheets !== null) checks.sheets.exhaustive = checks.sheets.exhaustive && checks.visual?.exhaustive === true;
   return { findings, checks, verify, validation };
 }
 
@@ -199,6 +209,7 @@ export async function runGate(session: ProjectSession, options: GateRunOptions =
   const judged = judge(collected.findings, notes.acknowledgements);
   const hashes = hashProject(session.project.frames, session.project.outline?.entries);
   const book = collected.verify.summary;
+  const unconfirmed = unconfirmedNotes(judged.acknowledged);
   const report: GateReport = {
     format: GATE_FORMAT,
     version: GATE_VERSION,
@@ -206,12 +217,15 @@ export async function runGate(session: ProjectSession, options: GateRunOptions =
     passed: judged.open.length === 0,
     project: { name: projectStem(session.projectPath), ...hashes },
     counts: { sections: book.sections, exercises: book.authoritative, solutions: book.solutions, errors: book.errors, warnings: book.warnings, infos: book.infos, open: judged.open.length, acknowledged: judged.acknowledged.length },
+    unconfirmed,
+    perfect: judged.open.length === 0 && unconfirmed === 0 && collected.checks.visual?.exhaustive === true,
     checks: collected.checks,
     itemPatterns: patterns.map((pattern) => asciiPattern(pattern.source)),
     open: judged.open,
     acknowledged: judged.acknowledged,
     staleAcknowledgements: judged.stale,
     unusedAcknowledgements: judged.unused,
+    refusedAcknowledgements: judged.refused,
   };
   return { report, notes };
 }
@@ -232,39 +246,14 @@ export async function gateStatus(session: ProjectSession): Promise<GateStatus> {
     return { status: 'none' };
   }
   const current = hashProject(session.project.frames, session.project.outline?.entries).hash;
-  const base = { certificate: certificate.project.hash, current, createdAt: certificate.createdAt, open: certificate.open.length };
+  // The notes as they are now: a note that the certificate lists is confirmed when the file says so.
+  const notes = await readNotes(session).catch(() => emptyNotes());
+  const confirmedNow = (entry: Acknowledgement): boolean => notes.acknowledgements.some((note) => note.code === entry.code && note.ref === entry.ref && note.evidence.page === entry.evidence.page && note.confirmed);
+  const listed = new Map<string, Acknowledgement>();
+  for (const item of certificate.acknowledged ?? []) listed.set(`${item.acknowledgement.code}|${item.acknowledgement.ref}|${item.acknowledgement.evidence.page ?? ''}`, item.acknowledgement);
+  const unconfirmed = [...listed.values()].filter((entry) => !confirmedNow(entry)).length;
+  const base = { certificate: certificate.project.hash, current, createdAt: certificate.createdAt, open: certificate.open.length, unconfirmed, exhaustive: certificate.checks?.visual?.exhaustive === true, perfect: certificate.perfect === true && unconfirmed === 0 };
   if (certificate.project.hash !== current) return { status: 'stale', ...base };
   return { status: certificate.passed ? 'passed' : 'failed', ...base };
 }
 
-export interface AcknowledgeOptions extends GateRunOptions {
-  entry: Acknowledgement;
-}
-
-/**
- * Adds one acknowledgement to the notes after checking that the finding it is for exists now (and, with a count, that exactly that
- * many do). An acknowledgement for the same code, exercise, page and quote is replaced.
- */
-export async function addAcknowledgement(session: ProjectSession, options: AcknowledgeOptions): Promise<{ path: string; covers: GateFinding[]; replaced: boolean }> {
-  const { entry } = options;
-  const problem = acknowledgementProblem(entry);
-  if (problem !== undefined) throw new McPrepError('E_USAGE', `This acknowledgement is not allowed: ${problem}`, { hint: 'Acknowledge only what the book itself prints, with the reason; repair everything else.' });
-  const notes = await readNotes(session);
-  const collected = await collectFindings(session, { ...options, itemPatterns: patternsOf(notes, options.itemPatterns), sheets: false, bundle: false });
-  const covers = collected.findings.filter((finding) => matches(entry, finding));
-  if (covers.length === 0) {
-    const near = collected.findings.filter((finding) => finding.code === entry.code).slice(0, 6);
-    throw new McPrepError('E_USAGE', `There is no finding ${entry.code} for ${entry.ref}${entry.evidence.page !== undefined ? ` on page ${entry.evidence.page}` : ''}${entry.evidence.quote !== undefined ? ` quoting "${entry.evidence.quote}"` : ''} now: an acknowledgement is only for a finding that exists.`, {
-      hint: near.length > 0 ? `The findings ${entry.code} are: ${near.map((finding) => `${finding.ref} (page ${finding.page ?? '-'})`).join('; ')}.` : `There is no finding ${entry.code} at all (run \`mcprep exercises verify\`).`,
-    });
-  }
-  if (entry.count !== undefined && covers.length !== entry.count) {
-    throw new McPrepError('E_USAGE', `${covers.length} findings match, not ${entry.count}: say how many findings the acknowledgement covers, or narrow it with a page or a quote.`);
-  }
-  const same = (other: Acknowledgement): boolean => other.code === entry.code && other.ref === entry.ref && other.evidence.page === entry.evidence.page && (other.evidence.quote ?? '') === (entry.evidence.quote ?? '');
-  const replaced = notes.acknowledgements.some(same);
-  const updated: AuditNotes = { format: NOTES_FORMAT, version: NOTES_VERSION, ...(notes.itemPatterns !== undefined ? { itemPatterns: notes.itemPatterns } : {}), acknowledgements: [...notes.acknowledgements.filter((other) => !same(other)), entry] };
-  const path = notesPath(session.projectPath);
-  await writeFileAtomic(path, `${JSON.stringify(updated, null, 1)}\n`);
-  return { path, covers, replaced };
-}

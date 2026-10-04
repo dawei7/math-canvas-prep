@@ -31,7 +31,7 @@ export function hashProject(frames: readonly Frame[], outline: readonly OutlineE
 }
 
 /**
- * The source of a pattern with every character outside ASCII written as an escape (`\u00f6` for the letter o with a diaeresis), so that
+ * The source of a pattern with every character outside ASCII written as an escape (`ö` for the letter o with a diaeresis), so that
  * nothing that reads, shows or copies the file can mangle it. The pattern means the same.
  */
 export function asciiPattern(source: string): string {
@@ -59,36 +59,96 @@ export const bundlePathOf = (projectPath: string, pdfPath: string): string => jo
 // ---------------------------------------------------------------------------------------------------------------------
 // The notes
 
-/** The codes an acknowledgement may name: the codes of the verify check and of the comparison with the reference. */
-export const ACKNOWLEDGEABLE_CODES: readonly string[] = [...VERIFY_CODES.map((entry) => entry.code), 'reference-count', 'reference-missing', 'reference-extra', 'reference-title'];
+/**
+ * Findings that are defects of the audit, never what the book prints: `audit ack` refuses them, the gate takes no note for them, and
+ * each has the command that repairs it. (A region that cuts its label, an answer on the wrong exercise, an instruction missing from an
+ * exercise are all things the book does not print: repair them.)
+ */
+export const NON_ACKNOWLEDGEABLE: Readonly<Record<string, string>> = {
+  'label-not-first': 'Frame the exercise on its own text: look at it (`mcprep crop REF`), then `mcprep frames update REF --rect l,t,r,b --snap`, or `mcprep exercises label REF NUMBER` when its label is wrong.',
+  'solution-label-missing': 'Point the exercise at its own answer: `mcprep solution remove REF`, then `mcprep solution add REF --page P --rect l,t,r,b --snap` (`mcprep render P --frames --solutions` shows the page).',
+  overlap: 'Make the regions only touch: `mcprep frames update REF --rect l,t,r,b --snap` (the finding names both exercises).',
+  'duplicate-region': 'Frame each printed exercise on its own text: delete the copy (`mcprep frames delete ID`) or move one of the two.',
+  'section-unknown': 'File the exercise under a section of the outline: `mcprep exercises section REF SECTION-ID` (`mcprep outline` lists the ids).',
+  'section-page': 'The exercise is on a page outside its section: `mcprep exercises section REF SECTION-ID`, or correct the page of the heading (`mcprep outline update ID --page N`).',
+  'span-gap': 'The regions of the exercise skip text: add the missing part (`mcprep continues add REF --page P --rect l,t,r,b --snap`) or lengthen the region that ends early (`mcprep frames update REF --rect l,t,r,b --snap`).',
+  'continuation-order': 'Put the regions in reading order: `mcprep continues remove REF --index N`, then `mcprep continues add REF --page P --rect l,t,r,b --snap` in the order of the text.',
+  'context-range': 'The exercise has the instruction of another group: `mcprep context remove REF --all`, then `mcprep context add REF --page P --rect l,t,r,b --snap` with its own (`mcprep exercises list --section S --regions` shows the ones of its neighbours).',
+  'context-missing': 'The instruction that names this exercise is not its instruction: `mcprep context add REF --page P --rect l,t,r,b --snap` with the region of that instruction (`mcprep exercises list --section S --regions`).',
+  'context-inconsistent': 'Give the exercise the instruction of its group: `mcprep exercises list --section S --regions` prints the regions of its neighbours, then `mcprep context add REF --page P --rect l,t,r,b` for each region (an instruction across a page break is two).',
+  'context-not-nearest': 'The nearest instruction above the exercise is its own: `mcprep context remove REF --all`, then `mcprep context add REF --page P --rect l,t,r,b --snap` with that instruction.',
+  'solution-section-mismatch': 'Its answer is under the marker of another section: `mcprep solution remove REF`, then `mcprep solution add REF --page P --rect l,t,r,b --snap` with the answer printed in its own section.',
+  'region-holds-item': 'The region reaches into the next exercise: `mcprep frames update REF --rect l,t,r,b --snap` so that it ends before it.',
+};
+
+/** The codes an acknowledgement may name: the codes of the verify check (but the defects of the audit) and of the comparison with the reference. */
+export const ACKNOWLEDGEABLE_CODES: readonly string[] = [
+  ...VERIFY_CODES.map((entry) => entry.code).filter((code) => !(code in NON_ACKNOWLEDGEABLE)),
+  'reference-count',
+  'reference-missing',
+  'reference-extra',
+  'reference-title',
+];
+
+/** A name as it is compared: two reviewers are the same one when this is the same. */
+export const identityOf = (name: string): string => name.trim().toLowerCase();
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** Why an acknowledgement is not allowed, or undefined when it is. */
+const folded = (text: string): string => text.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Why an acknowledgement is not allowed (whatever the findings are), or undefined when it is: the sentence says what is wrong and what
+ * to give instead. What depends on the findings (the page, the quote, the reason against the message) is checked where they are known.
+ */
 export function acknowledgementProblem(entry: Acknowledgement): string | undefined {
-  if (!ACKNOWLEDGEABLE_CODES.includes(entry.code)) return `"${entry.code}" is not the code of a finding that can be acknowledged (a blanket "everything" is refused).`;
-  if (entry.ref.trim() === '' || /[*?]/.test(entry.ref)) return 'It names no exercise or section: a blanket acknowledgement is refused.';
-  if (entry.reason.trim().length < 10) return 'The reason is too short: say what the book prints and where (at least a sentence).';
-  const section = !entry.ref.includes(':');
-  if (section && entry.count === undefined && (entry.evidence.quote === undefined || entry.evidence.quote.trim() === '')) {
-    return 'An acknowledgement for a whole section must say how many findings it covers (count) or quote the line (quote): otherwise it would cover findings that appear later.';
+  const code = entry.code.trim();
+  if (code === '') {
+    return `No --code: name the code of the finding, as \`mcprep audit gate\` prints it in square brackets. The codes that can be acknowledged are ${ACKNOWLEDGEABLE_CODES.join(', ')}.`;
   }
-  if (entry.count !== undefined && (!Number.isInteger(entry.count) || entry.count < 1)) return 'count must be a whole number from 1.';
-  if (entry.evidence.quote !== undefined && entry.evidence.quote.length > 60) return 'The quote is at most 60 characters.';
+  const repair = NON_ACKNOWLEDGEABLE[code];
+  if (repair !== undefined) return `"${code}" can never be acknowledged: it is a defect of the audit, not something the book prints. Repair it: ${repair}`;
+  if (!ACKNOWLEDGEABLE_CODES.includes(code)) {
+    return `"${code}" is not the code of a finding that can be acknowledged. The codes that can be are ${ACKNOWLEDGEABLE_CODES.join(', ')}; a code that is not among them (a blanket "everything" too) is refused.`;
+  }
+  if (entry.ref.trim() === '' || /[*?]/.test(entry.ref)) {
+    return 'No --ref, or one with a wildcard: name the one exercise (SECTION:LABEL, for example 3.2:7) or the one section (3.2) the finding is about, exactly as the finding names it. A blanket acknowledgement is refused.';
+  }
+  if (entry.reason.trim().length < 10) {
+    return `The reason has ${entry.reason.trim().length} characters; give at least 10: one sentence that says what the BOOK prints and where, for example "the book prints the number 7 twice on page 120".`;
+  }
+  if (!entry.ref.includes(':') && entry.count === undefined) {
+    return `"${entry.ref}" is a section: say how many findings the note covers with --count N (the number of findings of that code in the section, as \`mcprep audit gate\` lists them), so that it cannot cover findings that appear later.`;
+  }
+  if (entry.count !== undefined && (!Number.isInteger(entry.count) || entry.count < 1)) return `--count must be a whole number from 1, not ${String(entry.count)}.`;
+  if (entry.evidence.page !== undefined && (!Number.isInteger(entry.evidence.page) || entry.evidence.page < 0)) {
+    return `--page must be a zero-based page number (0 is the first page), not ${String(entry.evidence.page)}.`;
+  }
+  const quote = entry.evidence.quote;
+  if (quote !== undefined && (quote.trim().length < 4 || quote.length > 60)) {
+    return `--quote has ${quote.trim().length} characters; give a piece of the text printed on the page, 4 to 60 characters, copied from \`mcprep lines PAGE\`.`;
+  }
   return undefined;
+}
+
+/** Whether a reason only repeats what a finding says: it equals the message or holds all of it. */
+export function reasonRepeats(reason: string, finding: Pick<GateFinding, 'message'>): boolean {
+  const said = folded(reason);
+  const message = folded(finding.message);
+  return said === message || (message.length >= 20 && said.includes(message));
 }
 
 export function emptyNotes(): AuditNotes {
   return { format: NOTES_FORMAT, version: NOTES_VERSION, acknowledgements: [] };
 }
 
-/** The notes of a parsed file; refuses what is not an acknowledgement the way the gate takes them. */
+/** The notes of a parsed file. An acknowledgement that is not allowed is kept: the gate lists it as refused and the finding stays open. */
 export function parseNotes(raw: unknown, file: string): AuditNotes {
   if (!isRecord(raw) || raw['format'] !== NOTES_FORMAT || !Array.isArray(raw['acknowledgements'])) {
     throw new McPrepError('E_FILE', `"${file}" is not a file of audit notes (format ${NOTES_FORMAT}).`, { hint: 'Acknowledgements are added with `mcprep audit ack`; the file is written by it.' });
   }
   const acknowledgements: Acknowledgement[] = [];
-  raw['acknowledgements'].forEach((value, index) => {
+  for (const value of raw['acknowledgements']) {
     const entry = isRecord(value) ? value : {};
     const evidence = isRecord(entry['evidence']) ? entry['evidence'] : {};
     const ack: Acknowledgement = {
@@ -98,11 +158,17 @@ export function parseNotes(raw: unknown, file: string): AuditNotes {
       evidence: { ...(typeof evidence['page'] === 'number' ? { page: evidence['page'] } : {}), ...(typeof evidence['quote'] === 'string' ? { quote: evidence['quote'] } : {}) },
       by: typeof entry['by'] === 'string' ? entry['by'] : 'unknown',
       ...(typeof entry['count'] === 'number' ? { count: entry['count'] } : {}),
+      confirmed: false,
     };
-    const problem = acknowledgementProblem(ack);
-    if (problem !== undefined) throw new McPrepError('E_FILE', `Acknowledgement ${index + 1} of "${file}" (${ack.code || 'no code'} ${ack.ref || 'no ref'}) is not allowed: ${problem}`, { hint: 'Remove it, or add it again with `mcprep audit ack`.' });
+    // A confirmation counts when it names a reviewer other than the one who wrote the note.
+    const confirmedBy = typeof entry['confirmedBy'] === 'string' ? entry['confirmedBy'].trim() : '';
+    if (entry['confirmed'] === true && confirmedBy !== '' && identityOf(confirmedBy) !== identityOf(ack.by)) {
+      ack.confirmed = true;
+      ack.confirmedBy = confirmedBy;
+      if (typeof entry['confirmedAt'] === 'string') ack.confirmedAt = entry['confirmedAt'];
+    }
     acknowledgements.push(ack);
-  });
+  }
   const patterns = Array.isArray(raw['itemPatterns']) ? raw['itemPatterns'].filter((entry): entry is string => typeof entry === 'string') : [];
   return { format: NOTES_FORMAT, version: NOTES_VERSION, ...(patterns.length > 0 ? { itemPatterns: patterns } : {}), acknowledgements };
 }
@@ -114,7 +180,16 @@ export function parseNotes(raw: unknown, file: string): AuditNotes {
 export function verifyFindings(report: VerifyReport): GateFinding[] {
   return report.findings
     .filter((finding) => finding.severity !== 'info')
-    .map((finding) => ({ source: 'verify', code: finding.code, severity: finding.severity as 'error' | 'warning', ref: finding.ref, page: finding.page, message: finding.message, evidence: finding.evidence, acknowledgeable: true }));
+    .map((finding) => ({
+      source: 'verify',
+      code: finding.code,
+      severity: finding.severity as 'error' | 'warning',
+      ref: finding.ref,
+      page: finding.page,
+      message: finding.message,
+      evidence: finding.evidence,
+      acknowledgeable: !(finding.code in NON_ACKNOWLEDGEABLE),
+    }));
 }
 
 /** The differences with the reference as findings: a count is an error, a title a warning. */
@@ -131,18 +206,15 @@ export function referenceFindings(report: CompareReport): GateFinding[] {
   }));
 }
 
-const lower = (text: string): string => text.toLowerCase();
-
-/** Whether an acknowledgement is for this finding: the same code, the same exercise or section, the page and the quote when it gives them. */
+/**
+ * Whether an acknowledgement is for this finding: the same code, the same exercise or section, and the page it names. (The quote is a piece
+ * of the printed page that shows what the book prints; it does not pick the finding, so that a piece of the finding's own message cannot.)
+ */
 export function matches(entry: Acknowledgement, finding: GateFinding): boolean {
   if (entry.code !== finding.code || !finding.acknowledgeable) return false;
   const section = !entry.ref.includes(':');
   if (section ? finding.ref !== entry.ref && !finding.ref.startsWith(`${entry.ref}:`) : finding.ref !== entry.ref) return false;
   if (entry.evidence.page !== undefined && finding.page !== entry.evidence.page) return false;
-  if (entry.evidence.quote !== undefined && entry.evidence.quote !== '') {
-    const quote = lower(entry.evidence.quote);
-    if (!lower(finding.evidence).includes(quote) && !lower(finding.message).includes(quote)) return false;
-  }
   return true;
 }
 
@@ -151,18 +223,27 @@ export interface Judgement {
   acknowledged: AcknowledgedFinding[];
   stale: StaleAcknowledgement[];
   unused: Acknowledgement[];
+  /** Notes that are not allowed (a defect of the audit, a blanket note): they apply to nothing. */
+  refused: StaleAcknowledgement[];
 }
 
 /**
  * Which findings are covered by the acknowledgements. An acknowledgement that says how many findings it covers (`count`) applies
- * only when exactly that many findings match it now; one that matches none is unused (the problem was repaired).
+ * only when exactly that many findings match it now; one that matches none is unused (the problem was repaired); one that is not
+ * allowed is refused and covers nothing.
  */
 export function judge(findings: readonly GateFinding[], notes: readonly Acknowledgement[]): Judgement {
   const taken = new Set<GateFinding>();
   const acknowledged: AcknowledgedFinding[] = [];
   const stale: StaleAcknowledgement[] = [];
   const unused: Acknowledgement[] = [];
+  const refused: StaleAcknowledgement[] = [];
   for (const entry of notes) {
+    const problem = acknowledgementProblem(entry);
+    if (problem !== undefined) {
+      refused.push({ acknowledgement: entry, why: problem });
+      continue;
+    }
     const hits = findings.filter((finding) => !taken.has(finding) && matches(entry, finding));
     if (hits.length === 0) {
       unused.push(entry);
@@ -177,5 +258,10 @@ export function judge(findings: readonly GateFinding[], notes: readonly Acknowle
       acknowledged.push({ finding, acknowledgement: entry });
     }
   }
-  return { open: findings.filter((finding) => !taken.has(finding)), acknowledged, stale, unused };
+  return { open: findings.filter((finding) => !taken.has(finding)), acknowledged, stale, unused, refused };
+}
+
+/** How many of the notes that apply have not been confirmed by a second reviewer. */
+export function unconfirmedNotes(acknowledged: readonly AcknowledgedFinding[]): number {
+  return new Set(acknowledged.filter((entry) => !entry.acknowledgement.confirmed).map((entry) => entry.acknowledgement)).size;
 }

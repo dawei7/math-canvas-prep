@@ -48,7 +48,7 @@ describe('the tools that finish an audit', () => {
   it('are listed with typed arguments, the gate saying what it asks and what an acknowledgement is for', async () => {
     const { tools } = await client.listTools();
     const named = (name: string) => tools.find((tool) => tool.name === name);
-    for (const name of ['book_compare', 'exercises_sheets', 'audit_gate', 'audit_ack']) expect(named(name), name).toBeDefined();
+    for (const name of ['book_compare', 'exercises_sheets', 'audit_gate', 'audit_ack', 'audit_confirm', 'audit_review']) expect(named(name), name).toBeDefined();
     expect(named('audit_gate')?.description).toContain('open');
     expect(named('audit_gate')?.description).toContain('NEVER for a defect of ours');
     expect(named('audit_ack')?.description).toContain('ONLY what the BOOK itself prints');
@@ -57,6 +57,8 @@ describe('the tools that finish an audit', () => {
     const properties = named('audit_gate')?.inputSchema.properties as Record<string, { type?: string }>;
     expect(properties['ink']?.type).toBe('boolean');
     expect(properties['sheets_seen']?.type).toBe('string');
+    expect(properties['visual']?.type).toBe('string');
+    expect(properties['final']?.type).toBe('boolean');
     expect(client.getInstructions()).toContain('audit_gate');
   });
 
@@ -83,11 +85,21 @@ describe('the tools that finish an audit', () => {
     expect(data(failing)['passed']).toBe(false);
     const refused = await call('audit_ack', { code: 'reference-count', ref: '0.1', reason: 'The book prints 70 exercises in 0.1, the reference says 71.', reference: 'reference.json' });
     expect(refused.isError).toBe(true);
-    const ack = await call('audit_ack', { code: 'reference-count', ref: '0.1', count: 1, reason: 'The book prints 70 exercises in 0.1, the reference says 71.', reference: 'reference.json', by: 'tester' });
+    const forbidden = await call('audit_ack', { code: 'context-inconsistent', ref: '0.1:5', reason: 'The book prints one instruction for all of them.' });
+    expect(forbidden.isError).toBe(true);
+    expect(JSON.stringify(forbidden.content)).toContain('can never be acknowledged');
+    const ack = await call('audit_ack', { code: 'reference-count', ref: '0.1', count: 1, page: 5, quote: 'Evaluate each expression', reason: 'The book prints 70 exercises in 0.1, the reference says 71.', reference: 'reference.json', by: 'tester' });
     expect(ack.isError).toBeUndefined();
     expect(data(ack)).toMatchObject({ covers: 1 });
     const again = await call('audit_gate', { reference: 'reference.json' });
-    expect(data(again)).toMatchObject({ passed: true });
+    expect(data(again)).toMatchObject({ passed: true, unconfirmed: 1, perfect: false });
+    expect((await call('audit_confirm', { by: 'tester', all: true })).isError).toBe(true);
+    const confirmed = await call('audit_confirm', { by: 'reviewer', all: true });
+    expect(confirmed.isError).toBeUndefined();
+    expect(data(await call('audit_gate', { reference: 'reference.json' }))).toMatchObject({ passed: true, unconfirmed: 0 });
+    const review = await call('audit_review', { out_dir: 'review', reference: 'reference.json' });
+    expect(review.isError).toBeUndefined();
+    expect(data(review)['entries']).toHaveLength(1);
     expect((await call('audit_gate', { status: true })).structuredContent).toMatchObject({ status: 'passed' });
     const sheets = await call('exercises_sheets', { out_dir: 'sheets', sections: ['1.2'], per_sheet: 8, solutions: true });
     expect(sheets.isError).toBeUndefined();

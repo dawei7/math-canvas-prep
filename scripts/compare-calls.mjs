@@ -83,6 +83,8 @@ export const TOOLS = {
   exercises_sheets: { command: 'exercises sheets' },
   audit_gate: { command: 'audit gate' },
   audit_ack: { command: 'audit ack' },
+  audit_confirm: { command: 'audit confirm' },
+  audit_review: { command: 'audit review' },
 };
 
 /** The commands that take the contents of a batch from a file or standard input: their positional argument says nothing. */

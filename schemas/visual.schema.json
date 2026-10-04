@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/visual.schema.json",
+  "title": "The visual record of an audit: proof that every exercise was looked at (mcprep audit gate --visual FILE)",
+  "description": "A JSON list with ONE ENTRY PER EXERCISE, written by whoever looked at its cell on the contact sheets (an object { \"visual\": [...] } is accepted too). The gate checks every entry against the project and the text layer: startsWith (three words) must be a piece of the text of the exercise's region, instruction must be whether the exercise has an instruction, answerStartsWith must be the number at the start of the text of its answer; an entry that does not fit is open as visual-mismatch (the cell was not looked at), ok false as visual-defect, an exercise without an entry as visual-missing. Plain JSON, camelCase.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "ref",
+      "startsWith",
+      "instruction",
+      "answerStartsWith",
+      "ok"
+    ],
+    "properties": {
+      "ref": {
+        "type": "string",
+        "minLength": 3,
+        "description": "SECTION:LABEL of the exercise, as `mcprep exercises list` prints it (1.2:5)."
+      },
+      "startsWith": {
+        "type": "string",
+        "description": "The first three words printed after the number of the exercise (case and spaces do not matter); they must be in the text layer of its region."
+      },
+      "instruction": {
+        "type": "boolean",
+        "description": "Whether the cell shows an instruction (a blue box). It must be whether the exercise has an instruction (a context region)."
+      },
+      "answerStartsWith": {
+        "type": "string",
+        "description": "The number at the start of the green box (the answer), or an empty string when the exercise has none. It must be the number at the start of the text of its solution region."
+      },
+      "ok": {
+        "type": "boolean",
+        "description": "False when the cell shows a defect of any kind."
+      },
+      "defect": {
+        "type": "string",
+        "description": "With ok false: the code of the defect (a finding code such as context-missing, or a short word)."
+      }
+    },
+    "additionalProperties": false
+  }
+}

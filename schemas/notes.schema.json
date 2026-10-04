@@ -13,14 +13,17 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["code", "ref", "reason", "evidence", "by"],
+        "required": ["code", "ref", "reason", "evidence", "by", "confirmed"],
         "properties": {
           "code": { "type": "string", "description": "The code of the finding (an exercises verify code, or reference-count, reference-missing, reference-extra, reference-title). A wildcard is refused." },
           "ref": { "type": "string", "description": "The exercise (SECTION:LABEL) or the section the finding is about." },
           "reason": { "type": "string", "minLength": 10, "description": "What the book prints and where." },
-          "evidence": { "type": "object", "properties": { "page": { "type": "integer", "minimum": 0 }, "quote": { "type": "string", "maxLength": 60 } }, "additionalProperties": false, "description": "Narrows the note to the finding on this page, or whose evidence or message holds this text." },
+          "evidence": { "type": "object", "properties": { "page": { "type": "integer", "minimum": 0 }, "quote": { "type": "string", "maxLength": 60 } }, "additionalProperties": false, "description": "The page of the finding (it picks the finding) and a piece of the text printed on that page, which `audit ack` checked against the text layer." },
           "by": { "type": "string", "description": "Who looked." },
-          "count": { "type": "integer", "minimum": 1, "description": "How many findings it covers; required for a section; the note applies only while exactly that many match." }
+          "count": { "type": "integer", "minimum": 1, "description": "How many findings it covers; required for a section; the note applies only while exactly that many match." },
+          "confirmed": { "type": "boolean", "description": "False until a second reviewer, another identity than `by`, runs `mcprep audit confirm`; a note that is changed or replaced is not confirmed again." },
+          "confirmedBy": { "type": "string", "description": "Who confirmed it (never the same identity as `by`)." },
+          "confirmedAt": { "type": "string", "description": "When it was confirmed (ISO 8601)." }
         },
         "additionalProperties": false
       }

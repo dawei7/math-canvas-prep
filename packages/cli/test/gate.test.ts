@@ -19,6 +19,8 @@ interface Gate {
   format: string;
   version: number;
   passed: boolean;
+  perfect: boolean;
+  unconfirmed: number;
   project: { name: string; frames: string; outline: string; hash: string };
   counts: { exercises: number; sections: number; solutions: number; open: number; acknowledged: number };
   checks: { validate: { errors: number }; verify: { errors: number; warnings: number }; reference: { differences: number } | null; sheets: { sheets: number; seen: number; missing: number[]; current: boolean } | null };
@@ -115,13 +117,17 @@ describe('audit gate', () => {
     const failing = await cli(['audit', 'gate', '--reference', 'reference.json']);
     expect(failing.code).toBe(4);
     expect(gateOf(failing).open.map((finding) => `${finding.code} ${finding.ref}`)).toEqual(['reference-count 0.1']);
-    const ack = await cli(['audit', 'ack', '--code', 'reference-count', '--ref', '0.1', '--count', '1', '--reason', 'The practice set of 0.1 prints 70 exercises; the reference lists 68 (checked on pages 5 and 6).', '--reference', 'reference.json', '--by', 'tester']);
+    const ack = await cli(['audit', 'ack', '--code', 'reference-count', '--ref', '0.1', '--count', '1', '--page', '5', '--quote', 'Evaluate each expression', '--reason', 'The practice set of 0.1 prints 70 exercises; the reference lists 68 (checked on pages 5 and 6).', '--reference', 'reference.json', '--by', 'tester']);
     expect(ack.code).toBe(0);
-    expect(ack.json.result).toMatchObject({ covers: 1, replaced: false });
+    expect(ack.json.result).toMatchObject({ covers: 1, replaced: false, acknowledgement: { confirmed: false } });
     const passed = await cli(['audit', 'gate', '--reference', 'reference.json']);
     expect(passed.code).toBe(0);
     const gate = gateOf(passed);
-    expect(gate).toMatchObject({ passed: true, counts: { acknowledged: 1, open: 0 } });
+    // The gate passes, and says that nobody but the one who wrote the note has looked at it.
+    expect(gate).toMatchObject({ passed: true, unconfirmed: 1, counts: { acknowledged: 1, open: 0 } });
+    expect((await cli(['audit', 'confirm', '--by', 'tester', '--all'])).code).toBe(2);
+    expect((await cli(['audit', 'confirm', '--by', 'reviewer', '--ref', '0.1', '--code', 'reference-count'])).code).toBe(0);
+    expect(gateOf(await cli(['audit', 'gate', '--reference', 'reference.json']))).toMatchObject({ passed: true, unconfirmed: 0 });
     expect(gate.acknowledged[0]).toMatchObject({ finding: { code: 'reference-count', ref: '0.1' }, acknowledgement: { by: 'tester' } });
     expect(gate.acknowledged[0]?.acknowledgement.reason).toContain('prints 70 exercises');
     // The reference is repaired: the note is for a finding that is gone.
@@ -137,25 +143,67 @@ describe('audit gate', () => {
     expect(gateOf(more).counts.acknowledged).toBe(1);
   });
 
-  it('refuses a blanket acknowledgement, a note without a reason, one for a finding that does not exist, and a section without a count', async () => {
+  it('refuses what is not allowed, and every refusal says what is wrong and what to give instead', async () => {
     const cli = await auditedBook();
     const reason = 'The book prints it so, on the page named.';
     const ack = (...args: string[]): Promise<Result> => cli(['audit', 'ack', ...args]);
-    expect((await ack('--code', 'duplicate', '--ref', '*', '--reason', reason)).code).toBe(2);
-    expect((await ack('--code', 'everything', '--ref', '0.1', '--reason', reason)).code).toBe(2);
-    expect((await ack('--code', 'duplicate', '--ref', '0.1:3', '--reason', 'no')).code).toBe(2);
+    const said = (done: Result): string => `${done.json.error?.message ?? ''} ${done.json.error?.hint ?? ''}`;
+    const blanket = await ack('--code', 'duplicate', '--ref', '*', '--reason', reason);
+    expect(blanket.code).toBe(2);
+    expect(said(blanket)).toContain('wildcard');
+    const unknown = await ack('--code', 'everything', '--ref', '0.1', '--reason', reason);
+    expect(unknown.code).toBe(2);
+    expect(said(unknown)).toContain('is not the code of a finding that can be acknowledged');
+    expect(said(unknown)).toContain('duplicate');
+    const short = await ack('--code', 'duplicate', '--ref', '0.1:3', '--reason', 'no');
+    expect(short.code).toBe(2);
+    expect(said(short)).toContain('has 2 characters');
+    expect(said(short)).toContain('at least 10');
+    const lacking = await ack('--code', 'duplicate');
+    expect(lacking.code).toBe(2);
+    expect(said(lacking)).toContain('--ref, --reason are missing');
     const missing = await ack('--code', 'duplicate', '--ref', '0.1:3', '--page', '5', '--reason', reason);
     expect(missing.code).toBe(2);
-    expect(missing.json.error?.message).toContain('only for a finding that exists');
-    expect((await ack('--code', 'gap', '--ref', '0.1', '--reason', reason)).code).toBe(2);
-    expect((await ack('--code', 'validate', '--ref', '0.1:3', '--reason', reason)).code).toBe(2);
+    expect(said(missing)).toContain('There is no finding duplicate for 0.1:3 now');
+    expect(said(missing)).toContain('mcprep audit gate');
+    const bare = await ack('--code', 'gap', '--ref', '0.1', '--reason', reason);
+    expect(bare.code).toBe(2);
+    expect(said(bare)).toContain('is a section: say how many findings the note covers with --count N');
+    const validate = await ack('--code', 'validate', '--ref', '0.1:3', '--reason', reason);
+    expect(validate.code).toBe(2);
     await cli(['frames', 'delete', '0.1:12']);
     const section = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1', '--reason', reason);
     expect(section.code).toBe(2);
-    expect(section.json.error?.message).toContain('how many findings');
-    const wrongCount = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1', '--count', '5', '--reason', reason);
+    expect(said(section)).toContain('how many findings');
+    const noPage = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--reason', reason);
+    expect(noPage.code).toBe(2);
+    expect(said(noPage)).toContain('--page is missing');
+    expect(said(noPage)).toContain('page 5');
+    const wrongPage = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '9', '--reason', reason);
+    expect(wrongPage.code).toBe(2);
+    expect(said(wrongPage)).toContain('is not on page 9');
+    const noQuote = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '5', '--reason', reason);
+    expect(noQuote.code).toBe(2);
+    expect(said(noQuote)).toContain('--quote is missing');
+    expect(said(noQuote)).toContain('mcprep lines 5');
+    // The quote must be on the page: a piece of the finding's own message is not.
+    const fromMessage = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '5', '--quote', 'starts like exercise 12', '--reason', reason);
+    expect(fromMessage.code).toBe(2);
+    expect(said(fromMessage)).toContain('is not in the text of page 5');
+    const tooShort = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '5', '--quote', 'ab', '--reason', reason);
+    expect(tooShort.code).toBe(2);
+    expect(said(tooShort)).toContain('4 to 60 characters');
+    // The reason must not be the text of the finding.
+    const finding = gateOf(await cli(['audit', 'gate'])).open.find((entry) => entry.code === 'numbered-text-left-behind' && entry.ref === '0.1:12') as Finding;
+    const repeated = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '5', '--quote', 'Evaluate each expression', '--reason', finding.message);
+    expect(repeated.code).toBe(2);
+    expect(said(repeated)).toContain('The reason repeats the text of the finding');
+    const wrongCount = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1', '--count', '5', '--page', '5', '--quote', 'Evaluate each expression', '--reason', reason);
     expect(wrongCount.code).toBe(2);
-    expect(wrongCount.json.error?.message).toContain('findings match');
+    expect(said(wrongCount)).toContain('Give --count 1');
+    // The note that is right is added.
+    const fine = await ack('--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '5', '--quote', 'Evaluate each expression', '--reason', reason);
+    expect(fine.code).toBe(0);
   });
 
   it('turns a note for a section into a stale one when more findings match than it says', async () => {
@@ -163,7 +211,7 @@ describe('audit gate', () => {
     const reason = 'The book prints these two lines between its exercises.';
     await cli(['frames', 'delete', '0.1:12']);
     await cli(['frames', 'delete', '0.1:13']);
-    expect((await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--count', '2', '--reason', reason])).code).toBe(0);
+    expect((await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--count', '2', '--page', '5', '--quote', 'Evaluate each expression', '--reason', reason])).code).toBe(0);
     await cli(['frames', 'delete', '0.1:14']);
     const gate = gateOf(await cli(['audit', 'gate']));
     expect(gate.staleAcknowledgements).toHaveLength(1);

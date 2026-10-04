@@ -12,7 +12,7 @@ export const NOTES_FORMAT = 'math-canvas-audit-notes';
 export const NOTES_VERSION = 1;
 
 /** Where a finding of the gate comes from. */
-export type GateSource = 'validate' | 'verify' | 'reference' | 'bundle' | 'sheets';
+export type GateSource = 'validate' | 'verify' | 'reference' | 'bundle' | 'sheets' | 'visual';
 
 /** What a finding is, whatever check made it. */
 export interface GateFinding {
@@ -41,6 +41,10 @@ export interface Acknowledgement {
   by: string;
   /** How many findings it covers; if the findings change, it no longer matches. Required for a section. */
   count?: number;
+  /** A second reviewer, someone other than `by`, has looked at it and says it is what the book prints (`audit confirm`). */
+  confirmed: boolean;
+  confirmedBy?: string;
+  confirmedAt?: string;
 }
 
 export interface AuditNotes {
@@ -58,7 +62,7 @@ export interface AcknowledgedFinding {
 
 export interface StaleAcknowledgement {
   acknowledgement: Acknowledgement;
-  /** Why it does not apply any more. */
+  /** Why it does not apply any more (or why it is not allowed). */
   why: string;
 }
 
@@ -71,12 +75,17 @@ export interface GateReport {
   /** What the project was when the gate ran: a later change makes this certificate stale. */
   project: { name: string; frames: string; outline: string; hash: string };
   counts: { sections: number; exercises: number; solutions: number; errors: number; warnings: number; infos: number; open: number; acknowledged: number };
+  /** Acknowledgements that apply and that no second reviewer has confirmed yet (`audit confirm`): the gate passes, but the book is not perfect until this is 0. */
+  unconfirmed: number;
+  /** Nothing is open, the visual record covers every exercise and no acknowledgement is unconfirmed: the book is finished. */
+  perfect: boolean;
   checks: {
     validate: { errors: number; warnings: number };
     verify: { errors: number; warnings: number; infos: number; ink: boolean };
     reference: { file: string; differences: number } | null;
     bundle: { path: string; ok: boolean; frames: number | null } | null;
     sheets: { file: string; sheets: number; seen: number; missing: number[]; exhaustive: boolean; current: boolean } | null;
+    visual: { file: string; entries: number; exercises: number; missing: number; mismatches: number; defects: number; exhaustive: boolean } | null;
   };
   itemPatterns: string[];
   /** Neither repaired nor acknowledged. */
@@ -86,6 +95,8 @@ export interface GateReport {
   staleAcknowledgements: StaleAcknowledgement[];
   /** Acknowledgements for findings that no longer exist (the problem was repaired): they can be removed. */
   unusedAcknowledgements: Acknowledgement[];
+  /** Acknowledgements that are not allowed (a defect of the audit, a blanket note): they apply to nothing and the findings stay open. */
+  refusedAcknowledgements: StaleAcknowledgement[];
 }
 
 /** Whether the certificate on disk is for the project as it is now. */
@@ -96,4 +107,10 @@ export interface GateStatus {
   current?: string;
   createdAt?: string;
   open?: number;
+  /** Acknowledgements of the certificate that no second reviewer has confirmed (in the notes as they are now). */
+  unconfirmed?: number;
+  /** The visual record covered every exercise when the gate ran. */
+  exhaustive?: boolean;
+  /** The certificate says the book is perfect (and is current). */
+  perfect?: boolean;
 }

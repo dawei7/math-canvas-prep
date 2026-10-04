@@ -4,12 +4,14 @@
   "title": "The certificate of the gate of an audit (mcprep audit gate --json and <name>.audit-gate.json)",
   "description": "What the gate found when it ran: every check that needs no looking, what is open (neither repaired nor acknowledged), what is acknowledged with its reason, and whether it passed. It is for the frames and the outline whose SHA-256 it records: any later change makes it stale. Pages are zero-based. Plain JSON, camelCase.",
   "type": "object",
-  "required": ["format", "version", "createdAt", "passed", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements"],
+  "required": ["format", "version", "createdAt", "passed", "perfect", "unconfirmed", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements", "refusedAcknowledgements"],
   "properties": {
     "format": { "const": "math-canvas-audit-gate" },
     "version": { "const": 1 },
     "createdAt": { "type": "string", "description": "When the gate ran (ISO 8601)." },
     "passed": { "type": "boolean", "description": "True only when `open` is empty." },
+    "perfect": { "type": "boolean", "description": "True only when nothing is open, the visual record covers every exercise and no acknowledgement is unconfirmed: the book is finished." },
+    "unconfirmed": { "type": "integer", "minimum": 0, "description": "Acknowledgements that apply and that no second reviewer has confirmed (`audit confirm`)." },
     "project": {
       "type": "object",
       "required": ["name", "frames", "outline", "hash"],
@@ -38,7 +40,7 @@
     },
     "checks": {
       "type": "object",
-      "required": ["validate", "verify", "reference", "bundle", "sheets"],
+      "required": ["validate", "verify", "reference", "bundle", "sheets", "visual"],
       "properties": {
         "validate": { "type": "object", "required": ["errors", "warnings"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
         "verify": { "type": "object", "required": ["errors", "warnings", "infos", "ink"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 }, "infos": { "type": "integer", "minimum": 0 }, "ink": { "type": "boolean", "description": "Whether the pixel check of the edges ran." } }, "additionalProperties": false },
@@ -52,8 +54,22 @@
             "sheets": { "type": "integer", "minimum": 0 },
             "seen": { "type": "integer", "minimum": 0 },
             "missing": { "type": "array", "items": { "type": "integer" }, "description": "The sheets not listed as looked at." },
-            "exhaustive": { "type": "boolean", "description": "The sheets cover every exercise of the book." },
+            "exhaustive": { "type": "boolean", "description": "The sheets cover every exercise of the book AND the visual record has an entry for every exercise." },
             "current": { "type": "boolean", "description": "Every sheet shows its exercises as they are now." }
+          },
+          "additionalProperties": false
+        },
+        "visual": {
+          "type": ["object", "null"],
+          "required": ["file", "entries", "exercises", "missing", "mismatches", "defects", "exhaustive"],
+          "properties": {
+            "file": { "type": "string" },
+            "entries": { "type": "integer", "minimum": 0 },
+            "exercises": { "type": "integer", "minimum": 0 },
+            "missing": { "type": "integer", "minimum": 0, "description": "Exercises without an entry." },
+            "mismatches": { "type": "integer", "minimum": 0, "description": "Entries that do not fit the project or the text layer (visual-mismatch)." },
+            "defects": { "type": "integer", "minimum": 0, "description": "Entries with ok false (visual-defect)." },
+            "exhaustive": { "type": "boolean", "description": "Every exercise has an entry." }
           },
           "additionalProperties": false
         }
@@ -77,6 +93,11 @@
       "description": "Notes whose findings changed: they do not apply and the findings are open again."
     },
     "unusedAcknowledgements": { "type": "array", "items": { "$ref": "#/$defs/acknowledgement" }, "description": "Notes for findings that are gone (the problem was repaired)." },
+    "refusedAcknowledgements": {
+      "type": "array",
+      "items": { "type": "object", "required": ["acknowledgement", "why"], "properties": { "acknowledgement": { "$ref": "#/$defs/acknowledgement" }, "why": { "type": "string" } }, "additionalProperties": false },
+      "description": "Notes that are not allowed (a defect of the audit, a blanket note): they cover nothing and the findings stay open."
+    },
     "openOmitted": { "type": "integer", "minimum": 0, "description": "Only in the printed result of the command: how many open findings were left out after the first 300." },
     "acknowledgedOmitted": { "type": "integer", "minimum": 0 },
     "certificate": { "type": "string", "description": "Only in the printed result of the command: where the certificate was written." }
@@ -87,27 +108,30 @@
       "type": "object",
       "required": ["source", "code", "severity", "ref", "page", "message", "evidence", "acknowledgeable"],
       "properties": {
-        "source": { "enum": ["validate", "verify", "reference", "bundle", "sheets"] },
+        "source": { "enum": ["validate", "verify", "reference", "bundle", "sheets", "visual"] },
         "code": { "type": "string" },
         "severity": { "enum": ["error", "warning"] },
         "ref": { "type": "string" },
         "page": { "type": ["integer", "null"], "minimum": 0 },
         "message": { "type": "string" },
         "evidence": { "type": "string" },
-        "acknowledgeable": { "type": "boolean", "description": "False for what can never be what the book prints: a project that fails validation, a bundle the importer rejects, sheets that were not looked at." }
+        "acknowledgeable": { "type": "boolean", "description": "False for what can never be what the book prints: a defect of the audit (label-not-first, overlap, the context and solution checks, ...), a project that fails validation, a bundle the importer rejects, sheets or cells that were not looked at." }
       },
       "additionalProperties": false
     },
     "acknowledgement": {
       "type": "object",
-      "required": ["code", "ref", "reason", "evidence", "by"],
+      "required": ["code", "ref", "reason", "evidence", "by", "confirmed"],
       "properties": {
         "code": { "type": "string" },
         "ref": { "type": "string" },
         "reason": { "type": "string" },
         "evidence": { "type": "object", "properties": { "page": { "type": "integer", "minimum": 0 }, "quote": { "type": "string", "maxLength": 60 } }, "additionalProperties": false },
         "by": { "type": "string" },
-        "count": { "type": "integer", "minimum": 1 }
+        "count": { "type": "integer", "minimum": 1 },
+        "confirmed": { "type": "boolean", "description": "A second reviewer (another identity than `by`) confirmed it (`audit confirm`)." },
+        "confirmedBy": { "type": "string" },
+        "confirmedAt": { "type": "string" }
       },
       "additionalProperties": false
     }

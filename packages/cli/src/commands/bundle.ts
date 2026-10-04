@@ -67,6 +67,8 @@ export const exportBundle: CommandSpec = {
       ...(done.write.book.exercises > 0 ? [`  ${plural(done.write.book.exercises, 'authoritative exercise')}, ${done.write.book.withSolution} with a hidden solution (features: ${(manifest.features ?? []).join(', ')})`] : []),
       done.check ? '  The importer check passed: the app will accept it.' : '  (not verified)',
       ...(gate !== undefined ? [{ none: '  Audit gate: not run (`mcprep audit gate`).', stale: '  Audit gate: STALE, the frames or the outline changed after it ran (`mcprep audit gate`).', failed: `  Audit gate: did NOT pass (${gate.open ?? '?'} open).`, passed: '  Audit gate: passed, and current for these frames and this outline.' }[gate.status]] : []),
+      ...(gate !== undefined && gate.status === 'passed' && gate.exhaustive === false ? ['  Audit gate: not exhaustive, no visual record covers every exercise (`mcprep audit gate --visual FILE`).'] : []),
+      ...(gate !== undefined && gate.unconfirmed !== undefined && gate.unconfirmed > 0 ? [`  ${gate.unconfirmed} acknowledgement${gate.unconfirmed === 1 ? ' is' : 's are'} not yet confirmed by a second reviewer (\`mcprep audit review --out DIR\`, \`mcprep audit confirm --by NAME\`).`] : []),
       'Copy it to the tablet and open it in the Math Canvas library.',
       ...issueLines(done.write.issues.filter((entry) => entry.severity !== 'error'), '  ', 60),
     ];
