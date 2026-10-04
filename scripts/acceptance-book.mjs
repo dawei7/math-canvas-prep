@@ -93,7 +93,8 @@ async function mcprep(argv, { project = true, allowFailure = false } = {}) {
   return { code, envelope, result: envelope.result ?? {} };
 }
 
-const pct = (a, b) => (b === 0 ? 'n/a' : `${Math.round((1000 * a) / b) / 10} %`);
+const pct = (a, b) => (b === 0 ? 'n/a' : `${Math.round((10000 * a) / b) / 100} %`);
+const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const cell = (text) => String(text ?? '').replace(/\|/g, '\\|').replace(/\s+/g, ' ');
 const safe = (text) => String(text).replace(/[^A-Za-z0-9._-]+/g, '_');
 const pages = (a, b) => (a === b ? `${a}` : `${a}-${b}`);
@@ -373,7 +374,7 @@ try {
   lines.push(`- Chapters found: ${chapters.length}; sections: ${sections.length}; other entries: ${entries.length - chapters.length - sections.length}.`);
   lines.push(`- Printed contents on pages ${derived.result.toc.pages.join(', ') || 'none'}, ${derived.result.toc.openers.length} chapter opener lists; answer key from page ${derived.result.answerKey?.page ?? 'not found'}.`);
   lines.push(`- Exercises stored: ${totalExercises} in ${sections.filter((entry) => countOf(entry) > 0).length} sections; with a solution region: ${totalSolved} (${pct(totalSolved, totalExercises)}); proposed by the tool: ${proposals.length}.`);
-  lines.push(`- Solutions: ${answers.length} answers matched; ${withoutAnswer} exercises without an answer, ${withoutExercise} answers without an exercise.`);
+  lines.push(`- Solutions: ${count(answers.length, 'answer')} matched; ${count(withoutAnswer, 'exercise')} without an answer, ${count(withoutExercise, 'answer')} without an exercise.`);
   lines.push(`- Applying the same proposals again: ${again.result.applied === false && again.result.counts.unchanged === proposals.length && again.result.counts.added === 0 ? `nothing changed (${again.result.counts.unchanged} exercises unchanged)` : `CHANGED the project: ${JSON.stringify(again.result.counts)}`}; \`solutions propose --apply\`: ${againSolutions.result.applied === false ? 'nothing to add' : `ADDED ${againSolutions.result.counts.added} solutions`}.`);
   lines.push(`- Validation: ${validation.result.ok ? 'ok' : 'ERRORS'}; errors ${validation.result.errors?.length ?? '?'}, warnings ${warnings.length}${warnings.length > 0 ? ` (${Object.entries(warningsByCode).map(([code, count]) => `${code} ${count}`).join(', ')})` : ''}.`);
   lines.push(`- Bundle: ${exported.code === 0 ? bundlePath : `export failed: ${exported.envelope.error?.message}`}${check ? `; importer check: ${check.code === 0 && check.result.wouldImport ? 'would import' : `WOULD NOT IMPORT${check.envelope.error ? ` (${check.envelope.error.message})` : ''}`}` : ''}.`);
@@ -446,7 +447,7 @@ try {
   lines.push('');
 
   lines.push('## Solution coverage', '');
-  lines.push(`- ${totalSolved} of ${totalExercises} exercises (${pct(totalSolved, totalExercises)}) have a solution region; ${withoutAnswer} exercises have no answer in the key, ${withoutExercise} answers in the key have no exercise.`);
+  lines.push(`- ${totalSolved} of ${totalExercises} exercises (${pct(totalSolved, totalExercises)}) have a solution region; ${count(withoutAnswer, 'exercise')} ${withoutAnswer === 1 ? 'has' : 'have'} no answer in the key, ${count(withoutExercise, 'answer')} in the key ${withoutExercise === 1 ? 'has' : 'have'} no exercise.`);
   for (const section of solutionSections) {
     if (section.withoutAnswer.length > 0 || section.withoutExercise.length > 0) {
       lines.push(`  - ${section.section}: ${section.withoutAnswer.length > 0 ? `no answer for ${section.withoutAnswer.join(', ')}` : ''}${section.withoutExercise.length > 0 ? `${section.withoutAnswer.length > 0 ? '; ' : ''}answers without an exercise: ${section.withoutExercise.join(', ')}` : ''}${section.notes.length > 0 ? ` (${section.notes.join('; ')})` : ''}`);
