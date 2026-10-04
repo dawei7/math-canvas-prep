@@ -164,45 +164,79 @@ What it cannot see, and what to do about it:
 Looking at crops cannot cover a book of thousands of exercises, so a **sample** is looked at, and it must be the same for everyone: two
 agents (or an agent and a person) that audit one book look at exactly the same exercises and answers. `mcprep exercises sample` (MCP
 tool `exercises_sample`) chooses them by the rules below. There is no randomness, and the order of the frames in the file does not
-matter, so you can apply the rules by hand and get the same list.
+matter, so you can apply the rules by hand and get the same list. The sample is **bounded**: at most `--exercises N` exercises (default
+40) and `--solutions N` answers (default 20), however large the book is.
 
 ```console
-mcprep exercises sample                          # the list: ref, why, page, region
+mcprep exercises sample                          # the list: ref, why, page, region (at most 40 exercises and 20 answers)
 mcprep exercises sample --crops sample/          # also the PNG of every region, "1.2_5-exercise.png", "1.2_5-solution.png"
-mcprep exercises sample --exercises 60 --solutions 30 --out sample.json   # the format math-canvas-sample (`mcprep schema sample`)
+mcprep exercises sample --exercises 60 --solutions 30 --out sample.json   # other caps; the format math-canvas-sample (`mcprep schema sample`)
+mcprep exercises sample --per-section            # the thorough review: the first and the last exercise of every section, beyond the caps
 ```
 
 **The order of the book** is the order of the sections as the outline lists them and, within a section, reading order (page, then top,
 then left; the frame id decides a tie). Heights and areas are compared to five decimals.
 
-1. **Every section that has exercises: its first and its last exercise** (`first-in-section`, `last-in-section`; one exercise if the
-   section has only one).
-2. **One exercise of every layout kind that the book has: the first exercise of that kind in the order of the book.**
+**The caps are hard.** The rules are applied in the order below. Each rule adds the exercises it names that are not in the sample yet, as
+far as the cap allows; an exercise that is in the sample already costs nothing and only gains the reason. A rule that does not fit in
+what is left of the cap is **thinned by an even stride, never cut off at the end**: of its `M` candidates, in the order of the book, it
+takes `count` (what the cap leaves), the k-th at index floor(k * M / count) for k = 0, 1, ..., count - 2 and the last candidate as the
+last one, so both ends of the rule stay (with a `count` of 1, the first candidate). `notes` says which rule was thinned and how far, for
+example "The first and the last exercise of every chapter: 5 of 11 taken, thinned by an even stride to stay within 8 exercises", so
+that nobody takes the sample for more than it is.
 
-   | `reason` | the exercise ... |
-   | --- | --- |
-   | `has-continuation` | has a continuation region (it goes on in the next column or on the next page). |
-   | `context-on-another-page` | has an instruction region (`context`) on another page than its own. |
-   | `two-in-a-row` | stands in a row of exactly two exercises: the same section and page, regions that share at least half of the smaller one's height, left edges at least 0.05 apart. |
-   | `three-in-a-row` | the same for a row of three or more. |
-   | `longest` | has the region of the greatest height (the first in the order of the book wins a tie). |
-   | `smallest` | has the region of the least area. |
-   | `beside-a-figure` | has a region at least 2.5 times as tall as the median height of the exercises of its section, and at least 0.06 tall (sections of three exercises or more). |
+**The exercises** (`--exercises N`, default 40):
 
-   A kind that no exercise has is not sampled; `notes` says so, so that nobody looks for it.
-3. **Fill up to `--exercises N`** (default 40): take the exercises that are not in the sample yet, in the order of the book, `M` of them,
-   and `count` = N minus the size of the sample so far; with `count` of at least `M` take all of them, else the exercises at index
-   floor(k * M / count) for k = 0, 1, ..., count - 1 (`stride`).
-4. **The answers** (`--solutions N`, default 20), for the exercises that have a solution region: (a) the answers of the exercises
-   above (`of-first-in-section`, `of-last-in-section` for those of rule 1, `of-sampled-exercise` for the others); (b) the answer with the
-   most lines of text (`most-lines`; the text lines of the page in its solution regions, a joined line counted once; at least two; the
-   first in the order of the book wins a tie); (c) the first answer in the book that holds no text at all (`picture-only`, a graph);
-   (d) the first answer of every chapter's key (`first-of-chapter-key`: for each chapter, a top-level outline entry, the exercise whose
-   first solution region comes first on the pages); (e) then an even stride over the remaining answers, as in rule 3, up to N (`stride`).
+1. **One exercise of every layout kind that the book has: the first exercise of that kind in the order of the book.**
+2. **The first and the last exercise of every chapter** (`first-in-section`, `last-in-section`; one exercise if the chapter has only
+   one). A chapter is an outline entry of depth 0 that holds exercises directly or below it; an outline that has no entry of depth 0
+   has its top-level entries as chapters.
+3. **The first and the last exercise of every section** (the same two reasons). When what is left of the cap after rules 1 and 2
+   (`left`) is less than twice the number `S` of sections that have exercises, the sections are thinned first: `m` = floor(left / 2)
+   sections are taken, the j-th (j = 0, 1, ..., m - 2) being the section at index floor(j * S / m) in the order of the book and the
+   last one being the last section, so the first and the last section of the book are always in (with `m` of 1 only the first).
+   `--per-section` takes every section whatever the cap is.
+4. **An even stride over the rest** (`stride`): the exercises that are not in the sample yet are `M`; with `count` = N minus the size of
+   the sample so far, all of them when `count` is at least `M`, else the stride above.
 
-**N fills the sample up; it never cuts it.** The rules always add what they name, so a book of many sections has more than 40
-exercises: a book of 60 sections has at least 120. `--exercises 0` or `--solutions 0` leaves that half of the sample out. An exercise
-that several rules pick is listed once, with every reason in `reasons` and the first rule's in `reason`.
+| `reason` | rule | the exercise ... |
+| --- | --- | --- |
+| `has-continuation` | 1 | has a continuation region (it goes on in the next column or on the next page). |
+| `context-on-another-page` | 1 | has an instruction region (`context`) on another page than its own. |
+| `two-in-a-row` | 1 | stands in a row of exactly two exercises: the same section and page, regions that share at least half of the smaller one's height, left edges at least 0.05 apart. |
+| `three-in-a-row` | 1 | the same for a row of three or more. |
+| `longest` | 1 | has the region of the greatest height (the first in the order of the book wins a tie). |
+| `smallest` | 1 | has the region of the least area. |
+| `beside-a-figure` | 1 | has a region at least 2.5 times as tall as the median height of the exercises of its section, and at least 0.06 tall (sections of three exercises or more). |
+| `first-in-section` | 2, 3 | is the first exercise of a chapter (rule 2) or of a section (rule 3). |
+| `last-in-section` | 2, 3 | is the last exercise of a chapter or of a section. |
+| `stride` | 4 | is one of the even stride over the rest. |
+
+A layout kind that no exercise has is not sampled; `notes` says so, so that nobody looks for it.
+
+**The answers** (`--solutions N`, default 20), for the exercises that have a solution region:
+
+1. the answers of the exercises of rule 1 above (`of-first-in-section`, `of-last-in-section` for an exercise that is the first or the
+   last of a chapter or section, `of-sampled-exercise` for one that is in the sample for any other reason);
+2. the answer with the most lines of text (`most-lines`; the text lines of the page in its solution regions, a joined line counted
+   once; at least two; the first in the order of the book wins a tie);
+3. the first answer in the book that holds no text at all (`picture-only`, a graph);
+4. the first answer of every chapter's key (`first-of-chapter-key`: the chapters are those of rule 2 above; the answer is that of the
+   exercise whose first solution region comes first on the pages);
+5. the answers of the other sampled exercises, in the order the exercises were picked (with the same three reasons as in rule 1);
+6. an even stride over the remaining answers (`stride`), up to N.
+
+Rules 2 to 4 come before rule 5 on purpose: the sample has more exercises than answers fit in the default cap, and the answer with the
+most lines, the picture and the first answer of a key are the ones nothing else would show. Rule 1 comes first because its exercises are
+the layouts.
+
+**`--per-section`** (MCP `per_section: true`) is the thorough review, section by section: rule 3 of the exercises and rule 5 of the
+answers ignore the caps. The first and the last exercise of every section are in the sample, and the answer of every sampled exercise,
+whatever `--exercises` and `--solutions` say, so the sample can be larger than N; `notes` says by how much. The other rules keep their
+caps. `--exercises 0` or `--solutions 0` leaves that half of the sample out.
+
+An exercise that several rules pick is listed once, with every reason in `reasons` (in the order of the rules, so a layout kind comes
+before `first-in-section`) and the first rule's in `reason`.
 
 Each entry is `{ ref, reason, reasons, page, kind, region }`: `ref` is `SECTION:LABEL`, `kind` is `exercise` or `solution`, `region` is `main`
 or `solution:0`. **Look at exactly these**: `mcprep crop <ref> --region <region>` (the MCP tool `render_crop` with `frame` = `ref` and

@@ -573,8 +573,10 @@ mcprep outline add --title "Review exercises" --page 31 --depth 1 --id review --
    page. Open the images (14.4). For a whole book that is too much: `mcprep exercises verify` checks every region against the text
    layer without images (a region that does not start with its number, an answer that holds another number, regions that lie on each
    other, numbers missing or out of order; every error is a defect, run it until it has none), and `mcprep exercises sample --crops
-   sample/` names a fixed sample to look at, the same for every agent: the first and the last exercise of every section, every kind of
-   layout the book has, a spread of the rest, and their answers (docs/AUDIT_A_BOOK.md has the rules and the table of findings).
+   sample/` names a fixed sample to look at, the same for every agent and never larger than 40 exercises and 20 answers (`--exercises`
+   and `--solutions` change the caps): every kind of layout the book has, the first and the last exercise of every chapter and, as far
+   as the cap allows, of every section, a spread of the rest, and their answers. `--per-section` is the thorough review that takes the
+   first and the last exercise of every section beyond the caps (docs/AUDIT_A_BOOK.md has the rules and the table of findings).
 7. **Validate.** `mcprep validate`: zero errors; read every warning (14.6).
 8. **Compare with the book.** `mcprep book show` lists the sections with the number of exercises in each, how many have a
    solution, and the first and last label (`1 .. 24`). Does the last label match the last number printed in that section? Are
