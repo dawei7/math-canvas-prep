@@ -91,6 +91,13 @@ export function lockPath(projectPath: string): string {
 const STALE_MS = 30_000;
 
 /**
+ * What Windows says while another program is deleting the lock file at this very moment: the name is still taken (EPERM, EACCES or
+ * EBUSY) instead of EEXIST. The lock is simply tried again; a real permission problem is still reported, after a moment.
+ */
+const WINDOWS_DELETE_PENDING = new Set(process.platform === 'win32' ? ['EPERM', 'EACCES', 'EBUSY'] : []);
+const DELETE_PENDING_MS = 2000;
+
+/**
  * Runs `fn` while holding a lock file next to the project, so that two programs (an agent's command and the desktop
  * app, or two commands) do not both read, change and write the file at the same moment and lose an update.
  */
@@ -107,7 +114,12 @@ export async function withProjectLock<T>(projectPath: string, fn: () => Promise<
       }
       break;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (WINDOWS_DELETE_PENDING.has(code) && Date.now() - started <= DELETE_PENDING_MS) {
+        await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+        continue;
+      }
+      if (code !== 'EEXIST') {
         throw new McPrepError('E_LOCK', `Cannot create the lock file "${lock}": ${(error as Error).message}`, { cause: error });
       }
       try {
