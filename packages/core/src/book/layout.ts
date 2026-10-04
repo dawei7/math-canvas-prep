@@ -363,6 +363,7 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
   const orphans: string[] = [];
   const boundariesByPage = new Map<number, { top: number; block: Block }[]>();
   const pageList = [...new Set(lines.map((entry) => entry.page))].sort((a, b) => a - b);
+  const startSize = median(lines.filter((entry) => entry.role === 'start').map((entry) => entry.line.fontSize)) || 12;
   let previous: ItemAcc[] = [];
   let carried: Block | undefined;
   for (const page of pageList) {
@@ -433,6 +434,17 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
         sameRow.own.push(entry);
         continue;
       }
+      // The lines that go on from the previous page continue below each other: a line right under such a line goes on too.
+      const continued = previous.find((item) => {
+        const extra = item.extra.get(page);
+        if (!extra || extra.length === 0 || band !== 0) return false;
+        const gap = entry.line.rect.top - Math.max(...extra.map((own) => own.line.rect.bottom));
+        return gap >= -0.004 && gap <= 0.014 && Math.abs(item.start.line.rect.left - entry.line.rect.left) <= 0.07;
+      });
+      if (continued) {
+        continued.extra.set(page, [...(continued.extra.get(page) ?? []), entry]);
+        continue;
+      }
       const ownerIn = (column_: ItemAcc[], strict: boolean): ItemAcc | undefined => {
         // A line that shares its row with the first line of an item (the sign of a root, the rows of a fraction) belongs to it.
         const byOverlap = column_.find(
@@ -443,6 +455,20 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
         const below = column_.find((item) => item.start.line.rect.top > entry.line.rect.top + 0.004);
         const aboveGap = above ? entry.line.rect.top - Math.max(...above.own.map((own) => own.line.rect.bottom)) : Infinity;
         const belowGap = below ? below.start.line.rect.top - entry.line.rect.bottom : Infinity;
+        // A small fragment (the sign of a root, a numerator, a denominator) close above or below the first line of an
+        // item, to the right of the number, belongs to that item, unless it sits closer under the last line of the item above.
+        if (entry.line.chars <= 8 || entry.line.fontSize < startSize * 0.9) {
+          const gapTo = (item: ItemAcc): number => Math.max(0, item.start.line.rect.top - entry.line.rect.bottom, entry.line.rect.top - item.start.line.rect.bottom);
+          const near = column_
+            .filter(
+              (item) =>
+                gapTo(item) <= 0.02 &&
+                entry.line.rect.left >= item.start.line.rect.left - 0.01 &&
+                entry.line.rect.left <= item.start.line.rect.right + 0.1,
+            )
+            .sort((a2, b2) => gapTo(a2) - gapTo(b2))[0];
+          if (near && gapTo(near) < aboveGap - 0.002) return near;
+        }
         // The top of a stacked fraction lies just above the line of its item, closer to it than to the item before.
         const overlapsBelow =
           below !== undefined &&
@@ -480,7 +506,7 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
         .sort((a, b) => Math.abs(a.start.line.rect.left - entry.line.rect.left) - Math.abs(b.start.line.rect.left - entry.line.rect.left))[0];
       if (carry && band === 0 && carry.own[carry.own.length - 1] !== undefined) {
         const lastBottom = Math.max(...carry.own.map((own) => own.line.rect.bottom));
-        if (lastBottom >= contentLimit(pages[carry.page]) - 0.2) {
+        if (lastBottom >= contentLimit(pages[carry.page]) - 0.4) {
           carry.extra.set(page, [...(carry.extra.get(page) ?? []), entry]);
           continue;
         }
