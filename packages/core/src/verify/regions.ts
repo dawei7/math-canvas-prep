@@ -11,12 +11,17 @@ import { foldText } from './labels.js';
  */
 
 /** A piece of text on a page: a text line, or one of the pieces a joined line was made of. */
-interface Piece {
+export interface Piece {
   text: string;
   rect: Rect;
   headerFooter: boolean;
   /** The text line of the page this piece belongs to (the pieces of a joined line share it). */
   line: number;
+  /** The font size and the weight of the line the piece belongs to (the text layer gives them for whole lines). */
+  fontSize: number;
+  bold: boolean;
+  /** The column of the page the line was read in. */
+  column: number;
 }
 
 /** A line belongs to a region when its centre is between the region's left and right edges and half of it is inside. */
@@ -51,6 +56,7 @@ export class PageLines {
   readonly hasText: boolean;
   private readonly lines: Piece[] = [];
   private tallest = 0;
+  private body: number | undefined;
 
   constructor(page: PageText | undefined) {
     this.hasText = page?.hasText === true;
@@ -61,11 +67,25 @@ export class PageLines {
       for (const piece of pieces) {
         const text = foldText(piece.text);
         if (text.length === 0) continue;
-        this.lines.push({ text, rect: piece.rect, headerFooter: line.headerFooter === true, line: at });
+        this.lines.push({ text, rect: piece.rect, headerFooter: line.headerFooter === true, line: at, fontSize: line.fontSize, bold: line.bold === true, column: line.column });
         this.tallest = Math.max(this.tallest, piece.rect.bottom - piece.rect.top);
       }
     });
     this.lines.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+  }
+
+  /** Every piece of text of the page, from top to bottom (and from left to right in one row), running headers and footers included. */
+  get pieces(): readonly Piece[] {
+    return this.lines;
+  }
+
+  /** The usual font size of the page: the median over its pieces that are not running headers or footers (0 for a page without text). */
+  get bodySize(): number {
+    if (this.body === undefined) {
+      const sizes = this.lines.filter((piece) => !piece.headerFooter && piece.fontSize > 0).map((piece) => piece.fontSize).sort((a, b) => a - b);
+      this.body = sizes.length === 0 ? 0 : (sizes[Math.floor(sizes.length / 2)] as number);
+    }
+    return this.body;
   }
 
   /** The text inside a region. */
