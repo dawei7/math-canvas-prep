@@ -7,9 +7,11 @@ export the `.mcbundle`, check a bundle as the Android importer would. For a whol
 the sections (`outline_add`, `outline_update`, `outline_delete`, `outline_ids`), for the exercises that keep the numbers the book
 prints (`exercises_add`, `exercises_list`, `exercises_mark`, `exercises_unmark`, `exercises_label`, `exercises_section`), for the
 hidden answers from the answer key (`solution_add`, `solution_list`, `solution_remove`) and for the book itself (`book_show`,
-`book_meta`, `book_export`). Each tool runs the command line in process and returns its JSON
-result (so the two can never disagree); the PNGs of `render_page` and `render_crop` come back as **image content**, which is how
-the model looks at its own work.
+`book_meta`, `book_export`); `outline_derive_book`, `exercises_propose` and `solutions_propose` propose the sections, the exercises and
+the answers of a whole book, `exercises_verify` checks the result against the text layer (no images) and `exercises_sample` names a
+fixed sample to look at, the same for every agent (see [AUDIT_A_BOOK.md](AUDIT_A_BOOK.md)). Each tool runs the command line in process
+and returns its JSON result (so the two can never disagree); the PNGs of `render_page` and `render_crop` come back as **image content**,
+which is how the model looks at its own work.
 
 How to mark a PDF well is in the [agent guide](AGENT_GUIDE.md). The server offers it as the resource `mcprep://guide`, as the tool
 `get_guide` and as the prompt `mark_pdf`, and its `instructions` summarise the conventions (zero-based pages, fractions of the
