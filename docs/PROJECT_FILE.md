@@ -190,12 +190,12 @@ The rules about books have stable codes:
 | --- | --- | --- |
 | `bad-authority`, `authority-not-exercise`, `authority-unit` | error | The authority is not `book`; it is on a question or bookmark; the frame also has a `unit`. |
 | `label-missing`, `section-missing`, `label-without-authority`, `section-without-authority` | error | An authoritative exercise needs both a label and a section; neither is allowed without the authority. |
-| `bad-label`, `bad-section` | error | The label is not 1 to 24 allowed characters; the section is not a well-formed id. |
-| `duplicate-exercise` | error | Two frames are the same (`section`, `label`). |
+| `bad-label`, `bad-section` | error | The label is not 1 to 24 allowed characters (judged after the importer has dropped a closing `.` or `)`); the section is not a well-formed id. |
+| `duplicate-exercise` | error | Two frames are the same (`section`, `label`), the label being the one the importer keeps: `5` and `5.` are one. |
 | `section-unknown` | error | The section is not the `id` of an outline entry (or the project has no outline with ids). |
 | `solution-not-exercise`, `too-many-regions`, `bad-region`, `page-out-of-range`, ... | error | Solution regions are only for exercises, at most 8, valid and on pages of the document. |
 | `outline-bad-id`, `outline-duplicate-id`, `outline-bad-label`, `outline-bad-top` | error | An outline entry's id, label or top is not valid, or an id is used twice. |
 | `info-bad-type`, `info-too-long`, `info-bad-url`, `info-bad-license` | error | The author, series, description, notice, licence or source address in `meta` cannot go into a bundle as it is. |
-| `label-style` | warning | The label ends with the `.` or `)` the book prints after the number. |
+| `label-style` | warning | The label ends with the `.` or `)` the book prints after the number (the importer drops it and keeps the label without it, and so does the exporter), or has leading, trailing or repeated spaces (the importer keeps them). |
 | `section-mismatch` | warning | The exercise is printed in another section than the one it is filed under. |
 | `solution-overlaps-frame`, `solution-is-exercise` | warning | A solution region lies on the exercise itself, or is the region of another exercise. |

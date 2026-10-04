@@ -138,4 +138,15 @@ describe('what the tools write is valid against the schemas', () => {
     expect(manifest({ ...base, document: { ...base.document, pageCount: 0 } })).toBe(false);
     expect(manifest({ ...base, document: { ...base.document, title: '' } })).toBe(false);
   });
+
+  it('refuses what the app refuses in a manifest: no bytes, a page count of 2^31, other entry names, a folder that is not text', () => {
+    const base = { format: 'math-canvas-bundle', version: 1, createdAt: '2026-10-03T12:00:00Z', generator: { name: 'x', version: '1' }, document: { title: 'T', fileName: 'a.pdf', pdf: 'document.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 2147483647 }, frames: 'frames.json', outline: 'outline.json' };
+    expect(manifest(base), JSON.stringify(manifest.errors)).toBe(true);
+    expect(manifest({ ...base, document: { ...base.document, bytes: 0 } })).toBe(false);
+    expect(manifest({ ...base, document: { ...base.document, pageCount: 2147483648 } })).toBe(false);
+    expect(manifest({ ...base, document: { ...base.document, pdf: 'other.pdf' } })).toBe(false);
+    expect(manifest({ ...base, frames: 'my-frames.json' })).toBe(false);
+    expect(manifest({ ...base, outline: 'toc.json' })).toBe(false);
+    expect(manifest({ ...base, document: { ...base.document, folder: 5 } })).toBe(false);
+  });
 });

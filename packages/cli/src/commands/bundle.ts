@@ -118,7 +118,7 @@ export const importCheck: CommandSpec = {
   name: 'import-check',
   summary: 'Do exactly what the Android importer does with a bundle, step by step, and say whether it would accept it.',
   description:
-    'The six steps of docs/BUNDLE_FORMAT.md section 5: open the archive and apply the limits; read bundle.json and check format and version; stream document.pdf and compare its SHA-256 and size; open the PDF and compare its page count; parse and validate frames.json and outline.json, repairing what may be repaired and naming the frame id of anything that is rejected; and what would be created in the library. Exit code 4 when the bundle would be rejected.',
+    'The six steps of docs/BUNDLE_FORMAT.md section 5: open the archive and apply the limits; read bundle.json and check format, version, the document block and the entry names it gives; stream document.pdf and compare its SHA-256 and size; open the PDF and compare its page count; parse and validate frames.json and outline.json, repairing what may be repaired and naming the frame id of anything that is rejected; and what would be created in the library. Exit code 4 when the bundle would be rejected.',
   noProject: true,
   args: [{ name: 'file', description: 'The .mcbundle file.', required: true }],
   options: [{ name: 'no-open-pdf', type: 'boolean', description: 'Do not open the PDF to count its pages (step 4 is then skipped).' }, { name: 'json', type: 'boolean', description: 'Print one JSON document.' }, { name: 'help', short: 'h', type: 'boolean', description: 'Show help.' }],

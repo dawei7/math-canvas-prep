@@ -282,7 +282,9 @@ mcprep import-check sheet.mcbundle
 ```
 
 The exporter validates, writes atomically and reads the bundle back with the importer's own checks; a bundle that fails them is
-removed. The result lists repairs and warnings. Then tell the user, briefly:
+removed. The result lists repairs and warnings. `import-check` also refuses what the app refuses in a bundle the exporter would
+never write: an upper-case hash, a manifest that names another entry than `document.pdf`, `frames.json` or `outline.json` (or an
+`outline.json` the archive does not have), a folder that is not text, a JSON entry that is not UTF-8. Then tell the user, briefly:
 
 - the **path** of the bundle and the project, and that the bundle goes to the tablet and is opened in the Math Canvas library;
 - how they can **review** your marking by eye: `npm run desktop -- name.mcprep.json` opens the project in the editor, where every
@@ -429,7 +431,8 @@ Rules that follow from the difference, and that the tools enforce:
 - **The label is what the book prints**, without the closing `.` or `)`: the book prints "5." or "5)" and the label is `5`; part
   (a) of exercise 5 is `5a`; an appendix exercise "A.3" is `A.3`; "II-4" is `II-4`. 1 to 24 characters: a letter or digit first,
   then letters, digits, spaces and `. _ - ( ) /`. **Never make a label up** and never number by position: if the book skips
-  numbers, so do you. A label with the dot still on it is accepted but warned about (`label-style`); the commands drop it for you.
+  numbers, so do you. A label with the dot still on it is accepted but warned about (`label-style`): the importer, the exporter and
+  the commands all drop it, so `5.` is `5` (and `5` and `5.` in one section are the same exercise).
 - **The pair (section, label) is unique.** A book that starts again at 1 in every practice set needs one section per set. Adding
   an exercise that exists is an error (`E_DUPLICATE_EXERCISE`), so that applying the same batch twice does no harm.
 - **Context is not solution.** *Context* (`--context`) is the instruction, shown to the learner and sent to the AI. *Solution*
@@ -538,7 +541,7 @@ The MCP tools have the same names as the commands: `exercises_add`, `exercises_l
 | `E_SECTION_IN_USE` | A section with exercises cannot lose its id or be deleted. | Move the exercises first (`exercises section`). |
 | `E_OUTLINE_MODE` | `export --outline pdf` or `none` with book exercises. | Export with the project's own outline (the default). |
 | `E_META` / `info-bad-url`, `info-too-long` | The author, licence, address or notice cannot go into a bundle. | `http(s)` addresses, texts within the limits. |
-| `label-style` (warning) | The label ends with the `.` or `)` the book prints after the number. | `exercises label <frame> 5`. |
+| `label-style` (warning) | The label ends with the `.` or `)` the book prints after the number (the importer drops it), or has stray spaces. | `exercises label <frame> 5`. |
 | `section-mismatch` (warning) | The exercise is printed in another section than the one it is filed under. | `exercises section`, or correct the section's `page` and `top`. |
 | `solution-overlaps-frame`, `solution-is-exercise` (warnings) | The solution region lies on the exercise itself, or is another exercise's region. | Point it at the answer key. |
 

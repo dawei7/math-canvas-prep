@@ -13,7 +13,8 @@ import { frame, rect, rejected, tempDir } from './helpers.js';
 
 const sample = buildSampleSheet();
 const sha = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
-const json = (value: unknown): Uint8Array => new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value));
+/** The bytes of a JSON entry: text as it is, anything else as JSON, and bytes as they are (to write what is not UTF-8). */
+const json = (value: unknown): Uint8Array => (value instanceof Uint8Array ? value : new TextEncoder().encode(typeof value === 'string' ? value : JSON.stringify(value)));
 
 const goodFrames = { version: 1, frames: [{ id: 'e1', kind: 'exercise', page: 0, rect: { left: 0.1, top: 0.2, right: 0.9, bottom: 0.3 } }] };
 
@@ -204,6 +205,155 @@ describe('step 2: the manifest', () => {
     expect(report.document?.folder).toBe(`AB/${'x'.repeat(60)}/C/D/E/F/G`);
     expect(report.repairs.length).toBeGreaterThanOrEqual(3);
     expect(report.document?.folder?.split('/')).toHaveLength(7);
+  });
+});
+
+// Where the Android importer is stricter than the contract text alone says. A bundle that `import-check` accepts must be
+// accepted by the app, so each of these is an error here, with the message that tells how to write it.
+describe('step 2: the manifest as the app reads it', () => {
+  const outlineFile = { version: 1, entries: [{ title: '1 Sets', page: 0, depth: 0 }] };
+  const encode = (text: string): number[] => [...new TextEncoder().encode(text)];
+
+  it('refuses a document.sha256 that is not lowercase hex, and says how to write it', async () => {
+    const lower = sha(sample.pdf);
+    const mixed = `${lower.slice(0, 32).toUpperCase()}${lower.slice(32)}`;
+    for (const [name, value] of [['upper case', lower.toUpperCase()], ['mixed case', mixed]] as const) {
+      const report = await check({ manifest: manifest(sample.pdf, {}, { sha256: value }) });
+      expect(report.ok, name).toBe(false);
+      expect(report.rejection, name).toMatchObject({ code: 'manifest-sha256' });
+      expect(report.rejection?.message, name).toContain('lowercase');
+      expect(report.rejection?.fix, name).toContain(lower);
+      // The hash itself is right, so this is the only thing wrong with the bundle.
+      expect(codes(report), name).toEqual(['manifest-sha256']);
+    }
+    for (const value of ['g'.repeat(64), lower.slice(1), `${lower}0`, ` ${lower}`, '', 5, null, [lower]]) {
+      const report = await check({ manifest: manifest(sample.pdf, {}, { sha256: value }) });
+      expect(report.rejection, JSON.stringify(value)).toMatchObject({ code: 'manifest-sha256' });
+      expect(report.rejection?.message, JSON.stringify(value)).toContain('64 lowercase hex');
+    }
+    expect((await check({ manifest: manifest(sample.pdf, {}, { sha256: lower }) })).ok).toBe(true);
+  });
+
+  it('refuses a manifest that names an entry other than document.pdf, frames.json or outline.json', async () => {
+    const withOutline = (extra: Record<string, unknown>, documentExtra: Record<string, unknown> = {}): Parts => ({
+      outline: outlineFile,
+      manifest: manifest(sample.pdf, { outline: 'outline.json', ...extra }, documentExtra),
+    });
+    const cases: [string, Parts, string][] = [
+      ['another name for the pdf', withOutline({}, { pdf: 'other.pdf' }), 'manifest-pdf-name'],
+      ['the pdf in another case', withOutline({}, { pdf: 'Document.pdf' }), 'manifest-pdf-name'],
+      ['a pdf that is not text', withOutline({}, { pdf: 5 }), 'manifest-pdf-name'],
+      ['another name for the frames', withOutline({ frames: 'my-frames.json' }), 'manifest-frames-name'],
+      ['frames that are not text', withOutline({ frames: ['frames.json'] }), 'manifest-frames-name'],
+      ['another name for the outline, though outline.json is there', withOutline({ outline: 'toc.json' }), 'manifest-outline-name'],
+      ['an outline that is not text', withOutline({ outline: true }), 'manifest-outline-name'],
+    ];
+    for (const [name, parts, code] of cases) {
+      const report = await check(parts);
+      expect(report.ok, name).toBe(false);
+      expect(report.rejection, name).toMatchObject({ code });
+      expect(report.rejection?.message, name).toContain('entry names are fixed');
+      expect(report.rejection?.fix, name).toContain('(or leave');
+      expect(codes(report), name).toEqual([code]);
+    }
+    // The right names, a JSON null and a field left out all say the same thing: the app reads no other entry.
+    expect((await check(withOutline({}, { pdf: 'document.pdf' }))).errors).toEqual([]);
+    expect((await check(withOutline({ frames: null }, { pdf: null }))).errors).toEqual([]);
+    expect((await check({ manifest: manifest(sample.pdf, { frames: undefined }, { pdf: undefined }) })).errors).toEqual([]);
+  });
+
+  it('refuses an outline that the manifest names but the archive does not hold', async () => {
+    const report = await check({ manifest: manifest(sample.pdf, { outline: 'outline.json' }) });
+    expect(report.ok).toBe(false);
+    expect(report.rejection).toMatchObject({ code: 'manifest-outline-missing' });
+    expect(report.rejection?.message).toContain('outline.json');
+    expect(report.rejection?.fix).toContain('leave "outline" out');
+    expect(codes(report)).toEqual(['manifest-outline-missing']);
+    // Not named and not there is a bundle without a table of contents, and a null names nothing.
+    expect((await check({ manifest: manifest(sample.pdf, { outline: undefined }) })).errors).toEqual([]);
+    expect((await check({ manifest: manifest(sample.pdf, { outline: null }) })).errors).toEqual([]);
+    // An outline.json the manifest does not name is read all the same (the app does), with a warning.
+    const unlisted = await check({ outline: outlineFile, manifest: manifest(sample.pdf, { outline: null }) });
+    expect(unlisted.ok).toBe(true);
+    expect(unlisted.outline).toHaveLength(1);
+    expect(unlisted.warnings.map((entry) => entry.code)).toContain('manifest-outline-unlisted');
+  });
+
+  it('refuses a document.folder that is not text', async () => {
+    for (const folder of [5, true, ['Uni'], { name: 'Uni' }]) {
+      const report = await check({ manifest: manifest(sample.pdf, {}, { folder }) });
+      expect(report.ok, JSON.stringify(folder)).toBe(false);
+      expect(report.rejection, JSON.stringify(folder)).toMatchObject({ code: 'manifest-folder' });
+      expect(report.rejection?.message, JSON.stringify(folder)).toContain('not text');
+      expect(codes(report), JSON.stringify(folder)).toEqual(['manifest-folder']);
+    }
+    // Text is cleaned, not refused; a null is no folder.
+    const none = await check({ manifest: manifest(sample.pdf, {}, { folder: null }) });
+    expect(none.ok).toBe(true);
+    expect(none.document).not.toHaveProperty('folder');
+    expect((await check({ manifest: manifest(sample.pdf, {}, { folder: '' }) })).ok).toBe(true);
+  });
+
+  it('refuses a size below 1 byte, and a page count the app cannot hold even when the PDF is not opened', async () => {
+    for (const bytes of [0, -1, 1.5, '1']) {
+      expect(codes(await check({ manifest: manifest(sample.pdf, {}, { bytes }) })), JSON.stringify(bytes)).toContain('manifest-bytes');
+    }
+    for (const pageCount of [0, 2147483648, 1e12, 2.5, '3']) {
+      const report = await checkBundle(await bundle({ manifest: manifest(sample.pdf, {}, { pageCount }) }), { openPdf: false });
+      expect(report.rejection, JSON.stringify(pageCount)).toMatchObject({ code: 'manifest-page-count' });
+    }
+    const biggest = await checkBundle(await bundle({ manifest: manifest(sample.pdf, {}, { pageCount: 2147483647 }) }), { openPdf: false });
+    expect(biggest.ok).toBe(true);
+  });
+
+  it('refuses a JSON entry that is not UTF-8, and ignores a leading byte order mark', async () => {
+    const manifestText = JSON.stringify(manifest());
+    const inTitle = (bad: number[]): Uint8Array => {
+      const at = manifestText.indexOf('Test') + 2;
+      return Uint8Array.from([...encode(manifestText.slice(0, at)), ...bad, ...encode(manifestText.slice(at))]);
+    };
+    const inNote = (head: string, bad: number[]): Uint8Array => Uint8Array.from([...encode(`${head},"note":"`), ...bad, ...encode('"}')]);
+    const outlineNamed = manifest(sample.pdf, { outline: 'outline.json' });
+    // A stray byte, an overlong form, a surrogate written out, and a character cut short.
+    for (const bad of [[0xff], [0xc0, 0xaf], [0xed, 0xa0, 0x80], [0xe2, 0x82]]) {
+      const name = bad.map((byte) => byte.toString(16)).join(' ');
+      const inManifest = await check({ manifest: inTitle(bad) });
+      expect(inManifest.rejection, name).toMatchObject({ code: 'manifest-json' });
+      expect(inManifest.rejection?.message, name).toContain('UTF-8');
+      const inFrames = await check({ frames: inNote('{"version":1,"frames":[]', bad) });
+      expect(inFrames.rejection, name).toMatchObject({ code: 'frames-json' });
+      expect(inFrames.rejection?.message, name).toContain('UTF-8');
+      const inOutline = await check({ manifest: outlineNamed, outline: inNote('{"version":1,"entries":[]', bad) });
+      expect(inOutline.rejection, name).toMatchObject({ code: 'outline-json' });
+      expect(inOutline.rejection?.message, name).toContain('UTF-8');
+    }
+    const bom = [0xef, 0xbb, 0xbf];
+    const withBom = await check({
+      manifest: Uint8Array.from([...bom, ...encode(manifestText)]),
+      frames: Uint8Array.from([...bom, ...encode(JSON.stringify(goodFrames))]),
+    });
+    expect(withBom.errors).toEqual([]);
+    const accented = await check({ manifest: manifest(sample.pdf, {}, { title: 'Übungsblätter ∑ 数学' }) });
+    expect(accented.ok).toBe(true);
+    expect(accented.document?.title).toBe('Übungsblätter ∑ 数学');
+  });
+
+  it('refuses JSON nested more than 32 levels deep, and does not count brackets inside text', async () => {
+    const nested = (levels: number): string => `${'['.repeat(levels)}${']'.repeat(levels)}`;
+    const framesNoted = (note: string): string => `{"version":1,"frames":[],"note":${note}}`;
+    // The object itself is the first level.
+    expect((await check({ frames: framesNoted(nested(31)) })).ok).toBe(true);
+    const deep = await check({ frames: framesNoted(nested(32)) });
+    expect(deep.rejection).toMatchObject({ code: 'frames-json' });
+    expect(deep.rejection?.message).toContain('33 levels');
+    expect((await check({ frames: framesNoted(JSON.stringify('[{'.repeat(100))) })).ok).toBe(true);
+    expect((await check({ frames: framesNoted(JSON.stringify('"]]'.repeat(100))) })).ok).toBe(true);
+    const manifestDeep = JSON.stringify(manifest()).replace(/}$/, `,"note":${nested(32)}}`);
+    const inManifest = await check({ manifest: manifestDeep });
+    expect(inManifest.rejection).toMatchObject({ code: 'manifest-json' });
+    expect(inManifest.rejection?.message).toContain('nested');
+    const inOutline = await check({ manifest: manifest(sample.pdf, { outline: 'outline.json' }), outline: `{"version":1,"entries":[],"note":${nested(32)}}` });
+    expect(inOutline.rejection).toMatchObject({ code: 'outline-json' });
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAuthoritative, labelStyleProblem, normalizeLabel } from '../src/model/authority.js';
+import { dropClosingPunctuation, isAuthoritative, labelStyleProblem, normalizeLabel } from '../src/model/authority.js';
 import type { Frame, PageText } from '../src/model/types.js';
 import { checkBook, lintBook } from '../src/rules/book.js';
 import { parseFrames, type CheckOptions } from '../src/rules/frames.js';
@@ -69,6 +69,46 @@ describe('an authoritative frame', () => {
     expect(codes([{ ...book, section }])).toEqual(['error:bad-section']);
   });
 
+  it.each([
+    ['5.', '5', '"."'],
+    ['5)', '5', '")"'],
+    ['a)', 'a', '")"'],
+    ['5 .', '5', '"."'],
+    ['5..', '5.', '"."'],
+    ['5.)', '5.', '")"'],
+    ['12 (a) .', '12 (a)', '"."'],
+  ])('reads the label %j as %j, and warns that the importer drops its closing character', (label, kept, mark) => {
+    const result = parseFrames([{ ...book, label }], strict);
+    expect(result.issues.map((entry) => `${entry.severity}:${entry.code}`)).toEqual(['warning:label-style']);
+    expect(result.issues[0]).toMatchObject({ frameId: 'e1' });
+    expect(result.issues[0]?.message).toContain(JSON.stringify(label));
+    expect(result.issues[0]?.message).toContain(`keeps ${JSON.stringify(kept)}`);
+    expect(result.issues[0]?.message).toContain(`ends with a ${mark}`);
+    expect(result.issues[0]?.fix).toContain(`exercises label e1 ${JSON.stringify(kept)}`);
+    // The frame holds the label as the importer keeps it, so its checks and the (section, label) pair are the importer's.
+    expect(result.frames[0]?.label).toBe(kept);
+  });
+
+  it.each(['5', '5(a)', 'A.3', '5. ', '5 ', '7  a', 'a)b'])('leaves the label %j as it is', (label) => {
+    const result = parseFrames([{ ...book, label }], strict);
+    expect(result.issues).toEqual([]);
+    expect(result.frames[0]?.label).toBe(label);
+  });
+
+  it('keeps a label of 25 characters whose closing dot is dropped, and refuses the same label in any other case', () => {
+    expect(codes([{ ...book, label: `${'1'.repeat(24)}.` }])).toEqual(['warning:label-style']);
+    expect(parseFrames([{ ...book, label: `${'1'.repeat(24)}.` }], strict).frames[0]?.label).toBe('1'.repeat(24));
+    // A label that is wrong either way is an error and nothing else: the dot is not worth a second message.
+    expect(codes([{ ...book, label: `${'1'.repeat(25)}.` }])).toEqual(['error:bad-label']);
+    expect(codes([{ ...book, label: '1'.repeat(25) }])).toEqual(['error:bad-label']);
+    // Named as it was written, not as it would have been kept.
+    expect(parseFrames([{ ...book, label: ' 5.' }], strict).issues.find((entry) => entry.code === 'bad-label')?.message).toContain('" 5."');
+  });
+
+  it('does not touch a label in a frame that is not authoritative (that is an error anyway)', () => {
+    expect(codes([{ ...exercise, label: '5.' }])).toEqual(['error:label-without-authority']);
+  });
+
   it('is tolerant in a project file about nulls, strict in a bundle', () => {
     const loose = { ...exercise, authority: null, label: null, section: null, solution: null };
     expect(codes([loose], { pageCount: 6 })).toEqual([]);
@@ -123,6 +163,40 @@ describe('labels as people write them', () => {
     expect(normalizeLabel('  5   a ').label).toBe('5 a');
     expect(normalizeLabel('A.3').label).toBe('A.3');
     expect(normalizeLabel('.').label).toBe('.');
+  });
+
+  it('drops exactly the one character the importer drops, and nothing else', () => {
+    for (const [label, expected] of [
+      ['5.', '5'],
+      ['5)', '5'],
+      ['a)', 'a'],
+      ['a b)', 'a b'],
+      ['5 .', '5'],
+      ['5  )', '5'],
+      ['5..', '5.'],
+      ['5.)', '5.'],
+      ['5(a)', '5(a)'],
+      ['5(a', '5(a'],
+      ['(5)', '(5)'],
+      ['A.3', 'A.3'],
+      ['5 ', '5 '],
+      ['5. ', '5. '],
+      [' 5.', ' 5'],
+      ['.', '.'],
+      [')', ')'],
+      ['', ''],
+    ] as const) {
+      expect(dropClosingPunctuation(label), JSON.stringify(label)).toBe(expected);
+    }
+  });
+
+  it('is what normalizeLabel does after it has tidied the spaces', () => {
+    for (const text of ['5.', ' 5 . ', '5)', '5(a)', 'A.3', '5..', '  7   b  ', '.', '']) {
+      const tidy = text.replace(/\s+/g, ' ').trim();
+      expect(normalizeLabel(text).label, JSON.stringify(text)).toBe(dropClosingPunctuation(tidy));
+    }
+    expect(normalizeLabel('5 .').changes).toHaveLength(1);
+    expect(normalizeLabel('5 ').changes).toEqual([]);
   });
 
   it('recognises a label that looks copied from the page', () => {
