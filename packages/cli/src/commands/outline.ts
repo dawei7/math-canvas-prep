@@ -4,6 +4,7 @@ import { McPrepError, deriveOutline, type OutlineEntry } from '@mcprep/core';
 import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
+import { runBookDerive } from './book.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
 
 const rows = (entries: readonly OutlineEntry[]): string[][] => entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth)]);
@@ -60,13 +61,15 @@ export const outlineDerive: CommandSpec = {
     'Heuristics, with their evidence: a line is a heading when it is set larger than the body text, in bold, numbered like "2.1", or starts with a chapter word; the depth comes from the numbering or from the rank of the font size. Check the result (and edit it) before it goes into a bundle.',
   writes: true,
   options: [
+    { name: 'book', type: 'boolean', description: 'For a book that prints numbered chapters and sections: read the printed contents, the lists on the chapter openers and the headings, and propose chapters and sections with ids (c0, 0.1), labels, tops and where each practice set lies. Use it before `exercises propose`.' },
     { name: 'apply', type: 'boolean', description: 'Store the result as the project\'s outline.' },
     { name: 'min-confidence', type: 'number', value: '<0..1>', description: 'Keep headings at least this likely (default 0.55).' },
     ...GLOBAL_OPTIONS,
   ],
-  examples: ['mcprep outline derive', 'mcprep outline derive --apply'],
-  output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }',
+  examples: ['mcprep outline derive', 'mcprep outline derive --apply', 'mcprep outline derive --book', 'mcprep outline derive --book --apply'],
+  output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }; with --book each entry also has id, label, top, kind, differences and practice, and the result has chapters, sections, numbering, toc and answerKey',
   async run(context) {
+    if (flag(context.options, 'book')) return runBookDerive(context);
     const session = await context.session();
     const pdf = await session.document();
     const pages = await pdf.allPageText({ fonts: true });
