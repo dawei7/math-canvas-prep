@@ -324,18 +324,8 @@ export function deriveSections(pages: readonly PageText[], options: DeriveSectio
   const rank = (entry: BookEntry): number => (entry.kind === 'chapter' ? 0 : entry.kind === 'section' ? 1 : 0);
   all.sort((a, b) => a.page - b.page || (a.top ?? 0) - (b.top ?? 0) || rank(a) - rank(b) || (a.label !== undefined && b.label !== undefined ? compareLabels(a.label.replace(/^\D+/, ''), b.label.replace(/^\D+/, '')) : 0));
   for (const entry of all) entries.push(entry);
-  entries.forEach((entry, index) => {
-    const practice = entry.practice;
-    if (!practice) return;
-    const start: PlaceOnPage = { page: practice.page, top: practice.top };
-    const next = entries.slice(index + 1).find((other) => before(start, { page: other.page, top: other.top ?? 0 }));
-    const candidates: (PlaceOnPage & { why: string })[] = [];
-    if (next) candidates.push({ page: next.page, top: next.top ?? 0, why: `${next.kind === 'section' ? 'section' : next.kind === 'chapter' ? 'chapter' : 'the entry'} "${next.label ?? next.title}" starts on page ${next.page}` });
-    if (answerKey && before(start, answerKey)) candidates.push({ page: answerKey.page, top: answerKey.top, why: `the answer key starts on page ${answerKey.page}` });
-    candidates.push({ page: pageCount, top: 0, why: 'the end of the book' });
-    candidates.sort((a, b) => a.page - b.page || a.top - b.top);
-    practice.end = candidates[0] as PlaceOnPage & { why: string };
-  });
+  attachUnlabeledPractice(entries, scan.unlabeledPractices.filter((hit) => answerKey === undefined || hit.page < answerKey.page), notes);
+  assignPracticeEnds(entries, answerKey, pageCount);
 
   // Gaps in the numbering of a chapter's sections.
   const byChapter = new Map<string, number[]>();
@@ -403,4 +393,94 @@ export function toOutlineEntries(structure: BookStructure): OutlineEntry[] {
     ...(entry.label !== undefined ? { label: entry.label } : {}),
     ...(entry.top !== undefined ? { top: entry.top } : {}),
   }));
+}
+
+/**
+ * Sets, for every entry with a practice set, where the set ends: at the start of the next entry that begins after the
+ * practice heading, at the answer key, or at the end of the book, whichever comes first. `entries` must be in reading
+ * order.
+ */
+export function assignPracticeEnds(entries: readonly BookEntry[], answerKey: PlaceOnPage | undefined, pageCount: number): void {
+  entries.forEach((entry, index) => {
+    const practice = entry.practice;
+    if (!practice) return;
+    const start: PlaceOnPage = { page: practice.page, top: practice.top };
+    const next = entries.slice(index + 1).find((other) => before(start, { page: other.page, top: other.top ?? 0 }));
+    const candidates: (PlaceOnPage & { why: string })[] = [];
+    if (next) {
+      const what = next.kind === 'section' ? 'section' : next.kind === 'chapter' ? 'chapter' : 'the entry';
+      candidates.push({ page: next.page, top: next.top ?? 0, why: `${what} "${next.label ?? next.title}" starts on page ${next.page}` });
+    }
+    if (answerKey && before(start, answerKey)) candidates.push({ page: answerKey.page, top: answerKey.top, why: `the answer key starts on page ${answerKey.page}` });
+    candidates.push({ page: pageCount, top: 0, why: 'the end of the book' });
+    candidates.sort((a, b) => a.page - b.page || a.top - b.top);
+    practice.end = candidates[0] as PlaceOnPage & { why: string };
+  });
+}
+
+/** Gives a section without a labelled practice heading the unlabelled one ("Exercises") that lies inside its extent. */
+function attachUnlabeledPractice(entries: readonly BookEntry[], hits: readonly HeadingHit[], notes: string[]): void {
+  entries.forEach((entry, index) => {
+    if (entry.kind !== 'section' || entry.practice) return;
+    const start: PlaceOnPage = { page: entry.page, top: entry.top ?? 0 };
+    const next = entries.slice(index + 1).find((other) => before(start, { page: other.page, top: other.top ?? 0 }));
+    const limit: PlaceOnPage = next ? { page: next.page, top: next.top ?? 0 } : { page: Infinity, top: 0 };
+    const hit = hits.find((candidate) => !before(candidate, start) && before(candidate, limit));
+    if (!hit) return;
+    entry.practice = { page: hit.page, top: round(hit.top), index: hit.index, text: hit.text, end: { page: limit.page, top: limit.top, why: 'the next entry' } };
+    entry.evidence.push(`practice heading without a label: "${hit.text}" (page ${hit.page}) inside the section`);
+    const at = notes.indexOf(`${entry.label ?? entry.id}: no practice heading found, so no exercises can be proposed for it`);
+    if (at >= 0) notes.splice(at, 1);
+  });
+}
+
+export interface LocateOptions {
+  patterns?: Partial<BookPatterns>;
+}
+
+/**
+ * The entries of an outline that is already in the project (with ids, which frames refer to), with the place of each
+ * section's practice set found on the pages. The outline is taken as it is: a person or an agent may have edited
+ * titles and pages. A section is matched to its practice heading by its label (or its id when that looks like a
+ * label); without one, by an unlabelled heading inside its extent.
+ */
+export function locateSections(pages: readonly PageText[], outline: readonly OutlineEntry[], options: LocateOptions = {}): { entries: BookEntry[]; answerKey?: PlaceOnPage & { evidence: string }; notes: string[] } {
+  const patterns: BookPatterns = { ...DEFAULT_BOOK_PATTERNS, ...options.patterns };
+  const scan = scanHeadings(pages, patterns);
+  const notes: string[] = [];
+  const first = [...scan.answerChapters].sort((a, b) => a.page - b.page || a.top - b.top)[0];
+  const answerKey = first ? { page: first.page, top: first.top, evidence: `the heading "${first.text}" on page ${first.page} opens the answers of a chapter` } : undefined;
+  const entries: BookEntry[] = [];
+  for (const raw of outline) {
+    if (raw.id === undefined) continue;
+    const labelled = raw.label !== undefined && /^\d{1,2}\.\d{1,2}$/.test(raw.label) ? raw.label : /^\d{1,2}\.\d{1,2}$/.test(raw.id) ? raw.id : undefined;
+    entries.push({
+      title: raw.title,
+      page: raw.page,
+      depth: raw.depth,
+      id: raw.id,
+      ...(raw.label !== undefined ? { label: raw.label } : {}),
+      ...(raw.top !== undefined ? { top: raw.top } : {}),
+      kind: raw.depth === 0 ? (/^(?:\D+\s*)?\d+$|^chapter/i.test(raw.label ?? '') ? 'chapter' : 'other') : 'section',
+      confidence: 1,
+      evidence: ['read from the outline of the project'],
+      differences: [],
+      ...(labelled !== undefined ? { lesson: { page: raw.page, top: raw.top ?? 0 } } : {}),
+    });
+    const entry = entries[entries.length - 1] as BookEntry;
+    if (entry.kind !== 'section') continue;
+    if (labelled !== undefined) {
+      const hits = scan.practices.filter((hit) => hit.number === labelled && !before(hit, { page: entry.page, top: 0 }));
+      const hit = hits[0];
+      if (hit) {
+        entry.practice = { page: hit.page, top: round(hit.top), index: hit.index, text: hit.text, end: { page: pages.length, top: 0, why: 'the end of the book' } };
+        entry.evidence.push(`practice heading: "${hit.text}" (page ${hit.page})`);
+      }
+    }
+  }
+  const order = [...entries].sort((a, b) => a.page - b.page || (a.top ?? 0) - (b.top ?? 0) || a.depth - b.depth);
+  attachUnlabeledPractice(order, scan.unlabeledPractices.filter((hit) => answerKey === undefined || hit.page < answerKey.page), notes);
+  assignPracticeEnds(order, answerKey, pages.length);
+  for (const entry of entries) if (entry.kind === 'section' && !entry.practice) notes.push(`${entry.label ?? entry.id}: no practice heading found, so no exercises can be proposed for it`);
+  return { entries, ...(answerKey ? { answerKey } : {}), notes };
 }

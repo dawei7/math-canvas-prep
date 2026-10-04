@@ -65,6 +65,8 @@ export interface HeadingScan {
   chapters: HeadingHit[];
   lessons: HeadingHit[];
   practices: HeadingHit[];
+  /** Headings of practice sets that do not carry a label ("Practice - Title", "Exercises"): `number` and `label` are empty. */
+  unlabeledPractices: HeadingHit[];
   /** "Answers - Chapter 3" and similar headings of the answer key. */
   answerChapters: HeadingHit[];
 }
@@ -102,8 +104,9 @@ export function scanHeadings(pages: readonly PageText[], patterns: Partial<BookP
   const body = bodyFontSize(withText);
   const chapterHead = new RegExp(`^(${words.chapterWords.map(escapeWord).join('|')})\\s+(\\d+|[IVXLC]+)\\b\\s*[:.\\-–—]?\\s*(.*)$`, 'iu');
   const practiceHead = new RegExp(`^(\\d{1,2}\\.\\d{1,2})\\s+(?:${words.practiceWords.map(escapeWord).join('|')})\\b\\s*[:.\\-–—]*\\s*(.*)$`, 'iu');
+  const unlabeledPractice = new RegExp(`^(?:${words.practiceWords.map(escapeWord).join('|')})\\b\\s*[:.\\-–—]*\\s*(.*)$`, 'iu');
   const answersChapter = new RegExp(`^(?:${words.answerWords.map(escapeWord).join('|')})\\b\\s*[:.\\-–—]*\\s*(?:${words.chapterWords.map(escapeWord).join('|')})\\s+(\\d+|[IVXLC]+)\\b`, 'iu');
-  const result: HeadingScan = { body, chapters: [], lessons: [], practices: [], answerChapters: [] };
+  const result: HeadingScan = { body, chapters: [], lessons: [], practices: [], unlabeledPractices: [], answerChapters: [] };
   if (body <= 0) return result;
   for (const page of withText) {
     page.lines.forEach((line, index) => {
@@ -161,6 +164,23 @@ export function scanHeadings(pages: readonly PageText[], patterns: Partial<BookP
           label: match[1] as string,
           title: (match[2] as string).trim(),
           evidence: [`the heading "${text}" opens the practice set of ${match[1] as string}`],
+        });
+        return;
+      }
+      match = unlabeledPractice.exec(text);
+      if (match && larger && line.chars <= 70 && line.rect.top < 0.6) {
+        result.unlabeledPractices.push({
+          kind: 'practice',
+          page: page.page,
+          index,
+          top: line.rect.top,
+          left: line.rect.left,
+          text,
+          fontSize: line.fontSize,
+          number: '',
+          label: '',
+          title: (match[1] as string).trim(),
+          evidence: [`the heading "${text}" is set at ${line.fontSize} pt and names a practice set`],
         });
         return;
       }
