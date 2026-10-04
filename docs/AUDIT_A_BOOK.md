@@ -19,6 +19,8 @@ Nothing leaves the machine; do not upload the PDF anywhere.
 | 1 | `outline derive --book` | Chapters (`c0`, label "Chapter 0") and sections (`0.1`, label `0.1`) from the printed contents, the lists on the chapter openers and the headings, with title, page, `top`, confidence, evidence, the differences between the spellings, and where each practice set lies. |
 | 2 | `exercises propose` | The numbered exercises of every practice set: label as printed, section, frame, the instruction as context, optionally the solution regions. |
 | 3 | `solutions propose` | The answers in the answer key, matched by (section, label); exercises without an answer and answers without an exercise. |
+| 4 | `exercises verify` | A text-only check of what the steps above stored: regions that do not start with their number, answer regions that hold another number, regions that lie on each other, numbers that are missing, repeated or out of order. The same list for every agent; see below. |
+| 5 | `exercises sample` | A fixed sample of exercises and answers to look at, chosen by rules without randomness: the first and the last exercise of every section, every kind of layout the book has, a spread of the rest. The same for every agent; see below. |
 
 The desktop app does the same three steps with a review before anything is applied (**Derive sections** in the Sections panel,
 **Book exercises** and **Solutions** in the Propose panel): the same search, each proposal shown against what the project has, one
@@ -40,7 +42,9 @@ mcprep exercises propose                           # 2. one line per section; re
 mcprep exercises propose --solutions --ops audit.json --details audit-details.json
 mcprep exercises propose --solutions --apply       #    one atomic batch; it can be run again (see below)
 mcprep solutions propose                           # 3. only for answers that step 2 did not match
-mcprep validate && mcprep book show                # 4. zero errors; the counts per section next to the book's own
+mcprep exercises verify --details verify.json      # 4. a text-only check: fix every error, run it again
+mcprep exercises sample --crops sample/            #    the fixed sample to look at, with its crops
+mcprep validate && mcprep book show                #    zero errors; the counts per section next to the book's own
 mcprep export --out book.mcbundle && mcprep import-check book.mcbundle
 ```
 
@@ -54,13 +58,15 @@ mcprep export --out book.mcbundle && mcprep import-check book.mcbundle
    audit wants; `--section 1.7` proposes one section.
 3. **Solutions.** The table shows answers per section. "No answer for the exercises ..." and "answers ... have no exercise" are findings:
    a book can print fewer answers than exercises. An exercise whose answer is printed but not found is worth a look at the page.
-4. **Look.** `mcprep crop 0.1:5` writes a PNG of the exercise (named by section and label), `--region context:0` of its instruction,
-   `--region continues:0` of the part on the next page, `--region solution:0` of its answer; `mcprep crop --all --section 0.1` does a
-   whole section; `mcprep render 9 --frames --solutions --grid 0.1` shows a page with its frames. Look at: the first and the last
-   exercise of every section; an exercise beside a figure and a graph answer; an exercise at the end of a page and one that goes on
-   over the page break; an instruction that crosses a page break; a two-column row with fractions; a three-column row; a root; an
-   answer of several lines; the last answer before the next chapter's heading; every item the commands marked with a confidence
-   below 0.8.
+4. **Check, then look.** First `mcprep exercises verify` (below): it needs no images, and every error it lists is a defect to fix
+   (`mcprep crop SECTION:LABEL` shows it) before anything else; read the warnings and be able to say why you keep each one. Then look
+   at the fixed sample, `mcprep exercises sample` (below). `mcprep crop 0.1:5` writes a PNG of an exercise (named by section and
+   label), `--region context:0` of its instruction, `--region continues:0` of the part on the next page, `--region solution:0` of its
+   answer; `mcprep crop --all --section 0.1` does a whole section; `mcprep render 9 --frames --solutions --grid 0.1` shows a page with
+   its frames. What to look at: the first and the last exercise of every section; an exercise beside a figure and a graph answer; an
+   exercise at the end of a page and one that goes on over the page break; an instruction that crosses a page break; a two-column row
+   with fractions; a three-column row; a root; an answer of several lines; the last answer before the next chapter's heading; every
+   item the commands marked with a confidence below 0.8. The sample names most of these for you.
 5. **Fix** what is wrong with the usual operations: `frames update 0.1:5 --rect l,t,r,b` for a rectangle, `context.set`,
    `solution.set` (the whole answer of an exercise), `frames delete`, `exercises add --replace` for an exercise that the proposal
    missed or framed badly. Then look again.
@@ -150,6 +156,58 @@ What it cannot see, and what to do about it:
 - A picture has no text: `no-text` and `solution-no-text` are the only things the check can say about it.
 - An indented line of the previous exercise at the top of a region is not at the margin: `overlap` sees it when the regions touch.
 
+## A fixed sample to look at: `exercises sample`
+
+Looking at crops cannot cover a book of thousands of exercises, so a **sample** is looked at, and it must be the same for everyone: two
+agents (or an agent and a person) that audit one book look at exactly the same exercises and answers. `mcprep exercises sample` (MCP
+tool `exercises_sample`) chooses them by the rules below. There is no randomness, and the order of the frames in the file does not
+matter, so you can apply the rules by hand and get the same list.
+
+```console
+mcprep exercises sample                          # the list: ref, why, page, region
+mcprep exercises sample --crops sample/          # also the PNG of every region, "1.2_5-exercise.png", "1.2_5-solution.png"
+mcprep exercises sample --exercises 60 --solutions 30 --out sample.json   # the format math-canvas-sample (`mcprep schema sample`)
+```
+
+**The order of the book** is the order of the sections as the outline lists them and, within a section, reading order (page, then top,
+then left; the frame id decides a tie). Heights and areas are compared to five decimals.
+
+1. **Every section that has exercises: its first and its last exercise** (`first-in-section`, `last-in-section`; one exercise if the
+   section has only one).
+2. **One exercise of every layout kind that the book has: the first exercise of that kind in the order of the book.**
+
+   | `reason` | the exercise ... |
+   | --- | --- |
+   | `has-continuation` | has a continuation region (it goes on in the next column or on the next page). |
+   | `context-on-another-page` | has an instruction region (`context`) on another page than its own. |
+   | `two-in-a-row` | stands in a row of exactly two exercises: the same section and page, regions that share at least half of the smaller one's height, left edges at least 0.05 apart. |
+   | `three-in-a-row` | the same for a row of three or more. |
+   | `longest` | has the region of the greatest height (the first in the order of the book wins a tie). |
+   | `smallest` | has the region of the least area. |
+   | `beside-a-figure` | has a region at least 2.5 times as tall as the median height of the exercises of its section, and at least 0.06 tall (sections of three exercises or more). |
+
+   A kind that no exercise has is not sampled; `notes` says so, so that nobody looks for it.
+3. **Fill up to `--exercises N`** (default 40): take the exercises that are not in the sample yet, in the order of the book, `M` of them,
+   and `count` = N minus the size of the sample so far; with `count` of at least `M` take all of them, else the exercises at index
+   floor(k * M / count) for k = 0, 1, ..., count - 1 (`stride`).
+4. **The answers** (`--solutions N`, default 20), for the exercises that have a solution region: (a) the answers of the exercises
+   above (`of-first-in-section`, `of-last-in-section` for those of rule 1, `of-sampled-exercise` for the others); (b) the answer with the
+   most lines of text (`most-lines`; the text lines of the page in its solution regions, a joined line counted once; at least two; the
+   first in the order of the book wins a tie); (c) the first answer in the book that holds no text at all (`picture-only`, a graph);
+   (d) the first answer of every chapter's key (`first-of-chapter-key`: for each chapter, a top-level outline entry, the exercise whose
+   first solution region comes first on the pages); (e) then an even stride over the remaining answers, as in rule 3, up to N (`stride`).
+
+**N fills the sample up; it never cuts it.** The rules always add what they name, so a book of many sections has more than 40
+exercises: a book of 60 sections has at least 120. `--exercises 0` or `--solutions 0` leaves that half of the sample out. An exercise
+that several rules pick is listed once, with every reason in `reasons` and the first rule's in `reason`.
+
+Each entry is `{ ref, reason, reasons, page, kind, region }`: `ref` is `SECTION:LABEL`, `kind` is `exercise` or `solution`, `region` is `main`
+or `solution:0`. **Look at exactly these**: `mcprep crop <ref> --region <region>` (the MCP tool `render_crop` with `frame` = `ref` and
+`region`), or take the files of `--crops`. For an exercise picked for `has-continuation` the crop of its first continuation is written too
+(`...-continues0.png`), and for `context-on-another-page` the crop of the instruction (`...-context0.png`). Look first for what `verify`
+cannot see: the right end of every line, text that a region holds below its last line, a figure that is cut, an answer that is not the
+answer to this exercise.
+
 ## Other books: the words and patterns are options
 
 Nothing is built for one book. The defaults read English headings and numbers like `5)`, `5.`, `(5)`, `5a)`; a book that words or numbers
@@ -208,7 +266,8 @@ green solution) to look at.
 
 ## Instruction block for an AI agent
 
-Paste this into the agent's task; it assumes the `mcprep` MCP server (or the command line) and that the agent can look at images.
+Paste this into the agent's task; it assumes the `mcprep` MCP server (or the command line). It is made for any model: steps 5 and 6 give
+every agent the same checks and the same sample, and step 6 says what to do when the agent cannot look at images.
 
 ```text
 Audit the textbook PDF <path> for Math Canvas as an authority, entirely on this machine (do not upload the PDF or any page of it).
@@ -223,18 +282,25 @@ First read the resource mcprep://guide (or call get_guide), then docs/AUDIT_A_BO
    number, gaps, duplicates, rejected numbers, notes. For every difference from what the book promises (a count, a missing number,
    a number printed twice) collect the page evidence and decide: it is what the book prints, so keep it and report it, unless the tool
    misread the page (then fix the frames).
-4. Look. With render_crop look at, per section, the first and the last exercise, plus: an exercise beside a figure, a graph answer, an
-   exercise at the end of a page, an exercise that continues on the next page (region continues:0), an instruction that crosses a page
-   break (region context:1), a row with fractions, a three-column row, an answer of several lines, the last answer before a chapter heading.
-   At least 30 exercises and 15 solution regions in all, covering every kind of layout the book has. Fix systematic errors by changing
-   the proposals' arguments or by operations; apply_operations in one atomic batch, then look again.
-5. exercises_propose with solutions=true and apply=true (it can be run again: what is there is skipped, what you corrected is kept and
+4. exercises_propose with solutions=true and apply=true (it can be run again: what is there is skipped, what you corrected is kept and
    listed under "changed", replace=true overwrites it; use sections=[...] to leave out what you framed by hand). Then solutions_propose
-   for answers that were not matched, and look at their regions.
-6. validate (no errors), book_show (the counts per section next to the book's own), export_bundle, import_check (wouldImport must be true).
-7. Report: where the bundle is; chapters, sections, exercises, solutions; every difference from the book's own contents or from the
-   expected counts, with the page evidence; every exercise without a solution and every solution without an exercise; what you framed by
-   hand; what you were unsure about.
+   for answers that were not matched.
+5. Check without looking: exercises_verify with details_file set. Read "summary", then the findings in the order given (errors first).
+   For every error render_crop the ref (frame = ref) to see the defect and correct it (update_frame, exercises_label, exercises_section,
+   solution_add, or apply_operations in one atomic batch), then call exercises_verify again, until it has no errors. Read every warning
+   and info; keep one only if you can say why (the book prints no answers for that section, a number the book itself skips).
+6. Look at the fixed sample: exercises_sample. Do not choose a sample of your own: the list is the same for every agent. For every entry
+   call render_crop with frame = ref and region = region (or set crops_dir and open the files) and check that the exercise crop starts
+   with its number, that no line is cut, that nothing of the next exercise is in it, that a figure is inside and that the instruction is
+   the right one (the entries for has-continuation and context-on-another-page also have a region continues:0 and context:N); and that
+   the answer crop shows the answer to THIS exercise. Fix what is wrong, then call exercises_verify and look again. If you cannot look
+   at images, say so in your report: exercises_verify and the list of the sample are then all you can report on, and you must not
+   write that you looked at a crop you did not see.
+7. validate (no errors), book_show (the counts per section next to the book's own), export_bundle, import_check (wouldImport must be true).
+8. Report: where the bundle is; chapters, sections, exercises, solutions; every difference from the book's own contents or from the
+   expected counts, with the page evidence; every exercise without a solution and every solution without an exercise; the last
+   exercises_verify summary and every warning you kept, with the reason; the entries of the sample you looked at (all of them); what you
+   framed by hand; what you were unsure about.
 
 Never invent an exercise, a number or an answer that the book does not print; never change the numbering to what you think it should be.
 ```
@@ -243,7 +309,8 @@ Never invent an exercise, a number or an answer that the book does not print; ne
 
 - [ ] Chapter and section counts, labels, titles and pages match the printed contents; the notes were read.
 - [ ] Per section: the count and the first and last number match the book; every gap, duplicate and stray number is explained.
-- [ ] A sample of crops (every kind of layout) looked at; no frame cuts a line, holds a neighbour or leaves a figure out; the context is the right instruction.
-- [ ] Solution regions looked at (graphs, several lines, fractions, the last answer of a chapter); exercises without an answer and answers without an exercise explained.
+- [ ] `exercises verify` has no errors, and every warning and info that remains is explained.
+- [ ] The fixed sample (`exercises sample`: every section's first and last exercise, every kind of layout, the answers) looked at, all of it; no frame cuts a line, holds a neighbour or leaves a figure out; the context is the right instruction; an answer region shows the answer to its own exercise.
+- [ ] Exercises without an answer and answers without an exercise explained.
 - [ ] `validate` has no errors, `export` done, `import-check` says the bundle would import; the licence's attribution travels with the bundle (author, licence and notice of the manifest, see BUNDLE_FORMAT.md).
 - [ ] The decisions and the differences from the book are recorded.

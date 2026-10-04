@@ -25,6 +25,7 @@ export * from './pdf/lines.js';
 export * from './propose/index.js';
 export * from './audit/index.js';
 export * from './verify/index.js';
+export * from './sample/index.js';
 export * from './project/model.js';
 export * from './project/serialize.js';
 export * from './project/ops.js';

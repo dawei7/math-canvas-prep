@@ -10,6 +10,7 @@ import { outlineAdd, outlineDelete, outlineIds, outlineUpdate } from './commands
 import { crop, lines, render } from './commands/pages.js';
 import { info, init, meta, relink } from './commands/project.js';
 import { propose } from './commands/propose.js';
+import { exercisesSample } from './commands/sample.js';
 import { solutionAdd, solutionClear, solutionList, solutionRemove } from './commands/solution.js';
 import { validate } from './commands/validate.js';
 import { exercisesVerify } from './commands/verify.js';
@@ -35,6 +36,7 @@ export const COMMANDS: CommandSpec[] = [
   exercisesPropose,
   solutionsPropose,
   exercisesVerify,
+  exercisesSample,
   framesList,
   framesAdd,
   framesUpdate,

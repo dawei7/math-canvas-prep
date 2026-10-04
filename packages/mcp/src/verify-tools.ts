@@ -47,4 +47,36 @@ export function registerVerifyTools({ tool, cli, toResult, projectOf }: ToolApi)
         ),
       ),
   );
+
+  tool(
+    'exercises_sample',
+    {
+      title: 'A fixed sample of exercises and answers to look at',
+      description:
+        'The review sample of an audited book, chosen by rules without randomness, so that every agent looks at exactly the same exercises and answers (whatever its model, and independent of the order of the frames in the file). The rules: the first and the last exercise of every section; one exercise of each layout kind the book has (the first in the order of the book): it has a continuation, its instruction is on another page, it stands in a row with one other exercise, in a row with two others, the longest region, the smallest region, a region much taller than the median of its section (beside a figure); the sample is filled up to "exercises" with an even stride over the rest; for the answers: those of the exercises above, the answer with the most lines, an answer that is only a picture, the first answer of every chapter\'s key, then an even stride up to "solutions". The rules always add what they name, so a book with many sections has more than the numbers given. Each entry is { ref (SECTION:LABEL), reason, reasons, page, kind (exercise or solution), region (main or solution:0) }: look at each with render_crop (frame = ref, region = region), or set crops_dir to have the PNG of every region written (named by reference and kind) and read them. "notes" lists the layouts the book does not have. It changes nothing.',
+      inputSchema: {
+        project: projectArg,
+        exercises: z.number().int().min(0).optional().describe('Fill the sample of exercises up to this many (default 40); 0 leaves the exercises out.'),
+        solutions: z.number().int().min(0).optional().describe('The same for the answers (default 20); 0 leaves the answers out.'),
+        out_file: z.string().optional().describe('Write the sample as JSON to this file (format math-canvas-sample).'),
+        crops_dir: z.string().optional().describe('Also write the PNG crop of every region of the sample into this folder, named by reference and kind ("1.2_5-exercise.png", "1.2_5-solution.png").'),
+      },
+      readOnly: true,
+      idempotent: true,
+    },
+    async (args) =>
+      toResult(
+        await cli(
+          [
+            'exercises',
+            'sample',
+            ...(args.exercises !== undefined ? ['--exercises', String(args.exercises)] : []),
+            ...(args.solutions !== undefined ? ['--solutions', String(args.solutions)] : []),
+            ...(args.out_file ? ['--out', args.out_file] : []),
+            ...(args.crops_dir ? ['--crops', args.crops_dir] : []),
+          ],
+          { project: projectOf(args) },
+        ),
+      ),
+  );
 }

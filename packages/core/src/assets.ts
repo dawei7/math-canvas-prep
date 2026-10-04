@@ -6,7 +6,7 @@ import { McPrepError } from './rules/issues.js';
  * repository root; a build copies them next to the compiled code (`dist/schemas`, `dist/docs`) so that an installed
  * package finds them too.
  */
-export const SCHEMA_NAMES = ['bundle-manifest', 'frames', 'outline', 'project', 'book-summary', 'verify'] as const;
+export const SCHEMA_NAMES = ['bundle-manifest', 'frames', 'outline', 'project', 'book-summary', 'verify', 'sample'] as const;
 export type SchemaName = (typeof SCHEMA_NAMES)[number];
 
 async function firstReadable(candidates: string[], what: string): Promise<string> {

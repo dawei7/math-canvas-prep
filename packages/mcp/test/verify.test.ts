@@ -97,3 +97,43 @@ describe('exercises_verify', () => {
     expect(data(done)['name']).toBe('verify');
   });
 });
+
+describe('exercises_sample', () => {
+  it('is listed with typed arguments and says how every agent looks at the same exercises', async () => {
+    const { tools } = await client.listTools();
+    const found = tools.find((tool) => tool.name === 'exercises_sample');
+    expect(found).toBeDefined();
+    expect(found?.annotations?.readOnlyHint).toBe(true);
+    expect(found?.description).toContain('without randomness');
+    expect(found?.description).toContain('render_crop');
+    const properties = found?.inputSchema.properties as Record<string, { type?: string }>;
+    expect(properties['exercises']?.type).toBe('integer');
+    expect(properties['solutions']?.type).toBe('integer');
+    expect(properties['crops_dir']?.type).toBe('string');
+    expect(client.getInstructions()).toContain('exercises_sample');
+  });
+
+  it('returns the same fixed sample every time, in the format of the schema', async () => {
+    const first = await call('exercises_sample', { exercises: 12, solutions: 6 });
+    expect(first.isError).toBeUndefined();
+    expect(data(first)).toMatchObject({ format: 'math-canvas-sample', version: 1, options: { exercises: 12, solutions: 6 }, summary: { sections: 4, exercises: 112 } });
+    const entries = data(first)['exercises'] as { ref: string; reason: string; kind: string; region: string }[];
+    expect(entries.length).toBeGreaterThanOrEqual(8);
+    expect(entries.map((entry) => entry.ref)).toEqual(expect.arrayContaining(['0.1:1', '0.1:70', '1.2:16']));
+    expect(entries.every((entry) => entry.kind === 'exercise' && entry.region === 'main')).toBe(true);
+    const second = await call('exercises_sample', { exercises: 12, solutions: 6 });
+    expect(data(second)).toEqual(data(first));
+  });
+
+  it('writes the sample and the crops of its regions where it is told to', async () => {
+    const done = await call('exercises_sample', { exercises: 1, solutions: 1, out_file: 'sample.json', crops_dir: 'sample-crops' });
+    expect(done.isError).toBeUndefined();
+    const crops = data(done)['crops'] as { ref: string; kind: string; path: string }[];
+    expect(crops.length).toBeGreaterThan(8);
+    expect(crops.map((crop) => crop.path.replace(/\\/g, '/').split('/').pop())).toEqual(expect.arrayContaining(['0.1_1-exercise.png', '0.1_1-solution.png']));
+    const written = JSON.parse(await readFile(join(dir, 'sample.json'), 'utf8')) as { crops: unknown[] };
+    expect(written.crops).toHaveLength(crops.length);
+    expect((await call('exercises_sample', { exercises: -1 })).isError).toBe(true);
+    expect((await call('get_schema', { name: 'sample' })).isError).toBeUndefined();
+  });
+});

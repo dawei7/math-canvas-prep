@@ -108,7 +108,7 @@ write reads the file fresh under a lock; the desktop app asks which version to k
 
 ## Tool reference
 
-53 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+54 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
 
 ### `create_project`
 
@@ -427,11 +427,11 @@ The guide for agents that mark a PDF: coordinate system with a worked example, w
 
 ### `get_schema` (read-only)
 
-The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) or of the report of exercises_verify.
+The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) of the report of exercises_verify or of the sample of exercises_sample.
 
 Arguments:
 
-- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify")
+- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify" | "sample")
 
 ### `exercises_list` (read-only)
 
@@ -684,3 +684,14 @@ Arguments:
 - `details_file` (string): Write the whole report (every finding) as JSON to this file (format math-canvas-verify).
 - `fail_on` ("error" | "warning" | "none"): The severity from which the command line would exit with code 4 (default error). The result is the same.
 - `item_patterns` (string[]): For a book that does not print "5.", "5)" or "(5)": regular expressions with the label as printed in group 1 (as for exercises_propose); they add to what is read by default.
+
+### `exercises_sample` (read-only)
+
+The review sample of an audited book, chosen by rules without randomness, so that every agent looks at exactly the same exercises and answers (whatever its model, and independent of the order of the frames in the file). The rules: the first and the last exercise of every section; one exercise of each layout kind the book has (the first in the order of the book): it has a continuation, its instruction is on another page, it stands in a row with one other exercise, in a row with two others, the longest region, the smallest region, a region much taller than the median of its section (beside a figure); the sample is filled up to "exercises" with an even stride over the rest; for the answers: those of the exercises above, the answer with the most lines, an answer that is only a picture, the first answer of every chapter's key, then an even stride up to "solutions". The rules always add what they name, so a book with many sections has more than the numbers given. Each entry is { ref (SECTION:LABEL), reason, reasons, page, kind (exercise or solution), region (main or solution:0) }: look at each with render_crop (frame = ref, region = region), or set crops_dir to have the PNG of every region written (named by reference and kind) and read them. "notes" lists the layouts the book does not have. It changes nothing.
+
+Arguments:
+
+- `exercises` (integer): Fill the sample of exercises up to this many (default 40); 0 leaves the exercises out.
+- `solutions` (integer): The same for the answers (default 20); 0 leaves the answers out.
+- `out_file` (string): Write the sample as JSON to this file (format math-canvas-sample).
+- `crops_dir` (string): Also write the PNG crop of every region of the sample into this folder, named by reference and kind ("1.2_5-exercise.png", "1.2_5-solution.png").

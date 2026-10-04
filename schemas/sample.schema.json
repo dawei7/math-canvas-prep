@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/sample.schema.json",
+  "title": "A fixed review sample of an audited book (mcprep exercises sample --json and --out)",
+  "description": "The exercises and the answers to look at when an audited book is reviewed, chosen by rules without randomness (docs/AUDIT_A_BOOK.md, \"A fixed sample to look at\"): the same for every agent and independent of the order of the frames in the file. Both lists are in the order of the book. Pages are zero-based. Plain JSON, camelCase.",
+  "type": "object",
+  "required": ["format", "version", "options", "summary", "exercises", "solutions", "notes"],
+  "properties": {
+    "format": { "const": "math-canvas-sample" },
+    "version": { "const": 1 },
+    "options": {
+      "type": "object",
+      "required": ["exercises", "solutions"],
+      "properties": {
+        "exercises": { "type": "integer", "minimum": 0, "description": "The sample of exercises is filled up to this many; the rules add what they name even when that is more." },
+        "solutions": { "type": "integer", "minimum": 0, "description": "The same for the answers." }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["sections", "exercises", "withSolution", "sampledExercises", "sampledSolutions"],
+      "properties": {
+        "sections": { "type": "integer", "minimum": 0, "description": "Sections that have exercises." },
+        "exercises": { "type": "integer", "minimum": 0, "description": "Authoritative exercises in the project." },
+        "withSolution": { "type": "integer", "minimum": 0 },
+        "sampledExercises": { "type": "integer", "minimum": 0 },
+        "sampledSolutions": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "exercises": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
+    "solutions": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
+    "notes": { "type": "array", "items": { "type": "string" }, "description": "Layouts the book does not have, so that nobody looks for them." },
+    "crops": {
+      "type": "array",
+      "description": "Only with --crops: the PNG written for each region of the sample.",
+      "items": {
+        "type": "object",
+        "required": ["ref", "kind", "region", "path"],
+        "properties": {
+          "ref": { "type": "string" },
+          "kind": { "enum": ["exercise", "solution"] },
+          "region": { "type": "string", "description": "exercise, continues0, context0, solution, solution-2, ..." },
+          "path": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "required": ["ref", "reason", "reasons", "page", "kind", "region"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 3, "description": "SECTION:LABEL of the exercise (an answer is named by its exercise)." },
+        "reason": {
+          "enum": [
+            "first-in-section",
+            "last-in-section",
+            "has-continuation",
+            "context-on-another-page",
+            "two-in-a-row",
+            "three-in-a-row",
+            "longest",
+            "smallest",
+            "beside-a-figure",
+            "stride",
+            "of-first-in-section",
+            "of-last-in-section",
+            "of-sampled-exercise",
+            "most-lines",
+            "picture-only",
+            "first-of-chapter-key"
+          ],
+          "description": "The first rule that picked it."
+        },
+        "reasons": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Every rule that picked it, in the order of the rules; the first is `reason`." },
+        "page": { "type": "integer", "minimum": 0, "description": "The page of the region to look at (for an answer, of its first solution region)." },
+        "kind": { "enum": ["exercise", "solution"] },
+        "region": { "type": "string", "description": "`main` for an exercise, `solution:0` for an answer: as `mcprep crop --region` and the MCP tool render_crop take it." }
+      },
+      "additionalProperties": false
+    }
+  }
+}

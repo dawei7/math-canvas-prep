@@ -77,6 +77,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`exercises propose`](#exercises-propose): Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).
 - [`solutions propose`](#solutions-propose): Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.
 - [`exercises verify`](#exercises-verify): Check the audited exercises against the text layer of the PDF, without looking: the same list for every agent.
+- [`exercises sample`](#exercises-sample): A fixed sample of exercises and answers to look at, chosen by rules (no randomness): the same for every agent.
 - [`frames list`](#frames-list): List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.
 - [`frames add`](#frames-add): Add a frame: an exercise, a question or a bookmark.
 - [`frames update`](#frames-update): Change the page, rectangle or kind of a frame.
@@ -715,6 +716,37 @@ $ mcprep exercises verify --json
 ```
 
 With `--json`, `result` is: `{ format: "math-canvas-verify", version: 1, summary: { exercises, authoritative, sections, solutions, errors, warnings, infos }, findings: [{ code, severity, ref, page, message, evidence }] (the first 300; findingsOmitted: n says how many more the --details file has), sections: [{ id, label, exercises, firstLabel, lastLabel, withSolution, gaps, duplicates }] }; the exit code is 4 when --fail-on is met`
+
+## exercises sample
+
+A fixed sample of exercises and answers to look at, chosen by rules (no randomness): the same for every agent.
+
+```
+mcprep exercises sample [options]
+```
+
+The sample is: (1) the first and the last exercise of every section; (2) one exercise of each layout kind the book has, the first one in the order of the book: it continues on another region, its instruction is on another page, it stands in a row with one other exercise, in a row with two others, the longest region, the smallest region, a region much taller than the median of its section (beside a figure); (3) filled up to --exercises with an even stride over the rest of the exercises in the order of the book (index floor(k*M/count) for k = 0 .. count-1, M being the number of the rest); for the answers: (4) those of the exercises above that have one, the answer with the most lines of text, an answer that is only a picture, the first answer of every chapter's key, then an even stride up to --solutions. The rules always add what they name, so a book with many sections has more than the numbers given; the numbers fill the sample up. The order of the book is the order of the sections in the outline and, within one, reading order; the order of the frames in the file does not matter. Every entry says why it is there (`reason`, and all `reasons`), its page and its region (`main` or `solution:0`, as `crop --region` takes it). `--crops DIR` also writes the PNG of every region, named by reference and kind (`1.2_5-exercise.png`, `1.2_5-solution.png`), as `crop` does; look at them, or call `crop` for each entry. `--out FILE` writes the sample as JSON (format math-canvas-sample, see `mcprep schema sample`). Nothing is changed.
+
+Options:
+
+- `--exercises <n>`: Fill the sample of exercises up to this many (default 40); 0 leaves the exercises out. The rules above add what they name even when that is more.
+- `--solutions <n>`: The same for the answers (default 20); 0 leaves the answers out.
+- `--out <file>`: Write the sample as JSON (format math-canvas-sample).
+- `--crops <dir>`: Also write the PNG crop of every region of the sample into this folder, named by reference and kind (`1.2_5-exercise.png`, `1.2_5-solution.png`).
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises sample
+$ mcprep exercises sample --crops sample/ --out sample.json
+$ mcprep exercises sample --exercises 60 --solutions 30 --json
+```
+
+With `--json`, `result` is: `{ format: "math-canvas-sample", version: 1, options: { exercises, solutions }, summary: { sections, exercises, withSolution, sampledExercises, sampledSolutions }, exercises: [{ ref, reason, reasons, page, kind, region }], solutions: [{ ref, reason, reasons, page, kind, region }], notes: string[] (layouts the book does not have), crops?: [{ ref, kind, region, path }] (with --crops) }`
 
 ## frames list
 
@@ -1784,7 +1816,7 @@ mcprep schema [name] [options]
 
 Arguments:
 
-- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify. Without a name the available schemas are listed.
+- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify, sample. Without a name the available schemas are listed.
 
 Options:
 

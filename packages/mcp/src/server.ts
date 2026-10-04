@@ -623,8 +623,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'get_schema',
     {
       title: 'A JSON Schema of the files',
-      description: 'The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) or of the report of exercises_verify.',
-      inputSchema: { name: z.enum(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary', 'verify']) },
+      description: 'The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) of the report of exercises_verify or of the sample of exercises_sample.',
+      inputSchema: { name: z.enum(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary', 'verify', 'sample']) },
       readOnly: true,
       project: false,
     },

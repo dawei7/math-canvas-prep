@@ -15,6 +15,8 @@ interface Piece {
   text: string;
   rect: Rect;
   headerFooter: boolean;
+  /** The text line of the page this piece belongs to (the pieces of a joined line share it). */
+  line: number;
 }
 
 /** A line belongs to a region when its centre is between the region's left and right edges and half of it is inside. */
@@ -40,6 +42,8 @@ export interface RegionText {
   marginPiece: { text: string; rect: Rect } | undefined;
   /** Everything in the region: the first row at the margin, then the rest from top to bottom. */
   text: string;
+  /** How many text lines of the page (as `mcprep lines` lists them) have a piece in the region. */
+  lines: number;
 }
 
 export class PageLines {
@@ -53,10 +57,10 @@ export class PageLines {
 
   constructor(page: PageText | undefined) {
     this.hasText = page?.hasText === true;
-    for (const line of page?.lines ?? []) {
+    (page?.lines ?? []).forEach((line, at) => {
       const whole = foldText(line.text);
-      if (whole.length === 0) continue;
-      this.wide.push({ text: whole, rect: line.rect, headerFooter: line.headerFooter === true });
+      if (whole.length === 0) return;
+      this.wide.push({ text: whole, rect: line.rect, headerFooter: line.headerFooter === true, line: at });
       this.tallestWide = Math.max(this.tallestWide, line.rect.bottom - line.rect.top);
       // A line joined from pieces standing side by side (the rows of two columns, a fraction) is read piece by piece: a
       // region that holds only one of the columns must not be shown the other.
@@ -64,10 +68,10 @@ export class PageLines {
       for (const piece of pieces) {
         const text = foldText(piece.text);
         if (text.length === 0) continue;
-        this.lines.push({ text, rect: piece.rect, headerFooter: line.headerFooter === true });
+        this.lines.push({ text, rect: piece.rect, headerFooter: line.headerFooter === true, line: at });
         this.tallest = Math.max(this.tallest, piece.rect.bottom - piece.rect.top);
       }
-    }
+    });
     this.lines.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
     this.wide.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
   }
@@ -84,7 +88,7 @@ export class PageLines {
       const overlap = Math.min(piece.rect.right, region.right) - Math.max(piece.rect.left, region.left);
       return (centre < region.left || centre > region.right) && width > 0 && overlap / width >= STRADDLE;
     }).map((piece) => piece.text);
-    if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' ') };
+    if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' '), lines: 0 };
     const leftmost = Math.min(...inside.map((piece) => piece.rect.left));
     const first = inside.find((piece) => piece.rect.left <= leftmost + MARGIN) as Piece;
     const band = first.rect;
@@ -99,7 +103,14 @@ export class PageLines {
       .sort((a, b) => a.rect.left - b.rect.left);
     const margin = row.map((piece) => piece.text).join(' ');
     const rest = inside.filter((piece) => !row.includes(piece)).map((piece) => piece.text);
-    return { pieces: inside.map((piece) => piece.text), straddling, margin, marginPiece: { text: first.text, rect: first.rect }, text: [margin, ...rest].join(' ') };
+    return {
+      pieces: inside.map((piece) => piece.text),
+      straddling,
+      margin,
+      marginPiece: { text: first.text, rect: first.rect },
+      text: [margin, ...rest].join(' '),
+      lines: new Set(inside.map((piece) => piece.line)).size,
+    };
   }
 
   /** The pieces of `source` that are in the region by the given horizontal rule and have half of their height inside it. */
