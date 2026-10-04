@@ -1,5 +1,5 @@
 import { rectHeight } from '../model/rect.js';
-import type { PageSize, PageText, Rect, TextLine } from '../model/types.js';
+import type { LinePart, PageSize, PageText, Rect, TextLine } from '../model/types.js';
 
 /**
  * Text lines from text runs, as pure functions (no PDF library), so that the grouping is tested without a PDF.
@@ -52,8 +52,8 @@ interface Segment {
   baseline: number;
   column: number;
   spanning: boolean;
-  /** The boxes of the segments that were merged into this one (set by the merge of fraction rows). */
-  parts?: Rect[];
+  /** The segments that were merged into this one (set by the merge of fraction rows), as they were before. */
+  parts?: LinePart[];
 }
 
 /** Runs overlapping vertically by this share of the smaller one belong to one line. */
@@ -255,8 +255,9 @@ function mergeFractionRows(segments: Segment[], lines: Map<Segment, TextLine>): 
       const reach = (4 * Math.max(...segment.boxes.map((b) => b.item.fontSize))) / 600;
       if (smaller > 0 && overlap / smaller >= MERGE_OVERLAP && sideways > -reach) {
         // The line made of the segment before it was merged: what the piece looked like on its own.
-        previous.parts = previous.parts ?? [(lines.get(previous) as TextLine).rect];
-        previous.parts.push(line.rect);
+        const own = lines.get(previous) as TextLine;
+        previous.parts = previous.parts ?? [{ text: own.text, chars: own.chars, rect: own.rect }];
+        previous.parts.push({ text: line.text, chars: line.chars, rect: line.rect });
         previous.boxes.push(...segment.boxes);
         previous.baseline = Math.max(previous.baseline, segment.baseline);
         box = {

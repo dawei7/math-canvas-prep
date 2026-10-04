@@ -95,14 +95,14 @@ interface Loaded {
   pages: PageText[];
 }
 
-/** Every page with its lines (fonts known); the ink profile only for the pages in `ink` (figures and answers that are drawn). */
+/** Every page with its lines (fonts known); the ink profile and the ink map only for the pages in `ink` (figures and answers that are drawn, edges between lines). */
 async function load(context: CommandContext, ink: ReadonlySet<number> = new Set()): Promise<Loaded> {
   const session = await context.session();
   const pdf = await session.document();
   const pages = await pdf.allPageText({ fonts: true });
   for (const page of ink) {
     const current = pages[page];
-    if (current) pages[page] = { ...current, ink: await pdf.inkProfile(page) };
+    if (current) pages[page] = { ...current, ink: await pdf.inkProfile(page), inkMap: await pdf.inkMap(page) };
   }
   return { session, pages };
 }
@@ -417,7 +417,7 @@ async function withInk(loaded: Loaded, ink: ReadonlySet<number>): Promise<Loaded
   const pages = [...loaded.pages];
   for (const page of ink) {
     const current = pages[page];
-    if (current && current.ink === undefined) pages[page] = { ...current, ink: await pdf.inkProfile(page) };
+    if (current && current.ink === undefined) pages[page] = { ...current, ink: await pdf.inkProfile(page), inkMap: await pdf.inkMap(page) };
   }
   return { session: loaded.session, pages };
 }

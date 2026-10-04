@@ -1,20 +1,37 @@
-// Acceptance run for the book audit on a real textbook PDF. Not part of the tests (it needs a book that is not in the repository).
+// Acceptance run for the audit of a book on a real textbook PDF. Not part of the tests: it needs a book that is not in the repository.
 //
-//   node scripts/acceptance-book.mjs <book.pdf> [reference.json] [--out <folder>] [--sample <n>] [--solution-sample <n>] [--no-apply] [--title <text>]
+//   node scripts/acceptance-book.mjs <book.pdf> [reference.json] --out <folder> [options]
 //
-// It creates a project in a temporary folder, derives the sections, proposes and applies the exercises and the solutions through the
-// real operations, validates, exports a bundle and runs the importer's checks, then compares the sections and the number of
-// exercises with the reference (the owner's sample book.json, or any JSON with { sections: [{ label, title, exercise_count }] }) and
-// writes a Markdown report with the evidence for every difference. It also renders a sample of crops of exercises and of
-// solution regions into <out>/crops so that they can be looked at. Nothing is uploaded; the PDF stays where it is.
+// It creates a project next to the other results, stores the sections, proposes and applies the exercises with their solutions
+// through the real operations, applies them a second time (nothing may change), validates, exports a bundle and runs the importer's
+// checks. It then compares the sections and the number of exercises with a reference (the owner's own list of the book, see
+// --reference-chapter-offset), checks every stored region against the ink of the page (does an edge run through printed text?)
+// and writes a Markdown report with the evidence for every difference, a sample of crops of exercises and solution regions, and
+// contact sheets of the same sample (red = frame, orange = continuation, blue = instruction, green = solution) to look at.
+// Nothing is uploaded and the PDF is not copied or changed.
+//
+// Options
+//   --out <folder>              where the results go (required): <name>-audited.mcprep.json, <name>-audited.mcbundle,
+//                               acceptance-report.md, acceptance-details.json, crops/, sheets/
+//   --name <stem>               the stem of the file names (default: the name of the PDF)
+//   --title <text>              the title of the document (default: the name of the PDF)
+//   --folder <path>             where the document belongs in the library, for example "Books/Algebra"
+//   --author, --series, --description, --license-name, --license-url, --source-url, --notice
+//                               what the book says about itself (the same as `mcprep book meta`)
+//   --reference-chapter-offset <n>   the chapter numbers of the reference plus n are the numbers the book prints (default 0)
+//   --sample <n>                exercises to put on the contact sheets and write as crops (default 60)
+//   --solution-sample <n>       the same for solution regions (default 30)
+//   --chapter-words, --practice-words, --answer-words, --item-pattern (repeatable), --instructions
+//                               passed on to the commands that read the book (see docs/AUDIT_A_BOOK.md)
 //
 // Run `npm run build` first.
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { run } from '../packages/cli/dist/index.js';
-import { PdfDocument, renderRegion, titleKey } from '../packages/core/dist/index.js';
+import { PdfDocument, renderPage, renderRegion, titleKey } from '../packages/core/dist/index.js';
 
+const MULTIPLE = new Set(['item-pattern']);
 const args = process.argv.slice(2);
 const positional = [];
 const options = new Map();
@@ -22,31 +39,44 @@ for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
   if (arg.startsWith('--')) {
     const name = arg.slice(2);
-    if (['no-apply'].includes(name)) options.set(name, true);
-    else options.set(name, args[(i += 1)]);
+    const value = args[(i += 1)];
+    if (value === undefined) {
+      console.error(`--${name} needs a value`);
+      process.exit(2);
+    }
+    if (MULTIPLE.has(name)) options.set(name, [...(options.get(name) ?? []), value]);
+    else options.set(name, value);
   } else positional.push(arg);
 }
 const [pdfArg, referenceArg] = positional;
-if (!pdfArg) {
-  console.error('usage: node scripts/acceptance-book.mjs <book.pdf> [reference.json] [--out <folder>] [--sample <n>] [--solution-sample <n>] [--no-apply] [--title <text>]');
+if (!pdfArg || !options.has('out')) {
+  console.error('usage: node scripts/acceptance-book.mjs <book.pdf> [reference.json] --out <folder> [--name <stem>] [--title <text>] [--folder <path>] [--author <text>] [--license-name <text>] [--license-url <url>] [--source-url <url>] [--notice <text>] [--reference-chapter-offset <n>] [--sample <n>] [--solution-sample <n>]');
   process.exit(2);
 }
 const pdfPath = resolve(pdfArg);
-const outDir = resolve(options.get('out') ?? 'acceptance-out');
-const sampleSize = Number(options.get('sample') ?? 40);
-const solutionSampleSize = Number(options.get('solution-sample') ?? 20);
-const applyAll = options.get('no-apply') !== true;
+const outDir = resolve(options.get('out'));
+const stem = options.get('name') ?? basename(pdfPath).replace(/\.pdf$/i, '');
 const title = options.get('title') ?? basename(pdfPath).replace(/\.pdf$/i, '');
+const sampleSize = Number(options.get('sample') ?? 60);
+const solutionSampleSize = Number(options.get('solution-sample') ?? 30);
+const chapterOffset = Number(options.get('reference-chapter-offset') ?? 0);
+const projectPath = join(outDir, `${stem}-audited.mcprep.json`);
+const bundlePath = join(outDir, `${stem}-audited.mcbundle`);
+
+const readOptions = [];
+for (const name of ['chapter-words', 'practice-words', 'answer-words', 'instructions']) if (options.has(name)) readOptions.push(`--${name}`, options.get(name));
+for (const pattern of options.get('item-pattern') ?? []) readOptions.push('--item-pattern', pattern);
+const metaOptions = [];
+for (const name of ['author', 'series', 'description', 'license-name', 'license-url', 'source-url', 'notice']) if (options.has(name)) metaOptions.push(`--${name}`, options.get(name));
 
 const work = await mkdtemp(join(tmpdir(), 'mcprep-acceptance-'));
-const projectPath = join(work, 'book.mcprep.json');
 const timings = [];
 
-async function mcprep(argv, { quiet = false } = {}) {
+async function mcprep(argv, { project = true, allowFailure = false } = {}) {
   let out = '';
   let err = '';
   const started = Date.now();
-  const code = await run([...argv, '--json', '--project', projectPath], {
+  const code = await run([...argv, '--json', ...(project ? ['--project', projectPath] : [])], {
     stdout: (text) => {
       out += text;
     },
@@ -57,69 +87,170 @@ async function mcprep(argv, { quiet = false } = {}) {
     cwd: work,
     env: {},
   });
-  const seconds = Math.round((Date.now() - started) / 100) / 10;
-  timings.push(`${argv.slice(0, 3).join(' ')}: ${seconds} s`);
+  timings.push(`${argv.slice(0, 3).join(' ')}: ${Math.round((Date.now() - started) / 100) / 10} s`);
   const envelope = out.trim().startsWith('{') ? JSON.parse(out) : { ok: false, error: { message: err.trim() || 'no output' } };
-  if (!quiet && code !== 0 && !['validate', 'import-check'].includes(argv[0])) {
-    throw new Error(`mcprep ${argv.join(' ')} failed (exit ${code}): ${envelope.error?.message ?? err}\n${envelope.error?.hint ?? ''}`);
-  }
+  if (code !== 0 && !allowFailure) throw new Error(`mcprep ${argv.join(' ')} failed (exit ${code}): ${envelope.error?.message ?? err}\n${envelope.error?.hint ?? ''}`);
   return { code, envelope, result: envelope.result ?? {} };
 }
 
 const pct = (a, b) => (b === 0 ? 'n/a' : `${Math.round((1000 * a) / b) / 10} %`);
 const cell = (text) => String(text ?? '').replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+const safe = (text) => String(text).replace(/[^A-Za-z0-9._-]+/g, '_');
+const pages = (a, b) => (a === b ? `${a}` : `${a}-${b}`);
+const evenly = (list, n) => (list.length <= n ? [...list] : Array.from({ length: n }, (_unused, k) => list[Math.floor((k * list.length) / n)]));
 
 try {
-  await mkdir(outDir, { recursive: true });
   await mkdir(join(outDir, 'crops'), { recursive: true });
-  const pdfCopy = join(work, 'book.pdf');
-  await copyFile(pdfPath, pdfCopy);
+  await mkdir(join(outDir, 'sheets'), { recursive: true });
 
-  // --- the project and the sections -----------------------------------------------------------------------------------
-  const init = await run(['init', pdfCopy, '--out', projectPath, '--title', title, '--json'], { stdout: () => undefined, stderr: () => undefined, stdin: () => Promise.resolve(''), cwd: work, env: {} });
-  if (init !== 0) throw new Error('mcprep init failed');
-  const derived = await mcprep(['outline', 'derive', '--book']);
-  const sections = derived.result.entries.filter((entry) => entry.kind === 'section');
-  const chapters = derived.result.entries.filter((entry) => entry.kind === 'chapter');
-  if (applyAll) await mcprep(['outline', 'derive', '--book', '--apply']);
+  // --- the project, what the book says about itself, the sections -----------------------------------------------------------
+  await mcprep(['init', pdfPath, '--out', projectPath, '--title', title, ...(options.has('folder') ? ['--folder', options.get('folder')] : []), '--force'], { project: false });
+  if (metaOptions.length > 0) await mcprep(['book', 'meta', ...metaOptions]);
+  const derived = await mcprep(['outline', 'derive', '--book', ...readOptions]);
+  await mcprep(['outline', 'derive', '--book', '--apply', ...readOptions]);
+  const entries = derived.result.entries;
+  const sections = entries.filter((entry) => entry.kind === 'section');
+  const chapters = entries.filter((entry) => entry.kind === 'chapter');
 
-  // --- exercises and solutions ------------------------------------------------------------------------------------------
+  // --- exercises and solutions, then the same again --------------------------------------------------------------------------
   const detailsFile = join(work, 'details.json');
   const opsFile = join(work, 'ops.json');
-  const propose = await mcprep(['exercises', 'propose', '--solutions', '--details', detailsFile, '--ops', opsFile, ...(applyAll ? ['--apply'] : [])]);
+  const propose = await mcprep(['exercises', 'propose', '--solutions', '--details', detailsFile, '--ops', opsFile, '--apply', ...readOptions]);
   const details = JSON.parse(await readFile(detailsFile, 'utf8'));
   const exerciseSections = details.sectionsDetail;
   const solutionSections = details.solutions?.sections ?? [];
   const proposals = details.proposals;
+  const again = await mcprep(['exercises', 'propose', '--solutions', '--apply', ...readOptions]);
+  const againSolutions = await mcprep(['solutions', 'propose', '--apply', ...readOptions]);
 
-  // --- validate, export, import-check ---------------------------------------------------------------------------------------
-  let validation;
-  let bundle;
-  let check;
-  const bundlePath = join(outDir, `${basename(pdfPath).replace(/\.pdf$/i, '')}-audited.mcbundle`);
-  if (applyAll) {
-    validation = await mcprep(['validate'], { quiet: true });
-    if (validation.result.ok === false) console.error('validation reports errors; see the report');
-    bundle = await mcprep(['export', '--out', bundlePath], { quiet: true });
-    check = bundle.code === 0 ? await mcprep(['import-check', bundlePath], { quiet: true }) : undefined;
-    await copyFile(projectPath, join(outDir, `${basename(pdfPath).replace(/\.pdf$/i, '')}-audited.mcprep.json`));
-  }
+  // --- validate, the counts the project holds, export, import-check --------------------------------------------------------
+  const validation = await mcprep(['validate'], { allowFailure: true });
+  const book = await mcprep(['book', 'show']);
+  const exported = await mcprep(['export', '--out', bundlePath], { allowFailure: true });
+  const check = exported.code === 0 ? await mcprep(['import-check', bundlePath], { project: false, allowFailure: true }) : undefined;
+  const project = JSON.parse(await readFile(projectPath, 'utf8'));
+  const frames = project.frames.filter((frame) => frame.authority === 'book');
+  const frameOf = new Map(frames.map((frame) => [`${frame.section}\u0000${frame.label}`, frame]));
+  const stored = new Map(book.result.sections.map((entry) => [entry.id, entry]));
 
-  // --- the reference ----------------------------------------------------------------------------------------------------------
+  // --- the reference -------------------------------------------------------------------------------------------------------------
   let reference;
   if (referenceArg) {
     const raw = JSON.parse(await readFile(resolve(referenceArg), 'utf8'));
     reference = [];
     if (Array.isArray(raw.chapters)) {
-      // The owner's sample: chapters numbered from 1, sections numbered inside the chapter; the book prints chapter 0 first.
-      for (const chapter of raw.chapters) for (const section of chapter.sections) reference.push({ label: `${chapter.number - 1}.${section.number}`, title: section.title, count: section.exercise_count, chapterTitle: chapter.title, chapterLabel: `Chapter ${chapter.number - 1}` });
+      for (const chapter of raw.chapters) {
+        for (const section of chapter.sections) {
+          reference.push({ label: `${chapter.number + chapterOffset}.${section.number}`, title: section.title, count: section.exercise_count, chapterTitle: chapter.title, chapterLabel: `${chapter.number + chapterOffset}` });
+        }
+      }
     } else if (Array.isArray(raw.sections)) {
       for (const section of raw.sections) reference.push({ label: section.label, title: section.title, count: section.exercise_count ?? section.count });
     }
   }
+  const foundByLabel = new Map(sections.map((entry) => [entry.label, entry]));
+  const countOf = (entry) => stored.get(entry.id)?.exercises ?? 0;
 
-  // --- crops to look at ----------------------------------------------------------------------------------------------------------
+  // --- the ink check: does an edge of a stored region run through printed text? ------------------------------------------------
   const doc = await PdfDocument.open(pdfPath);
+  let canvasLib;
+  try {
+    canvasLib = await import('@napi-rs/canvas');
+  } catch {
+    canvasLib = undefined;
+  }
+  const regions = [];
+  for (const frame of frames) {
+    const ref = `${frame.section}:${frame.label}`;
+    regions.push({ ref, kind: 'frame', page: frame.page, rect: frame.rect });
+    for (const [i, region] of (frame.continues ?? []).entries()) regions.push({ ref, kind: `continues${i}`, ...region });
+    for (const [i, region] of (frame.context ?? []).entries()) regions.push({ ref, kind: `context${i}`, ...region });
+    for (const [i, region] of (frame.solution ?? []).entries()) regions.push({ ref, kind: `solution${i}`, ...region });
+  }
+  const inkCuts = [];
+  if (canvasLib) {
+    const byPage = new Map();
+    for (const region of regions) byPage.set(region.page, [...(byPage.get(region.page) ?? []), region]);
+    for (const [page, list] of [...byPage].sort((a, b) => a[0] - b[0])) {
+      const image = await renderPage(doc, page, { scale: 2 });
+      const img = await canvasLib.loadImage(Buffer.from(image.png));
+      const canvas = canvasLib.createCanvas(img.width, img.height);
+      const context = canvas.getContext('2d');
+      context.drawImage(img, 0, 0);
+      const data = context.getImageData(0, 0, img.width, img.height).data;
+      const share = (y, x0, x1) => {
+        if (y < 0 || y >= img.height) return 0;
+        let count = 0;
+        for (let x = x0; x <= x1; x += 1) {
+          const at = (y * img.width + x) * 4;
+          if (0.299 * data[at] + 0.587 * data[at + 1] + 0.114 * data[at + 2] < 150) count += 1;
+        }
+        return count / Math.max(1, x1 - x0 + 1);
+      };
+      for (const region of list) {
+        const x0 = Math.max(0, Math.round(region.rect.left * img.width));
+        const x1 = Math.min(img.width - 1, Math.round(region.rect.right * img.width) - 1);
+        const edge = (y) => Math.max(share(y - 1, x0, x1), share(y, x0, x1), share(y + 1, x0, x1));
+        const top = edge(Math.round(region.rect.top * img.height));
+        const bottom = edge(Math.round(region.rect.bottom * img.height) - 1);
+        if (top > 0.02 || bottom > 0.02) inkCuts.push({ ...region, top, bottom });
+      }
+    }
+  }
+
+  // --- the sample to look at ----------------------------------------------------------------------------------------------
+  const proposalOf = new Map(proposals.map((proposal) => [`${proposal.section}\u0000${proposal.label}`, proposal]));
+  const chapterOfSection = (label) => String(label).split('.')[0];
+  const orderedFrames = [];
+  for (const section of sections) for (const proposal of exerciseSections.find((entry) => entry.section === section.id)?.proposals ?? []) orderedFrames.push(proposal);
+  const pickExercises = [];
+  const byChapter = new Map();
+  for (const section of sections) byChapter.set(chapterOfSection(section.label), [...(byChapter.get(chapterOfSection(section.label)) ?? []), section]);
+  for (const list of byChapter.values()) {
+    const first = exerciseSections.find((entry) => entry.section === list[0].id)?.proposals[0];
+    const lastSet = exerciseSections.find((entry) => entry.section === list[list.length - 1].id)?.proposals;
+    pickExercises.push(first, lastSet?.[lastSet.length - 1]);
+  }
+  pickExercises.push(...evenly(orderedFrames.filter((proposal) => proposal.continues), 6));
+  pickExercises.push(...evenly(orderedFrames.filter((proposal) => proposal.layout === 'figure'), 10));
+  pickExercises.push(...evenly(orderedFrames.filter((proposal) => new Set((proposal.context ?? []).map((region) => region.page)).size > 1), 4));
+  pickExercises.push(...evenly(orderedFrames.filter((proposal) => proposal.confidence < 0.8), 8));
+  pickExercises.push(...inkCuts.filter((cut) => cut.kind === 'frame').slice(0, 6).map((cut) => proposalOf.get(`${cut.ref.split(':')[0]}\u0000${cut.ref.slice(cut.ref.indexOf(':') + 1)}`)));
+  const chosenSet = new Map();
+  for (const proposal of pickExercises) if (proposal) chosenSet.set(`${proposal.section}\u0000${proposal.label}`, proposal);
+  const rest = evenly(orderedFrames, Math.max(0, sampleSize - chosenSet.size));
+  for (const proposal of rest) chosenSet.set(`${proposal.section}\u0000${proposal.label}`, proposal);
+  const chosen = [...chosenSet.values()];
+
+  const answers = solutionSections.flatMap((section) => section.answers);
+  const pickAnswers = [];
+  for (const list of byChapter.values()) {
+    const first = solutionSections.find((entry) => entry.section === list[0].id)?.answers[0];
+    const lastSet = solutionSections.find((entry) => entry.section === list[list.length - 1].id)?.answers;
+    pickAnswers.push(first, lastSet?.[lastSet.length - 1]);
+  }
+  pickAnswers.push(...evenly(answers.filter((answer) => answer.regions.length > 1), 4));
+  pickAnswers.push(...evenly(answers.filter((answer) => answer.evidence.some((line) => /stands alone|treated as a figure/.test(line))), 6));
+  pickAnswers.push(...evenly(answers.filter((answer) => answer.confidence < 0.8), 4));
+  pickAnswers.push(...inkCuts.filter((cut) => cut.kind.startsWith('solution')).slice(0, 6).map((cut) => answers.find((answer) => `${answer.section}:${answer.label}` === cut.ref)));
+  const chosenAnswerSet = new Map();
+  for (const answer of pickAnswers) if (answer) chosenAnswerSet.set(`${answer.section}\u0000${answer.label}`, answer);
+  for (const answer of evenly(answers, Math.max(0, solutionSampleSize - chosenAnswerSet.size))) chosenAnswerSet.set(`${answer.section}\u0000${answer.label}`, answer);
+  const chosenAnswers = [...chosenAnswerSet.values()];
+
+  // The first exercise beyond the reference count of a section whose count differs: the evidence that the book prints it.
+  const beyond = [];
+  if (reference) {
+    for (const entry of reference) {
+      const section = foundByLabel.get(entry.label);
+      if (!section || countOf(section) <= entry.count) continue;
+      const list = exerciseSections.find((candidate) => candidate.section === section.id)?.proposals ?? [];
+      const extra = list[entry.count];
+      if (extra) beyond.push({ entry, section, proposal: extra, last: list[list.length - 1] });
+    }
+  }
+
+  // --- crops and contact sheets ----------------------------------------------------------------------------------------------
   const written = [];
   async function crop(name, page, rect) {
     const image = await renderRegion(doc, page, rect, { maxSide: 800, padding: 0.01 });
@@ -127,73 +258,175 @@ try {
     await writeFile(path, image.png);
     written.push(path);
   }
-  const pick = [];
-  const withContinuation = proposals.filter((proposal) => proposal.continues);
-  const figures = proposals.filter((proposal) => proposal.layout === 'figure');
-  const bySection = new Map();
-  for (const proposal of proposals) bySection.set(proposal.section, [...(bySection.get(proposal.section) ?? []), proposal]);
-  const evenly = (list, n) => (list.length <= n ? list : Array.from({ length: n }, (_unused, k) => list[Math.floor((k * list.length) / n)]));
-  for (const list of bySection.values()) pick.push(list[0], list[list.length - 1]);
-  pick.push(...evenly(withContinuation, 4), ...evenly(figures, 10), ...evenly(proposals, sampleSize));
-  const chosen = [...new Map(pick.filter(Boolean).map((proposal) => [proposal.id, proposal])).values()].slice(0, Math.max(sampleSize, 1));
-  for (const proposal of chosen) {
-    await crop(`ex-${proposal.id}`, proposal.page, proposal.rect);
-    for (const [index, region] of (proposal.continues ?? []).entries()) await crop(`ex-${proposal.id}-continues${index}`, region.page, region.rect);
-    for (const [index, region] of (proposal.context ?? []).entries()) await crop(`ex-${proposal.id}-context${index}`, region.page, region.rect);
+  const tilesOfExercise = (proposal) => {
+    const frame = frameOf.get(`${proposal.section}\u0000${proposal.label}`);
+    const more = [];
+    for (const region of frame?.continues ?? []) more.push({ page: region.page, rect: region.rect, color: '#e08000' });
+    for (const region of frame?.context ?? []) more.push({ page: region.page, rect: region.rect, color: '#0060e0' });
+    return { label: `${proposal.section}:${proposal.label} p${frame?.page ?? proposal.page}${frame?.continues ? ' +cont' : ''}${frame?.context?.length ? ` ctx${frame.context.length}` : ''}`, page: frame?.page ?? proposal.page, rect: frame?.rect ?? proposal.rect, more };
+  };
+  const tilesOfAnswer = (answer) => {
+    const frame = frameOf.get(`${answer.section}\u0000${answer.label}`);
+    const [main, ...more] = frame?.solution ?? answer.regions;
+    return { label: `A ${answer.section}:${answer.label} p${main.page}${more.length ? ` +${more.length}` : ''}`, page: main.page, rect: main.rect, color: '#00a000', more: more.map((region) => ({ page: region.page, rect: region.rect, color: '#e08000' })) };
+  };
+  async function sheet(name, tiles, columns = 3) {
+    if (!canvasLib || tiles.length === 0) return undefined;
+    const rendered = [];
+    for (const tile of tiles) {
+      const parts = [];
+      for (const region of [{ page: tile.page, rect: tile.rect, color: tile.color ?? '#e00000' }, ...(tile.more ?? [])]) {
+        const image = await renderRegion(doc, region.page, region.rect, { padding: 0.012, maxSide: 900, scale: 1.4 });
+        const img = await canvasLib.loadImage(Buffer.from(image.png));
+        const canvas = canvasLib.createCanvas(img.width, img.height);
+        const g = canvas.getContext('2d');
+        g.drawImage(img, 0, 0);
+        g.strokeStyle = region.color ?? '#e00000';
+        g.lineWidth = 2;
+        const v = image.view;
+        const fx = (x) => ((x - v.left) / (v.right - v.left)) * img.width;
+        const fy = (y) => ((y - v.top) / (v.bottom - v.top)) * img.height;
+        g.strokeRect(fx(region.rect.left), fy(region.rect.top), fx(region.rect.right) - fx(region.rect.left), fy(region.rect.bottom) - fy(region.rect.top));
+        parts.push(canvas);
+      }
+      rendered.push({ label: tile.label, parts });
+    }
+    const tileWidth = 640;
+    const gap = 8;
+    const labelHeight = 18;
+    const laid = rendered.map((tile) => {
+      const scaled = tile.parts.map((part) => {
+        const k = Math.min(1, tileWidth / part.width);
+        return { part, w: Math.round(part.width * k), h: Math.round(part.height * k) };
+      });
+      return { ...tile, scaled, height: labelHeight + scaled.reduce((sum, item) => sum + item.h + 4, 0) };
+    });
+    const rows = [];
+    for (let i = 0; i < laid.length; i += columns) rows.push(laid.slice(i, i + columns));
+    const totalHeight = rows.reduce((sum, row) => sum + Math.max(...row.map((tile) => tile.height)) + gap, 0);
+    const surface = canvasLib.createCanvas(columns * (tileWidth + gap), totalHeight);
+    const g = surface.getContext('2d');
+    g.fillStyle = '#d8d8d8';
+    g.fillRect(0, 0, surface.width, surface.height);
+    let y = 0;
+    for (const row of rows) {
+      let x = 0;
+      for (const tile of row) {
+        g.fillStyle = '#ffffff';
+        g.fillRect(x, y, tileWidth, tile.height);
+        g.fillStyle = '#0000a0';
+        g.font = 'bold 14px sans-serif';
+        g.fillText(tile.label, x + 4, y + 13);
+        let yy = y + labelHeight;
+        for (const item of tile.scaled) {
+          g.drawImage(item.part, x, yy, item.w, item.h);
+          yy += item.h + 4;
+        }
+        x += tileWidth + gap;
+      }
+      y += Math.max(...row.map((tile) => tile.height)) + gap;
+    }
+    const path = join(outDir, 'sheets', `${name}.png`);
+    await writeFile(path, await surface.encode('png'));
+    written.push(path);
+    return path;
   }
-  const answers = solutionSections.flatMap((section) => section.answers);
-  const answerPick = [];
-  for (const section of solutionSections) if (section.answers.length > 0) answerPick.push(section.answers[0], section.answers[section.answers.length - 1]);
-  answerPick.push(...evenly(answers.filter((answer) => answer.regions.length > 1), 4), ...evenly(answers, solutionSampleSize));
-  const chosenAnswers = [...new Map(answerPick.filter(Boolean).map((answer) => [answer.exercise, answer])).values()].slice(0, Math.max(solutionSampleSize, 1));
-  for (const answer of chosenAnswers) for (const [index, region] of answer.regions.entries()) await crop(`solution-${answer.exercise}${index > 0 ? `-${index}` : ''}`, region.page, region.rect);
+  for (const proposal of chosen) {
+    const tile = tilesOfExercise(proposal);
+    await crop(`ex-${safe(proposal.section)}-${safe(proposal.label)}`, tile.page, tile.rect);
+    for (const [index, region] of (frameOf.get(`${proposal.section}\u0000${proposal.label}`)?.continues ?? []).entries()) await crop(`ex-${safe(proposal.section)}-${safe(proposal.label)}-continues${index}`, region.page, region.rect);
+    for (const [index, region] of (frameOf.get(`${proposal.section}\u0000${proposal.label}`)?.context ?? []).entries()) await crop(`ex-${safe(proposal.section)}-${safe(proposal.label)}-context${index}`, region.page, region.rect);
+  }
+  for (const answer of chosenAnswers) for (const [index, region] of (frameOf.get(`${answer.section}\u0000${answer.label}`)?.solution ?? answer.regions).entries()) await crop(`solution-${safe(answer.section)}-${safe(answer.label)}${index > 0 ? `-${index}` : ''}`, region.page, region.rect);
+  for (const item of beyond) {
+    const tile = tilesOfExercise(item.proposal);
+    await crop(`beyond-${safe(item.section.label)}-first-extra-${safe(item.proposal.label)}`, tile.page, tile.rect);
+    const lastTile = tilesOfExercise(item.last);
+    await crop(`beyond-${safe(item.section.label)}-last-${safe(item.last.label)}`, lastTile.page, lastTile.rect);
+  }
+  const sheets = [];
+  for (let k = 0; k * 12 < chosen.length; k += 1) {
+    const made = await sheet(`exercises-${String(k + 1).padStart(2, '0')}`, chosen.slice(k * 12, k * 12 + 12).map(tilesOfExercise));
+    if (made) sheets.push(made);
+  }
+  for (let k = 0; k * 12 < chosenAnswers.length; k += 1) {
+    const made = await sheet(`solutions-${String(k + 1).padStart(2, '0')}`, chosenAnswers.slice(k * 12, k * 12 + 12).map(tilesOfAnswer));
+    if (made) sheets.push(made);
+  }
   await doc.close();
 
-  // --- the report ------------------------------------------------------------------------------------------------------------------
+  // --- the report ----------------------------------------------------------------------------------------------------------------
   const lines = [];
   const found = new Map(exerciseSections.map((section) => [section.section, section]));
   const solved = new Map(solutionSections.map((section) => [section.section, section]));
-  lines.push(`# Acceptance report: ${title}`, '', `Generated by scripts/acceptance-book.mjs. PDF: ${basename(pdfPath)}. Nothing was uploaded.`, '');
+  const offset = derived.result.numbering.offset;
+  const printed = (page) => (offset === undefined ? '?' : page + offset);
+  const totalExercises = book.result.totals?.exercises ?? frames.length;
+  const totalSolved = book.result.totals?.withSolution ?? frames.filter((frame) => frame.solution?.length > 0).length;
+  const withoutAnswer = solutionSections.reduce((sum, section) => sum + section.withoutAnswer.length, 0);
+  const withoutExercise = solutionSections.reduce((sum, section) => sum + section.withoutExercise.length, 0);
+  const warnings = validation.result.warnings ?? [];
+  const warningsByCode = {};
+  for (const warning of warnings) warningsByCode[warning.code] = (warningsByCode[warning.code] ?? 0) + 1;
+  lines.push(`# Acceptance report: ${title}`, '', `Generated by scripts/acceptance-book.mjs. PDF: ${basename(pdfPath)}. Nothing was uploaded. Pages are zero-based, as in \`mcprep render\` and \`crop\`${offset === undefined ? '' : `; the printed page number is the page + ${offset}`}.`, '');
   lines.push('## Summary', '');
-  const totalExercises = proposals.length;
-  const totalAnswers = answers.length;
-  lines.push(`- Chapters found: ${chapters.length}; sections found: ${sections.length}; other entries: ${derived.result.entries.length - chapters.length - sections.length}.`);
-  lines.push(`- Printed contents on pages ${derived.result.toc.pages.join(', ') || 'none'}, ${derived.result.toc.openers.length} chapter opener lists; printed page = page + ${derived.result.numbering.offset ?? '?'}; answer key from page ${derived.result.answerKey?.page ?? 'not found'}.`);
-  lines.push(`- Exercises found: ${totalExercises} in ${exerciseSections.filter((section) => section.proposals.length > 0).length} sections; solutions found: ${totalAnswers} (${pct(propose.result.counts.withSolution, totalExercises)} of the exercises have a solution region).`);
-  lines.push(`- Applied: ${applyAll ? 'yes, through the operations of the project' : 'no (--no-apply)'}.`);
-  if (validation) lines.push(`- Validation: ${validation.result.ok ? 'ok' : 'ERRORS'}; errors ${validation.result.errors?.length ?? '?'}, warnings ${validation.result.warnings?.length ?? '?'}.`);
-  if (bundle) lines.push(`- Bundle: ${bundle.code === 0 ? bundlePath : `export failed: ${bundle.envelope.error?.message}`}${check ? `; importer check: ${check.result.wouldImport ? 'would import' : 'WOULD NOT IMPORT'}` : ''}.`);
-  lines.push(`- Crops written to ${join(outDir, 'crops')}: ${written.length} images (${chosen.length} exercises, ${chosenAnswers.length} solutions).`, '');
+  lines.push(`- Chapters found: ${chapters.length}; sections: ${sections.length}; other entries: ${entries.length - chapters.length - sections.length}.`);
+  lines.push(`- Printed contents on pages ${derived.result.toc.pages.join(', ') || 'none'}, ${derived.result.toc.openers.length} chapter opener lists; answer key from page ${derived.result.answerKey?.page ?? 'not found'}.`);
+  lines.push(`- Exercises stored: ${totalExercises} in ${sections.filter((entry) => countOf(entry) > 0).length} sections; with a solution region: ${totalSolved} (${pct(totalSolved, totalExercises)}); proposed by the tool: ${proposals.length}.`);
+  lines.push(`- Solutions: ${answers.length} answers matched; ${withoutAnswer} exercises without an answer, ${withoutExercise} answers without an exercise.`);
+  lines.push(`- Applying the same proposals again: ${again.result.applied === false && again.result.counts.unchanged === proposals.length && again.result.counts.added === 0 ? `nothing changed (${again.result.counts.unchanged} exercises unchanged)` : `CHANGED the project: ${JSON.stringify(again.result.counts)}`}; \`solutions propose --apply\`: ${againSolutions.result.applied === false ? 'nothing to add' : `ADDED ${againSolutions.result.counts.added} solutions`}.`);
+  lines.push(`- Validation: ${validation.result.ok ? 'ok' : 'ERRORS'}; errors ${validation.result.errors?.length ?? '?'}, warnings ${warnings.length}${warnings.length > 0 ? ` (${Object.entries(warningsByCode).map(([code, count]) => `${code} ${count}`).join(', ')})` : ''}.`);
+  lines.push(`- Bundle: ${exported.code === 0 ? bundlePath : `export failed: ${exported.envelope.error?.message}`}${check ? `; importer check: ${check.code === 0 && check.result.wouldImport ? 'would import' : `WOULD NOT IMPORT${check.envelope.error ? ` (${check.envelope.error.message})` : ''}`}` : ''}.`);
+  lines.push(`- Project file: ${projectPath} (the PDF is referenced by its relative path, not copied).`);
+  lines.push(`- Edges that run through ink (more than 2 % of the width of a region's top or bottom edge is dark): ${canvasLib ? `${inkCuts.length} of ${regions.length} regions (frames ${inkCuts.filter((cut) => cut.kind === 'frame').length}, instructions ${inkCuts.filter((cut) => cut.kind.startsWith('context')).length}, continuations ${inkCuts.filter((cut) => cut.kind.startsWith('continues')).length}, solutions ${inkCuts.filter((cut) => cut.kind.startsWith('solution')).length})` : 'not checked (no canvas)'}.`);
+  lines.push(`- Looked at: ${chosen.length} exercises and ${chosenAnswers.length} solution regions as crops (${join(outDir, 'crops')}) and on ${sheets.length} contact sheets (${join(outDir, 'sheets')}).`, '');
+  const documentInfo = project.meta?.document ?? project.meta ?? {};
+  lines.push('## What the document says about itself', '', '```json', JSON.stringify(documentInfo, null, 2), '```', '');
 
   if (reference) {
     const refByLabel = new Map(reference.map((entry) => [entry.label, entry]));
-    const foundByLabel = new Map(sections.map((entry) => [entry.label, entry]));
     const missing = reference.filter((entry) => !foundByLabel.has(entry.label));
     const extra = sections.filter((entry) => !refByLabel.has(entry.label));
     const titleDiff = reference.filter((entry) => foundByLabel.has(entry.label) && titleKey(foundByLabel.get(entry.label).title) !== titleKey(entry.title));
-    const countDiff = reference.filter((entry) => found.has(entry.label) && found.get(entry.label).proposals.length !== entry.count);
+    const countDiff = reference.filter((entry) => foundByLabel.has(entry.label) && countOf(foundByLabel.get(entry.label)) !== entry.count);
+    const equal = reference.filter((entry) => foundByLabel.has(entry.label) && countOf(foundByLabel.get(entry.label)) === entry.count).length;
+    const referenceTotal = reference.reduce((sum, entry) => sum + entry.count, 0);
     lines.push('## Comparison with the reference', '');
     lines.push(`- Sections: ${sections.length} found, ${reference.length} in the reference; missing ${missing.length}, extra ${extra.length}.`);
-    lines.push(`- Titles that differ after normalising: ${titleDiff.length}. Exercise counts that differ: ${countDiff.length} of ${reference.length} sections.`);
-    const chapterRef = new Map(reference.filter((entry) => entry.chapterLabel).map((entry) => [entry.chapterLabel, entry.chapterTitle]));
-    const chapterDiff = chapters.filter((entry) => chapterRef.has(entry.label) && titleKey(entry.title) !== titleKey(chapterRef.get(entry.label)));
-    if (chapterRef.size > 0) lines.push(`- Chapters: ${chapters.length} found, ${chapterRef.size} in the reference; titles that differ: ${chapterDiff.length}.`);
+    lines.push(`- Exercise counts equal in ${equal} of ${reference.length} sections; they differ in ${countDiff.length}. Titles that differ after normalising: ${titleDiff.length}.`);
+    lines.push(`- Exercises: ${totalExercises} stored, ${referenceTotal} in the reference (${totalExercises - referenceTotal >= 0 ? '+' : ''}${totalExercises - referenceTotal}).`, '');
+    const chapterRows = new Map();
+    for (const entry of reference) {
+      const row = chapterRows.get(entry.chapterLabel ?? chapterOfSection(entry.label)) ?? { title: entry.chapterTitle ?? '', sections: 0, reference: 0, found: 0, equal: 0 };
+      row.sections += 1;
+      row.reference += entry.count;
+      const section = foundByLabel.get(entry.label);
+      if (section) {
+        row.found += countOf(section);
+        if (countOf(section) === entry.count) row.equal += 1;
+      }
+      chapterRows.set(entry.chapterLabel ?? chapterOfSection(entry.label), row);
+    }
+    lines.push('### Per chapter', '', '| chapter | title | sections | exercises in the reference | exercises found | sections with the same count |', '| --- | --- | --- | --- | --- | --- |');
+    for (const [label, row] of chapterRows) lines.push(`| ${label} | ${cell(row.title)} | ${row.sections} | ${row.reference} | ${row.found} | ${row.equal} |`);
     lines.push('');
     if (titleDiff.length > 0) {
-      lines.push('### Titles that differ', '', '| section | found | reference | evidence |', '| --- | --- | --- | --- |');
+      lines.push('### Titles that differ', '', '| section | found | reference | where the spellings differ |', '| --- | --- | --- | --- |');
       for (const entry of titleDiff) lines.push(`| ${entry.label} | ${cell(foundByLabel.get(entry.label).title)} | ${cell(entry.title)} | ${cell(foundByLabel.get(entry.label).differences?.map((d) => `${d.source}: ${d.text}`).join('; '))} |`);
       lines.push('');
     }
     if (countDiff.length > 0) {
-      lines.push('### Exercise counts that differ', '', '| section | title | reference | found | numbers | pages | why |', '| --- | --- | --- | --- | --- | --- | --- |');
+      lines.push('### Exercise counts that differ', '', 'Every number was read from a line of the page that starts with it; the first exercise beyond the reference count and the last one are cropped into `crops/beyond-*.png`.', '', '| section | title | reference | found | numbers | pages (printed) | why |', '| --- | --- | --- | --- | --- | --- | --- |');
       for (const entry of countDiff) {
-        const section = found.get(entry.label);
+        const section = found.get(foundByLabel.get(entry.label).id);
+        const count = countOf(foundByLabel.get(entry.label));
         const why = [];
         if (section.gaps.length > 0) why.push(`no line starts with ${section.gaps.join(', ')}`);
         if (section.duplicates.length > 0) why.push(`printed twice: ${section.duplicates.join(', ')}`);
-        if (section.proposals.length > entry.count && section.gaps.length === 0) why.push(`the book prints ${section.proposals.length} numbered exercises (${section.first}..${section.last}) on page${section.pages[0] === section.pages[1] ? '' : 's'} ${section.pages[0] === section.pages[1] ? section.pages[0] : `${section.pages[0]}-${section.pages[1]}`}; the reference counts ${entry.count}`);
+        if (count > entry.count && section.gaps.length === 0) why.push(`the book prints ${count} numbered exercises (${section.first}..${section.last}) on page${section.pages[0] === section.pages[1] ? '' : 's'} ${pages(section.pages[0], section.pages[1])}; the reference counts ${entry.count}`);
+        if (count < entry.count && section.gaps.length === 0) why.push(`only ${count} numbered exercises were found; the reference counts ${entry.count}`);
         for (const note of section.notes) if (!why.some((text) => text.includes(note.slice(0, 20)))) why.push(note);
-        lines.push(`| ${entry.label} | ${cell(entry.title)} | ${entry.count} | ${section.proposals.length} | ${section.first ?? ''}..${section.last ?? ''} | ${section.pages.join('-')} | ${cell(why.join('; '))} |`);
+        lines.push(`| ${entry.label} | ${cell(entry.title)} | ${entry.count} | ${count} | ${section.first ?? ''}..${section.last ?? ''} | ${pages(section.pages[0], section.pages[1])} (${pages(printed(section.pages[0]), printed(section.pages[1]))}) | ${cell(why.join('; '))} |`);
       }
       lines.push('');
     }
@@ -201,35 +434,50 @@ try {
     if (extra.length > 0) lines.push(`Sections found that the reference does not have: ${extra.map((entry) => entry.label).join(', ')}.`, '');
   }
 
-  lines.push('## Per section', '', '| section | title | page | conf | practice pages | exercises | numbers | answers | no answer | no exercise | notes |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  lines.push('## Per section', '', `| section | title | page | conf | practice pages | exercises${reference ? ' / reference' : ''} | numbers | answers | no answer | no exercise | notes |`, '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const entry of sections) {
-    const section = found.get(entry.label);
-    const solution = solved.get(entry.label);
+    const section = found.get(entry.id);
+    const solution = solved.get(entry.id);
     const notes = [...(section?.notes ?? []), ...(solution?.notes ?? [])];
     lines.push(
-      `| ${entry.label} | ${cell(entry.title)} | ${entry.page} | ${entry.confidence} | ${section ? (section.pages[0] === section.pages[1] ? section.pages[0] : `${section.pages[0]}-${section.pages[1]}`) : ''} | ${section?.proposals.length ?? 0}${reference ? ` / ${reference.find((ref) => ref.label === entry.label)?.count ?? '?'}` : ''} | ${section?.first ?? ''}..${section?.last ?? ''} | ${solution?.answers.length ?? 0} | ${cell((solution?.withoutAnswer ?? []).join(', '))} | ${cell((solution?.withoutExercise ?? []).join(', '))} | ${cell(notes.join('; '))} |`,
+      `| ${entry.label} | ${cell(entry.title)} | ${entry.page} | ${entry.confidence} | ${section ? pages(section.pages[0], section.pages[1]) : ''} | ${countOf(entry)}${reference ? ` / ${reference.find((ref) => ref.label === entry.label)?.count ?? '?'}` : ''} | ${section?.first ?? ''}..${section?.last ?? ''} | ${stored.get(entry.id)?.withSolution ?? 0} | ${cell((solution?.withoutAnswer ?? []).join(', '))} | ${cell((solution?.withoutExercise ?? []).join(', '))} | ${cell(notes.join('; '))} |`,
     );
   }
   lines.push('');
 
   lines.push('## Solution coverage', '');
-  const withoutAnswer = solutionSections.reduce((sum, section) => sum + section.withoutAnswer.length, 0);
-  const withoutExercise = solutionSections.reduce((sum, section) => sum + section.withoutExercise.length, 0);
-  lines.push(`- ${totalAnswers} answers found for ${totalExercises} exercises: ${pct(totalExercises - withoutAnswer, totalExercises)} of the exercises have an answer; ${withoutAnswer} exercises without an answer, ${withoutExercise} answers without an exercise.`);
-  for (const section of solutionSections) if (section.withoutAnswer.length > 0 || section.withoutExercise.length > 0) lines.push(`  - ${section.section}: ${section.withoutAnswer.length > 0 ? `no answer for ${section.withoutAnswer.join(', ')}` : ''}${section.withoutExercise.length > 0 ? `; answers without an exercise: ${section.withoutExercise.join(', ')}` : ''}${section.notes.length > 0 ? ` (${section.notes.join('; ')})` : ''}`);
+  lines.push(`- ${totalSolved} of ${totalExercises} exercises (${pct(totalSolved, totalExercises)}) have a solution region; ${withoutAnswer} exercises have no answer in the key, ${withoutExercise} answers in the key have no exercise.`);
+  for (const section of solutionSections) {
+    if (section.withoutAnswer.length > 0 || section.withoutExercise.length > 0) {
+      lines.push(`  - ${section.section}: ${section.withoutAnswer.length > 0 ? `no answer for ${section.withoutAnswer.join(', ')}` : ''}${section.withoutExercise.length > 0 ? `${section.withoutAnswer.length > 0 ? '; ' : ''}answers without an exercise: ${section.withoutExercise.join(', ')}` : ''}${section.notes.length > 0 ? ` (${section.notes.join('; ')})` : ''}`);
+    }
+  }
   lines.push('');
+
+  lines.push('## Validation warnings', '');
+  if (warnings.length === 0) lines.push('None.');
+  else {
+    lines.push('Warnings are allowed; they are listed so that they can be looked at. `clips-line` on a solution region usually comes from a row of the answer key that the text layer joins across columns (its box is taller than either answer), `includes-header-footer` on an answer from a small number set above or below a line (an exponent) that looks like a page number. The ink check above is the more exact measure.', '');
+    for (const [code, count] of Object.entries(warningsByCode)) lines.push(`- ${code}: ${count}`);
+  }
+  lines.push('');
+
+  if (canvasLib && inkCuts.length > 0) {
+    lines.push('## Edges on ink', '', 'The regions below have an edge whose pixel row runs through dark pixels (share of the width in brackets): a glyph of the neighbouring line is cut or included. Worst first.', '', '| exercise | region | page | top | bottom |', '| --- | --- | --- | --- | --- |');
+    for (const cut of [...inkCuts].sort((a, b) => Math.max(b.top, b.bottom) - Math.max(a.top, a.bottom)).slice(0, 40)) lines.push(`| ${cut.ref} | ${cut.kind} | ${cut.page} | ${Math.round(cut.top * 100)} % | ${Math.round(cut.bottom * 100)} % |`);
+    lines.push('');
+  }
 
   lines.push('## Anomalies', '');
   for (const note of [...derived.result.notes, ...propose.result.notes.filter((note) => !derived.result.notes.includes(note))]) lines.push(`- ${note}`);
-  for (const section of exerciseSections) for (const note of section.notes) lines.push(`- ${section.section}: ${note}`);
   for (const section of exerciseSections) for (const rejected of section.rejected) lines.push(`- ${section.section}: put aside "${rejected.text}" on page ${rejected.page}: ${rejected.reason}`);
   const lowConfidence = proposals.filter((proposal) => proposal.confidence < 0.8);
-  if (lowConfidence.length > 0) lines.push(`- ${lowConfidence.length} exercises with a confidence below 0.8: ${lowConfidence.map((proposal) => `${proposal.section} #${proposal.label}`).join(', ')}.`);
+  if (lowConfidence.length > 0) lines.push(`- ${lowConfidence.length} exercises with a confidence below 0.8: ${lowConfidence.map((proposal) => `${proposal.section}:${proposal.label}`).join(', ')}.`);
   lines.push('', '## Timings', '', ...timings.map((line) => `- ${line}`), '');
   await writeFile(join(outDir, 'acceptance-report.md'), `${lines.join('\n')}\n`);
-  await writeFile(join(outDir, 'acceptance-details.json'), `${JSON.stringify({ sections: derived.result.entries, exercises: details.sectionsDetail, solutions: details.solutions }, null, 1)}\n`);
+  await writeFile(join(outDir, 'acceptance-details.json'), `${JSON.stringify({ sections: entries, exercises: details.sectionsDetail, solutions: details.solutions, inkCuts: inkCuts.map((cut) => ({ ref: cut.ref, kind: cut.kind, page: cut.page, top: cut.top, bottom: cut.bottom })) }, null, 1)}\n`);
   console.log(`report: ${join(outDir, 'acceptance-report.md')}`);
-  console.log(`${chapters.length} chapters, ${sections.length} sections, ${totalExercises} exercises, ${totalAnswers} answers; crops: ${written.length}`);
+  console.log(`${chapters.length} chapters, ${sections.length} sections, ${totalExercises} exercises (${totalSolved} with a solution), ${inkCuts.length} regions with an edge on ink, ${warnings.length} warnings; crops: ${written.length}`);
 } finally {
   await rm(work, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }

@@ -4,8 +4,9 @@ import { compareSolution, compareWithProposal, exerciseToOperation, exercisesToO
 import { bookKey } from '../src/model/authority.js';
 import { enlargeToMinimum, roundRect } from '../src/model/rect.js';
 import { proposeExercises, type ExerciseOptions } from '../src/audit/exercises.js';
-import { endsLikeAnItem, explodeMergedRows, type PLine } from '../src/audit/layout.js';
+import { detachFragments, endsLikeAnItem, explodeMergedRows, type PLine } from '../src/audit/layout.js';
 import { INK_BANDS } from '../src/model/types.js';
+import { mapWithInk } from './ink-helpers.js';
 import { locateSections, type BookEntry } from '../src/audit/sections.js';
 
 /**
@@ -21,6 +22,8 @@ interface Spec {
   right?: number;
   size?: number;
   bold?: boolean;
+  /** The height of the line's box; the default is one line of text. */
+  height?: number;
 }
 
 const HEIGHT = 0.0155;
@@ -30,7 +33,7 @@ function line(spec: Spec, withFonts: boolean): TextLine {
   const right = spec.right ?? Math.min(0.95, spec.left + spec.text.length * 0.0075 * (size / 12));
   return {
     text: spec.text,
-    rect: { left: spec.left, top: spec.top, right, bottom: spec.top + HEIGHT * (size / 12) },
+    rect: { left: spec.left, top: spec.top, right, bottom: spec.top + (spec.height ?? HEIGHT * (size / 12)) },
     fontSize: size,
     column: 0,
     chars: spec.text.replace(/\s/g, '').length,
@@ -155,8 +158,8 @@ describe('where a joined line may be cut', () => {
         column: 0,
         chars: 36,
         parts: [
-          { left: 0.39, top: 0.6476, right: 0.56, bottom: 0.6633 },
-          { left: 0.64, top: 0.6603, right: 0.81, bottom: 0.6776 },
+          { text: '17) (2x + 7y2)(y − 4x)', chars: 18, rect: { left: 0.39, top: 0.6476, right: 0.56, bottom: 0.6633 } },
+          { text: '26) (7a − 2)(8b − 7)', chars: 17, rect: { left: 0.64, top: 0.6603, right: 0.81, bottom: 0.6776 } },
         ],
       },
     };
@@ -168,6 +171,46 @@ describe('where a joined line may be cut', () => {
     expect([second.line.rect.top, second.line.rect.bottom]).toEqual([0.6603, 0.6776]);
     expect(first.line.parts).toBeUndefined();
     expect(second.line.rect.left).toBeCloseTo(0.64, 6);
+  });
+
+  it('sets the sign of a root that stands beside a line free, and keeps the rows of a fraction with theirs', () => {
+    const joined = (parts: PLine['line']['parts'], text: string, rect: PLine['line']['rect']): PLine => ({ page: 0, index: 7, role: 'other', line: { text, rect, fontSize: 12, column: 0, chars: text.length, ...(parts ? { parts } : {}) } });
+    // "20) 9, - 1" and the sign of the root of the next row, 0.03 to its right and a little lower.
+    const root = joined(
+      [
+        { text: '20) 9, − 1', chars: 8, rect: { left: 0.517, top: 0.5598, right: 0.5776, bottom: 0.5776 } },
+        { text: '√', chars: 1, rect: { left: 0.612, top: 0.5732, right: 0.629, bottom: 0.591 } },
+      ],
+      '20) 9, − 1 √',
+      { left: 0.517, top: 0.5598, right: 0.629, bottom: 0.591 },
+    );
+    const split = detachFragments([root]);
+    expect(split.map((entry) => entry.line.text)).toEqual(['20) 9, − 1', '√']);
+    expect(split[0]?.line.rect).toEqual({ left: 0.517, top: 0.5598, right: 0.5776, bottom: 0.5776 });
+    expect(split[0]?.line.parts).toBeUndefined();
+    expect(split[1]?.line.rect).toEqual({ left: 0.612, top: 0.5732, right: 0.629, bottom: 0.591 });
+    expect(split[0]?.index).toBeLessThan(split[1]?.index ?? 0);
+    // The rows of a fraction stand above one another, so they stay one line.
+    const fraction = joined(
+      [
+        { text: '24) 2', chars: 4, rect: { left: 0.517, top: 0.118, right: 0.566, bottom: 0.135 } },
+        { text: 'a', chars: 1, rect: { left: 0.55, top: 0.1, right: 0.57, bottom: 0.118 } },
+      ],
+      '24) 2 a',
+      { left: 0.517, top: 0.1, right: 0.57, bottom: 0.135 },
+    );
+    expect(detachFragments([fraction])).toHaveLength(1);
+    // Two items of two columns are the business of explodeMergedRows, not of this.
+    const items = joined(
+      [
+        { text: '17) first answer', chars: 14, rect: { left: 0.39, top: 0.6476, right: 0.56, bottom: 0.6633 } },
+        { text: '26) second answer', chars: 15, rect: { left: 0.64, top: 0.6603, right: 0.81, bottom: 0.6776 } },
+      ],
+      '17) first answer 26) second answer',
+      { left: 0.39, top: 0.6476, right: 0.81, bottom: 0.6776 },
+    );
+    expect(detachFragments([items])).toHaveLength(1);
+    expect(detachFragments([joined(undefined, '5) plain', { left: 0.1, top: 0.2, right: 0.2, bottom: 0.22 })])).toHaveLength(1);
   });
 
   it('keeps the whole height of a row when the extraction says nothing about its pieces', () => {
@@ -187,6 +230,80 @@ describe('where a joined line may be cut', () => {
     const exploded = explodeMergedRows(lines).filter((entry) => entry.line.text.startsWith('17)') || entry.line.text.startsWith('26)'));
     expect(exploded).toHaveLength(2);
     for (const entry of exploded) expect([entry.line.rect.top, entry.line.rect.bottom]).toEqual([0.6476, 0.6776]);
+  });
+});
+
+describe('the rows of stacked fractions', () => {
+  it('give the numerator that stands between two items to the item it stacks on', () => {
+    // The second item is a fraction: its numerator row is read before the line that holds its number, and it lies nearer to
+    // the item above than the nearest-line rules allow (the line of the number is narrow, the row is wide).
+    const specs: Spec[] = [
+      { text: '1) first item', left: 0.143, top: 0.2 },
+      { text: 'a numerator above', left: 0.18, top: 0.3, right: 0.26, height: 0.0249 },
+      { text: '2) 2', left: 0.143, top: 0.318, right: 0.196, height: 0.0167 },
+      { text: 'a a - 2', left: 0.18, top: 0.338, right: 0.26, size: 8, height: 0.0119 },
+      { text: 'y12 - xy1 - x22', left: 0.18, top: 0.367, right: 0.28, height: 0.0239 },
+      { text: '3) 1', left: 0.143, top: 0.3874, right: 0.196, height: 0.0167 },
+      { text: 'y2 - xy + x2', left: 0.18, top: 0.3985, right: 0.28, height: 0.02 },
+      { text: '4) last item', left: 0.143, top: 0.46 },
+    ];
+    const { set } = run([page(0, [heading, ...specs])]);
+    const two = set.proposals.find((entry) => entry.label === '2');
+    const three = set.proposals.find((entry) => entry.label === '3');
+    expect(two && three).toBeTruthy();
+    // The numerator row of item 3 starts at 0.367: item 2 ends above it, item 3 begins at it.
+    expect(two?.rect.bottom).toBeLessThanOrEqual(0.367);
+    expect(three?.rect.top).toBeLessThanOrEqual(0.367);
+    expect(three?.rect.top).toBeGreaterThan(0.35);
+    // Item 2 keeps its own numerator and denominator.
+    expect(two?.rect.top).toBeLessThanOrEqual(0.3);
+    expect(two?.rect.bottom).toBeGreaterThan(0.345);
+  });
+});
+
+describe('small fragments between two rows', () => {
+  it('belong to the row whose text they stand in, even when they overlap it a little less than half', () => {
+    // The sign of a root of the second row reaches up between the rows: it overlaps the second row by 0.0052 and the first by nothing.
+    const specs: Spec[] = [
+      { text: '1) a statement before', left: 0.143, top: 0.19 },
+      { text: '2) - 2 - 48v', left: 0.143, top: 0.2195, right: 0.2739, height: 0.0177 },
+      { text: 'sqrt', left: 0.2089, top: 0.2384, right: 0.2257, height: 0.0182 },
+      { text: '3) - 7 320n', left: 0.143, top: 0.2514, right: 0.2671, height: 0.0178 },
+      { text: '4) the next item', left: 0.143, top: 0.31 },
+    ];
+    const { set } = run([page(0, [heading, ...specs])]);
+    const first = set.proposals.find((entry) => entry.label === '2');
+    const second = set.proposals.find((entry) => entry.label === '3');
+    expect(first && second).toBeTruthy();
+    // Item 2 ends with its own line (0.2372 plus a hair); the root sign is the next item's.
+    expect(first?.rect.bottom).toBeLessThan(0.245);
+    expect(second?.rect.top).toBeLessThanOrEqual(0.2384);
+  });
+});
+
+describe('edges that run through the ink of the next line', () => {
+  /** Three one-line items; ink that starts at 0.2188 lies where the first item's frame would end (0.2195). */
+  function tight(withMap: boolean): PageText {
+    const base = page(0, [heading, { text: '1) first item', left: 0.143, top: 0.2 }, { text: '2) second item', left: 0.143, top: 0.24 }, { text: '3) third item', left: 0.143, top: 0.28 }]);
+    // The first item's text box ends at 0.2155; its frame would end at 0.2195, in the ink that starts at 0.2188 (the second's glyph).
+    return withMap ? { ...base, inkMap: mapWithInk([{ from: 0.2188, to: 0.2215, left: 0.12, right: 0.4 }]) } : base;
+  }
+
+  it('end in the white between the lines, below the own text', () => {
+    const plain = run([tight(false)]).set.proposals.find((entry) => entry.label === '1');
+    const nudged = run([tight(true)]).set.proposals.find((entry) => entry.label === '1');
+    expect(plain?.rect.bottom).toBeGreaterThan(0.2188);
+    expect(nudged?.rect.bottom).toBeLessThan(0.2188);
+    // Never above the own line.
+    expect(nudged?.rect.bottom).toBeGreaterThanOrEqual(0.2155);
+  });
+
+  it('are left where they are when the white is not within reach', () => {
+    const base = tight(false);
+    const blocked: PageText = { ...base, inkMap: mapWithInk([{ from: 0.2156, to: 0.226, left: 0.12, right: 0.4 }]) };
+    const plain = run([base]).set.proposals.find((entry) => entry.label === '1');
+    const held = run([blocked]).set.proposals.find((entry) => entry.label === '1');
+    expect(held?.rect.bottom).toBe(plain?.rect.bottom);
   });
 });
 

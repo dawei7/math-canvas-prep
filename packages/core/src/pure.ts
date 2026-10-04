@@ -20,6 +20,7 @@ export * from './rules/book.js';
 export * from './book/sections.js';
 export * from './book/summary.js';
 export * from './geometry/snap.js';
+export * from './geometry/ink.js';
 export * from './pdf/lines.js';
 export * from './propose/index.js';
 export * from './audit/index.js';

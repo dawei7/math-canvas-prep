@@ -1,3 +1,4 @@
+import { INK_CLEAN, nearestWhiteRow, rowInk } from '../geometry/ink.js';
 import { lineStart } from '../geometry/snap.js';
 import { INK_BANDS, type PageText, type Rect, type Region, type TextLine } from '../model/types.js';
 import { AUTHORING } from '../rules/constants.js';
@@ -108,6 +109,43 @@ export function lowestInk(ink: readonly number[], from: number, to: number): num
 }
 
 /**
+ * The sign of a root, an exponent or another small fragment that the extraction joined to the line of an item it only stands
+ * near: it lies beside the text that starts with the number and not on its row (the sign of a root that belongs to the row
+ * below stands higher than the text next to it). The rows of a fraction stack and the denominators of two fractions share a
+ * row, so they stay. The fragment becomes a line of its own, and the rules that give a fragment to an item decide whose
+ * it is. The part that starts with a number is never the one that is set free.
+ */
+export function detachFragments(lines: readonly PLine[]): PLine[] {
+  const result: PLine[] = [];
+  for (const entry of lines) {
+    const parts = entry.line.parts;
+    const [first, second] = parts ?? [];
+    if (!parts || parts.length !== 2 || !first || !second) {
+      result.push(entry);
+      continue;
+    }
+    const starts = (text: string): boolean => /^\s*\d{1,3}[).]/.test(text);
+    if (starts(first.text) === starts(second.text)) {
+      result.push(entry);
+      continue;
+    }
+    const [main, fragment] = starts(first.text) ? [first, second] : [second, first];
+    const gap = Math.max(fragment.rect.left - main.rect.right, main.rect.left - fragment.rect.right);
+    const centre = (fragment.rect.top + fragment.rect.bottom) / 2;
+    const onTheRow = centre >= main.rect.top && centre <= main.rect.bottom;
+    if (fragment.chars > 8 || gap < 0.012 || onTheRow) {
+      result.push(entry);
+      continue;
+    }
+    const base: TextLine = { ...entry.line };
+    delete base.parts;
+    result.push({ ...entry, line: { ...base, text: main.text, chars: main.chars, rect: { ...main.rect } } });
+    result.push({ page: entry.page, index: entry.index + 0.0005, role: 'other', line: { ...base, text: fragment.text, chars: fragment.chars, rect: { ...fragment.rect } } });
+  }
+  return result;
+}
+
+/**
  * Whether the text before a number can be the end of an item. Its brackets are closed, and it does not stop at an
  * operator or a comma: "( - inf, - 5) U [5, inf)" holds the number 5 twice, and neither is the start of an item.
  */
@@ -127,7 +165,8 @@ export function endsLikeAnItem(before: string): boolean {
  * says. Only a line that starts with a number and holds larger numbers at the position of a column is cut, and only
  * where the text before the number can be the end of an item (see {@link endsLikeAnItem}).
  */
-export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
+export function explodeMergedRows(input: readonly PLine[]): PLine[] {
+  const lines = detachFragments(input);
   const numbered = lines.filter((entry) => /^\s*\d{1,3}[).]/.test(entry.line.text));
   if (numbered.length < 4) return [...lines];
   // The columns that items start at: left edges that several lines share.
@@ -191,10 +230,10 @@ export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
  */
 function piece(entry: PLine, text: string, left: number, right: number, k: number): PLine {
   const rect = { ...entry.line.rect, left, right: Math.max(right, left + 0.02) };
-  const own = (entry.line.parts ?? []).filter((part) => (part.left + part.right) / 2 >= left && (part.left + part.right) / 2 <= right);
+  const own = (entry.line.parts ?? []).filter((part) => (part.rect.left + part.rect.right) / 2 >= left && (part.rect.left + part.rect.right) / 2 <= right);
   if (own.length > 0 && own.length < (entry.line.parts ?? []).length) {
-    rect.top = Math.min(...own.map((part) => part.top));
-    rect.bottom = Math.max(...own.map((part) => part.bottom));
+    rect.top = Math.min(...own.map((part) => part.rect.top));
+    rect.bottom = Math.max(...own.map((part) => part.rect.bottom));
   }
   const line: TextLine = { ...entry.line, text, chars: text.replace(/\s/g, '').length, rect };
   delete line.parts;
@@ -380,6 +419,53 @@ export function blockRegions(block: Block, pages: readonly PageText[]): Region[]
 // ---------------------------------------------------------------------------------------------------------------------
 // Layout: which lines belong to which item
 
+/**
+ * Rows of a stacked fraction (a numerator above the line of the number, the rows of a complex fraction) are claimed by the
+ * nearest-line rules in the order the lines are read, from the top: a row that lies between two items can then go to the
+ * one above although it stacks on the one below. Between two neighbouring items of a column the border is the largest
+ * gap between their lines, so the lines are shared out again along it. Only fragments are moved (a line of text that
+ * belongs to an item is never given to another), and only when the border is clear.
+ */
+export function restack(items: readonly ItemAcc[]): void {
+  const columns = new Map<string, ItemAcc[]>();
+  for (const item of items) {
+    const key = `${item.band}:${item.column}`;
+    columns.set(key, [...(columns.get(key) ?? []), item]);
+  }
+  for (const list of columns.values()) {
+    list.sort((a, b) => a.start.line.rect.top - b.start.line.rect.top);
+    for (let k = 0; k + 1 < list.length; k += 1) {
+      const above = list[k] as ItemAcc;
+      const below = list[k + 1] as ItemAcc;
+      if (above.figure || below.figure) continue;
+      const lines = [...new Set([...above.own, ...below.own])].sort((a, b) => a.line.rect.top - b.line.rect.top || a.line.rect.left - b.line.rect.left);
+      const first = lines.indexOf(above.start);
+      const last = lines.indexOf(below.start);
+      if (first < 0 || last < 0 || first >= last) continue;
+      let bottom = -Infinity;
+      let best = -1;
+      let widest = 0.004;
+      lines.forEach((entry, index) => {
+        if (index > 0 && index - 1 >= first && index - 1 < last) {
+          const gap = entry.line.rect.top - bottom;
+          if (gap > widest) {
+            widest = gap;
+            best = index - 1;
+          }
+        }
+        bottom = Math.max(bottom, entry.line.rect.bottom);
+      });
+      if (best < 0) continue;
+      const upper = lines.slice(0, best + 1);
+      const lower = lines.slice(best + 1);
+      const moved = [...upper.filter((entry) => !above.own.includes(entry)), ...lower.filter((entry) => !below.own.includes(entry))];
+      if (moved.length === 0 || moved.some((entry) => entry.line.chars > 14)) continue;
+      above.own = [above.start, ...upper.filter((entry) => entry !== above.start)];
+      below.own = [below.start, ...lower.filter((entry) => entry !== below.start)];
+    }
+  }
+}
+
 export interface Layout {
   items: ItemAcc[];
   /** The right edge of the text of the whole set (a figure may reach as far as the text of other pages does). */
@@ -480,7 +566,9 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
         // When two rows qualify (the sign of a root reaches up between two tight rows), the one whose text it stands in wins,
         // then the one it overlaps more.
         const overlapWith = (item: ItemAcc): number => Math.min(item.start.line.rect.bottom, entry.line.rect.bottom) - Math.max(item.start.line.rect.top, entry.line.rect.top);
-        const sharing = column_.filter((item) => overlapWith(item) > 0.3 * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top));
+        // A small fragment (the sign of a root, an exponent) needs less of a share to belong to a row: it is small.
+        const small = entry.line.chars <= 8 || entry.line.fontSize < startSize * 0.9;
+        const sharing = column_.filter((item) => overlapWith(item) > (small ? 0.15 : 0.3) * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top));
         if (sharing.length > 0) {
           const centreX = (entry.line.rect.left + entry.line.rect.right) / 2;
           const standsIn = (item: ItemAcc): boolean => centreX >= item.start.line.rect.left - 0.005 && centreX <= item.start.line.rect.right + 0.005;
@@ -548,6 +636,7 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
       }
       orphans.push(`page ${page}: "${entry.line.text.slice(0, 40)}"`);
     }
+    restack(mine);
     items.push(...mine);
     // The items that may go on over the page break: the lowest of each column.
     const lowest = new Map<number, ItemAcc>();
@@ -685,6 +774,12 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
   if (below.length > 0) bottom = Math.min(bottom, limit);
   // The lines of the item itself are always inside, even where the next item's fraction rows reach up into them.
   bottom = Math.max(bottom, Math.min(1, lastText + 0.001), top + AUTHORING.minPieceHeight * 1.5);
+  // An edge that runs through the ink of a neighbouring line moves into the white between the lines, as far as the own
+  // lines allow: the top edge stays above the own first line, the bottom edge below the own last one.
+  if (page.inkMap && !figure) {
+    if (rowInk(page.inkMap, top, left, right) > INK_CLEAN) top = nearestWhiteRow(page.inkMap, top, top - 0.003, Math.max(top, ownTop), left, right) ?? top;
+    if (rowInk(page.inkMap, bottom, left, right) > INK_CLEAN) bottom = nearestWhiteRow(page.inkMap, bottom, Math.min(bottom, lastText), bottom + 0.003, left, right) ?? bottom;
+  }
   const rect: Rect = { left: round(left), top: round(top), right: round(right), bottom: round(Math.min(1, bottom)) };
 
   const continues: Region[] = [];

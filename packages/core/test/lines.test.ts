@@ -53,10 +53,11 @@ describe('grouping text runs into lines', () => {
     expect(lines).toHaveLength(1);
     const parts = lines[0]?.parts ?? [];
     expect(parts).toHaveLength(2);
-    expect(parts[0]?.right).toBeLessThan(parts[1]?.left ?? 0);
-    expect((parts[1]?.top ?? 0) - (parts[0]?.top ?? 0)).toBeCloseTo(4 / 800, 4);
-    expect(lines[0]?.rect.top).toBeCloseTo(parts[0]?.top ?? 1, 6);
-    expect(lines[0]?.rect.bottom).toBeCloseTo(parts[1]?.bottom ?? 0, 6);
+    expect(parts.map((part) => part.text)).toEqual(['17) first answer', '26) second answer']);
+    expect(parts[0]?.rect.right).toBeLessThan(parts[1]?.rect.left ?? 0);
+    expect((parts[1]?.rect.top ?? 0) - (parts[0]?.rect.top ?? 0)).toBeCloseTo(4 / 800, 4);
+    expect(lines[0]?.rect.top).toBeCloseTo(parts[0]?.rect.top ?? 1, 6);
+    expect(lines[0]?.rect.bottom).toBeCloseTo(parts[1]?.rect.bottom ?? 0, 6);
   });
 
   it('splits a row at a wide gap (an equation number at the right margin)', () => {
