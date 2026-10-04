@@ -262,9 +262,10 @@ macOS and Linux targets are written down in the configuration but have not been 
 - One window and one document at a time; no copy and paste of frames; no selecting several frames at once (so turning many
   exercises into book exercises, or giving many the same context or section, is one at a time).
 - **Derive sections** (finding the chapters and sections of a book from its printed text, with ids and heading positions), and
-  proposals of book exercises and of solutions from the answer key, are not in the window yet: **Find headings** and **Propose**
-  suggest ordinary headings and exercises only, and a person (or an agent with the command line) files them under sections. The
-  Sections panel and the editor logic have a reserved place for them.
+  proposals of book exercises and of solutions from the answer key, are not in the window yet. The command line and the MCP
+  server have them (`outline derive --book`, `exercises propose`, `solutions propose`; see [AUDIT_A_BOOK.md](AUDIT_A_BOOK.md)); in
+  the window **Find headings** and **Propose** suggest ordinary headings and exercises only, and a person files them under
+  sections. The Sections panel and the editor logic have a reserved place for them.
 - The number offered for a book exercise is the previous one plus 1 (or `5b` after `5a`); it does not know a book's jumps or
   other ways of counting, so it is edited where the book differs.
 - A solution region is drawn one at a time for one exercise; there is no "this answer, then the next line for the next exercise".
