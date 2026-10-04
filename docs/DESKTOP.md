@@ -139,7 +139,7 @@ The window is built so that opening a document you did not write is safe, and so
 ```
 npm run build
 npm run pack --workspace @mcprep/desktop   # apps/desktop/release/win-unpacked: a folder to try without installing
-npm run dist                               # builds, then also the installer: apps/desktop/release/Math Canvas Prep Setup 0.1.0.exe
+npm run dist                               # builds, then also the installer: apps/desktop/release/Math Canvas Prep Setup 0.2.0.exe
 ```
 
 The output is about 450 MB unpacked and a 133 MB installer, because it contains the Chromium of Electron; it is

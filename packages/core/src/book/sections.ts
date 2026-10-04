@@ -243,7 +243,7 @@ export function countSections(tree: SectionTree, frames: readonly Frame[]): Sect
 export function cleanSectionId(text: string): string | undefined {
   const cleaned = text
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/\p{M}+/gu, '')
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^[^A-Za-z0-9]+/, '')

@@ -1,0 +1,253 @@
+{
+  "operations": [
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.1",
+      "label": "2",
+      "page": 0,
+      "rect": {
+        "left": 0.1,
+        "top": 0.367,
+        "right": 0.9,
+        "bottom": 0.386
+      },
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.196,
+            "right": 0.9,
+            "bottom": 0.215
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.1",
+      "label": "3a",
+      "page": 0,
+      "rect": {
+        "left": 0.1,
+        "top": 0.424,
+        "right": 0.9,
+        "bottom": 0.443
+      },
+      "context": [
+        {
+          "page": 0,
+          "rect": {
+            "left": 0.1,
+            "top": 0.4026,
+            "right": 0.9,
+            "bottom": 0.4216
+          }
+        }
+      ],
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.215,
+            "right": 0.9,
+            "bottom": 0.234
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.1",
+      "label": "3b",
+      "page": 0,
+      "rect": {
+        "left": 0.1,
+        "top": 0.4454,
+        "right": 0.9,
+        "bottom": 0.4644
+      },
+      "context": [
+        {
+          "page": 0,
+          "rect": {
+            "left": 0.1,
+            "top": 0.4026,
+            "right": 0.9,
+            "bottom": 0.4216
+          }
+        }
+      ],
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.234,
+            "right": 0.9,
+            "bottom": 0.253
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.2",
+      "label": "1",
+      "page": 1,
+      "rect": {
+        "left": 0.1,
+        "top": 0.1532,
+        "right": 0.9,
+        "bottom": 0.1722
+      },
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.2957,
+            "right": 0.9,
+            "bottom": 0.3147
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.2",
+      "label": "2",
+      "page": 1,
+      "rect": {
+        "left": 0.1,
+        "top": 0.1888,
+        "right": 0.9,
+        "bottom": 0.2078
+      },
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.3147,
+            "right": 0.9,
+            "bottom": 0.3337
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.2",
+      "label": "3",
+      "page": 1,
+      "rect": {
+        "left": 0.1,
+        "top": 0.2245,
+        "right": 0.9,
+        "bottom": 0.2435
+      },
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.3337,
+            "right": 0.9,
+            "bottom": 0.3527
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "1.2",
+      "label": "4",
+      "page": 1,
+      "rect": {
+        "left": 0.1,
+        "top": 0.9014,
+        "right": 0.9,
+        "bottom": 0.9204
+      },
+      "continues": [
+        {
+          "page": 2,
+          "rect": {
+            "left": 0.1,
+            "top": 0.101,
+            "right": 0.9,
+            "bottom": 0.12
+          }
+        }
+      ],
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.3527,
+            "right": 0.9,
+            "bottom": 0.3717
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "2.1",
+      "label": "1",
+      "page": 2,
+      "rect": {
+        "left": 0.1,
+        "top": 0.3314,
+        "right": 0.9,
+        "bottom": 0.3504
+      },
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.4145,
+            "right": 0.9,
+            "bottom": 0.4335
+          }
+        }
+      ]
+    },
+    {
+      "op": "add",
+      "authority": "book",
+      "section": "2.1",
+      "label": "2",
+      "page": 2,
+      "rect": {
+        "left": 0.1,
+        "top": 0.367,
+        "right": 0.9,
+        "bottom": 0.386
+      },
+      "solution": [
+        {
+          "page": 3,
+          "rect": {
+            "left": 0.1,
+            "top": 0.4335,
+            "right": 0.9,
+            "bottom": 0.4525
+          }
+        }
+      ]
+    }
+  ]
+}

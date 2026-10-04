@@ -51,7 +51,7 @@ function sectionRows(summary: BookSummary, onlyUsed: boolean): string[][] {
       String(section.page),
       `${section.exercises}`,
       `${section.exercisesTotal}`,
-      section.exercisesTotal === 0 ? '' : `${section.withSolution}/${section.exercises} (${section.withSolutionTotal}/${section.exercisesTotal} with subsections)`,
+      section.exercisesTotal === 0 ? '' : `${section.withSolutionTotal}/${section.exercisesTotal}`,
       section.firstLabel !== undefined ? (section.firstLabel === section.lastLabel ? section.firstLabel : `${section.firstLabel} .. ${section.lastLabel}`) : '',
     ]);
 }
@@ -72,7 +72,8 @@ export function describeBook(summary: BookSummary, onlyUsed = false): string[] {
     lines.push(`Also framed for yourself: ${plural(totals.ordinary.exercises, 'exercise')}, ${plural(totals.ordinary.questions, 'question')}, ${plural(totals.ordinary.bookmarks, 'bookmark')}.`);
   }
   if (summary.sections.length > 0) {
-    lines.push(tableLimited(sectionRows(summary, onlyUsed), ['#', 'id', 'section', 'page', 'own', 'total', 'solutions', 'labels'], 400));
+    lines.push(tableLimited(sectionRows(summary, onlyUsed), ['#', 'id', 'section', 'page', 'own', 'total', 'with solution', 'labels'], 400));
+    lines.push('own: exercises filed under the entry; total: with everything below it; with solution: of the total.');
   } else {
     lines.push('The project has no outline, so the book has no sections yet: `mcprep outline pdf --adopt`, `mcprep outline derive` or `mcprep outline set`, then `mcprep outline ids`.');
   }

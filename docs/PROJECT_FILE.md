@@ -117,6 +117,45 @@ Fields the tools do not know are kept when the file is saved.
 - `solution` (at most 8 regions of the same PDF, for example the answer key at the back) is hidden from the learner and used
   only to grade; `context` is the instruction the learner sees and the AI receives. Both are only for exercises.
 
+## The book summary (`book show --json`, `book export`)
+
+`mcprep book show --json` prints, and `mcprep book export --out FILE` writes, one plain JSON document that says what a
+book is and how it is divided: the information about the work, every outline entry as a section with the number of
+authoritative exercises (and solutions) in it, and the totals. It is camelCase, pages are zero-based, and it is described by
+[`schemas/book-summary.schema.json`](../schemas/book-summary.schema.json) (`mcprep schema book-summary`). The same summary comes
+out of a bundle that was read back (`inspect-bundle --json`, field `summary`).
+
+```json
+{
+  "format": "math-canvas-book-summary",
+  "version": 1,
+  "generator": { "name": "math-canvas-prep", "version": "0.2.0" },
+  "document": {
+    "title": "Pre-Algebra Workbook", "pageCount": 4, "folder": "Books/Algebra", "author": "A. Author",
+    "license": { "name": "CC BY 3.0", "url": "https://creativecommons.org/licenses/by/3.0/" },
+    "sourceUrl": "https://example.org/the-workbook", "notice": "Attribution: A. Author ...", "sha256": "5235...", "bytes": 5553
+  },
+  "sections": [
+    { "index": 0, "id": "1", "title": "Chapter 1 Integers", "page": 0, "depth": 0, "parent": null,
+      "exercises": 0, "exercisesTotal": 8, "withSolution": 0, "withSolutionTotal": 8 },
+    { "index": 1, "id": "1.1", "label": "1.1", "title": "1.1 Adding integers", "page": 0, "top": 0.2577, "depth": 1, "parent": 0,
+      "exercises": 4, "exercisesTotal": 4, "withSolution": 4, "withSolutionTotal": 4, "firstLabel": "1", "lastLabel": "3b" }
+  ],
+  "totals": { "sections": 6, "sectionsWithId": 6, "exercises": 10, "withSolution": 10, "withoutSolution": 0, "unfiled": 0,
+              "ordinary": { "exercises": 0, "questions": 0, "bookmarks": 0 } }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `document` | `title`, `pageCount`, `folder`, and when set `author`, `series`, `description`, `license`, `sourceUrl`, `notice`, as in the manifest; `sha256` and `bytes` of the PDF the summary was made for (a project knows them). |
+| `sections` | **Every** entry of the outline in reading order: `index` (its position), `id`, `label`, `title`, `page`, `top`, `depth`, `parent` (the `index` of the entry above, `null` for a top-level one). |
+| `exercises`, `withSolution` | Authoritative exercises filed under the entry itself, and how many of them have at least one solution region. |
+| `exercisesTotal`, `withSolutionTotal` | The same for the entry and everything below it (its chapter, for example). |
+| `firstLabel`, `lastLabel` | The labels of the first and the last of the entry's own exercises in reading order. |
+| `items` | Only with `--exercises`: the entry's own exercises `{ id, label, page, solutionRegions }` in reading order. |
+| `totals` | Numbers of entries, entries with an id, authoritative exercises with and without a solution, exercises filed under a section the outline does not have (`unfiled`, an error that `validate` reports), and what a person framed for themselves in the same document (`ordinary`). |
+
 ## Reading is tolerant, writing is exact
 
 The reader accepts what a person or an agent is likely to write by hand: a `rect` as `[left, top, right, bottom]` or as the

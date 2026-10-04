@@ -38,7 +38,8 @@ export interface ApplyOutcome {
   project: Project;
 }
 
-const sameIssue = (a: Issue, b: Issue): boolean => a.code === b.code && a.frameId === b.frameId && a.message === b.message;
+/** What makes two issues the same one: the code, the frame and the message. */
+const issueKey = (item: Issue): string => `${item.code}\u0000${item.frameId ?? ''}\u0000${item.message}`;
 
 /** Every page a frame has a region on: its own, its continuations, its context and its solution. */
 function addPagesOf(frame: Frame, pages: Set<number>): void {
@@ -168,10 +169,15 @@ export class ProjectSession {
         linesFor: (page): readonly TextLine[] | undefined => text.get(page)?.lines,
       });
       const before = validateProject(current);
+      // The checks that read the printed lines look at the pages this batch touched: frames it did not change keep their
+      // identity, so the pages of new and changed frames are the ones to read (a book of hundreds of pages would otherwise
+      // be read again for every command). `validate` reads them all.
+      const known = new Set<Frame>(current.frames);
       const touched = new Set<number>();
-      for (const frame of batch.project.frames) addPagesOf(frame, touched);
-      const validation = validateProject(batch.project, await this.textFor([...touched]));
-      const introduced = validation.errors.filter((error) => !before.errors.some((old) => sameIssue(old, error)));
+      for (const frame of batch.project.frames) if (!known.has(frame)) addPagesOf(frame, touched);
+      const validation = validateProject(batch.project, await this.textFor([...touched].filter((page) => page >= 0 && page < current.pdf.pageCount)));
+      const before_errors = new Set(before.errors.map(issueKey));
+      const introduced = validation.errors.filter((error) => !before_errors.has(issueKey(error)));
       const rejected = introduced.length > 0 && options.force !== true;
       if (rejected || options.dryRun === true) {
         return { applied: false, rejected, batch, validation, introduced, project: batch.project };

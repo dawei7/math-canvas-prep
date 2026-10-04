@@ -55,6 +55,7 @@ describe('the book summary', () => {
     expect(c1).not.toHaveProperty('firstLabel');
     expect(s11).toMatchObject({ index: 1, id: '1.1', label: '1.1', page: 0, depth: 1, parent: 0, firstLabel: '1', lastLabel: '3b' });
     expect(typeof s11?.top).toBe('number');
+    expect(Object.keys(s11 ?? {})).toEqual(['index', 'id', 'label', 'title', 'page', 'top', 'depth', 'parent', 'exercises', 'exercisesTotal', 'withSolution', 'withSolutionTotal', 'firstLabel', 'lastLabel']);
     expect(c2).toMatchObject({ index: 3, parent: null });
   });
 

@@ -107,10 +107,20 @@ export function buildBookSummary(input: BookSummaryInput): BookSummary {
     const count = counts.perNode[node.index] as (typeof counts.perNode)[number];
     const entry = node.entry;
     const own = node.id !== undefined && tree.byId.get(node.id) === node.index ? (groups.get(node.id) ?? []) : [];
-    const out: BookSectionSummary = { index: node.index, title: entry.title, page: entry.page, depth: entry.depth, parent: node.parent >= 0 ? node.parent : null, exercises: count.exercises, exercisesTotal: count.exercisesTotal, withSolution: count.withSolution, withSolutionTotal: count.withSolutionTotal };
-    if (entry.id !== undefined) out.id = entry.id;
-    if (entry.label !== undefined) out.label = entry.label;
-    if (entry.top !== undefined) out.top = entry.top;
+    const out: BookSectionSummary = {
+      index: node.index,
+      ...(entry.id !== undefined ? { id: entry.id } : {}),
+      ...(entry.label !== undefined ? { label: entry.label } : {}),
+      title: entry.title,
+      page: entry.page,
+      ...(entry.top !== undefined ? { top: entry.top } : {}),
+      depth: entry.depth,
+      parent: node.parent >= 0 ? node.parent : null,
+      exercises: count.exercises,
+      exercisesTotal: count.exercisesTotal,
+      withSolution: count.withSolution,
+      withSolutionTotal: count.withSolutionTotal,
+    };
     if (own.length > 0) {
       out.firstLabel = own[0]?.label as string;
       out.lastLabel = own[own.length - 1]?.label as string;

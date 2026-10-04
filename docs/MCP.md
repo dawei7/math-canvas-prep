@@ -3,13 +3,18 @@
 `packages/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server over **stdio**. It gives an AI agent the same
 operations as the [`mcprep` command line](CLI.md) as typed tools: create a project, look at pages (text lines with coordinates,
 rendered images with a grid), propose exercises, add and edit frames, cut parts, attach context, apply a batch atomically, validate,
-export the `.mcbundle`, check a bundle as the Android importer would. Each tool runs the command line in process and returns its JSON
+export the `.mcbundle`, check a bundle as the Android importer would. For a whole book audited as an authority there are tools for
+the sections (`outline_add`, `outline_update`, `outline_delete`, `outline_ids`), for the exercises that keep the numbers the book
+prints (`exercises_add`, `exercises_list`, `exercises_mark`, `exercises_unmark`, `exercises_label`, `exercises_section`), for the
+hidden answers from the answer key (`solution_add`, `solution_list`, `solution_remove`) and for the book itself (`book_show`,
+`book_meta`, `book_export`). Each tool runs the command line in process and returns its JSON
 result (so the two can never disagree); the PNGs of `render_page` and `render_crop` come back as **image content**, which is how
 the model looks at its own work.
 
 How to mark a PDF well is in the [agent guide](AGENT_GUIDE.md). The server offers it as the resource `mcprep://guide`, as the tool
 `get_guide` and as the prompt `mark_pdf`, and its `instructions` summarise the conventions (zero-based pages, fractions of the
-displayed page with the origin at the top-left, positional labels that are never stored, the workflow).
+displayed page with the origin at the top-left, positional labels that are never stored, the workflow, and how a book is audited:
+two kinds of exercise, labels as printed, sections, context versus hidden solution regions).
 
 The server makes no network calls and sends nothing anywhere. It writes nothing but protocol messages to standard output.
 
@@ -99,7 +104,7 @@ write reads the file fresh under a lock; the desktop app asks which version to k
 
 ## Tool reference
 
-33 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+49 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
 
 ### `create_project`
 
@@ -126,7 +131,7 @@ Arguments:
 
 ### `set_metadata`
 
-Changes the title the app library shows and the folder it files the document in. Without title and folder it only returns the current values.
+Changes the title the app library shows and the folder it files the document in. Without title and folder it only returns the current values. The author, series, description, licence, source address and notice of a book are set with book_meta.
 
 Arguments:
 
@@ -152,16 +157,17 @@ Arguments:
 - `page`* (integer): Zero-based page: the first page is 0.
 - `grid` (number): Grid step as a fraction of the page, for example 0.1 or 0.05.
 - `frames` (boolean): Draw the frames of the project on the page.
+- `solutions` (boolean): With frames: also draw the hidden solution regions (dashed, "sol 5a"): use it on the answer-key pages to check where the answers were attached.
 - `max_side` (integer): Longer side in pixels (default 1200 here).
 
 ### `render_crop` (read-only)
 
-Renders one frame (its main region, or a continuation or context region), or any rectangle of a page, to a PNG and returns it as an image. This is how you CHECK a frame: the exercise number and first words must be at the top, nothing of the next exercise at the bottom, no line cut in half, no header or footer, the figure inside. With grid the labels are still page coordinates. Give "frame" (an id), or "page" and "rect".
+Renders one frame (its main region, or a continuation, context or solution region), or any rectangle of a page, to a PNG and returns it as an image. This is how you CHECK a frame: the exercise number and first words must be at the top, nothing of the next exercise at the bottom, no line cut in half, no header or footer, the figure inside; and for a book exercise region "solution:0" shows the answer that was attached to it. With grid the labels are still page coordinates. Give "frame" (an id, or SECTION:LABEL for a book exercise), or "page" and "rect".
 
 Arguments:
 
-- `frame` (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
-- `region` (string): With frame: main (default), continues:N or context:N (N from 0).
+- `frame` (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
+- `region` (string): With frame: main (default), continues:N, context:N or solution:N (N from 0).
 - `page` (integer): Zero-based page: the first page is 0.
 - `rect` (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
 - `grid` (number): Grid step as a fraction of the page, for example 0.05 or 0.02.
@@ -169,7 +175,7 @@ Arguments:
 
 ### `get_outline` (read-only)
 
-The project's own outline if it has one (that goes into the bundle), else the PDF's own bookmarks (the bundle then carries none and the app reads the PDF's). Entries are { title, page (zero-based), depth }.
+The project's own outline if it has one (that goes into the bundle), else the PDF's own bookmarks (the bundle then carries none and the app reads the PDF's). Entries are { index, title, page (zero-based), depth, id?, label?, top? }: the entries are the SECTIONS of the book. With the project's own outline each entry also says how many authoritative book exercises are filed under it (exercises) and under it with everything below it (exercisesTotal), and how many of those have a solution (withSolution).
 
 ### `adopt_pdf_outline`
 
@@ -186,11 +192,12 @@ Arguments:
 
 ### `set_outline`
 
-Replaces the project's outline. Entries are { title (1 to 200 characters), page (zero-based), depth (0 to 8; a child is one deeper than its parent) } in reading order. An empty list stores an empty outline; use clear_outline to remove the project's outline altogether.
+Replaces the project's outline. Entries are { title (1 to 200 characters), page (zero-based), depth (0 to 8; a child is one deeper than its parent), id?, label?, top? } in reading order. The id is what exercises name as their section (unique; letters, digits, . _ -, starting with a letter or digit), the label is the number printed with the heading ("1.1", "Chapter 3"), the top is where the heading starts on its page (0 to 1, from the top). auto_ids gives the entries without an id one. A change that leaves book exercises filed under an id the new outline no longer has is refused. An empty list stores an empty outline; use clear_outline to remove the project's outline altogether. outline_add, outline_update and outline_delete change single entries.
 
 Arguments:
 
-- `entries`* ({ title, page, depth }[])
+- `entries`* ({ title, page, depth, id, label, top }[])
+- `auto_ids` (boolean): Give every entry that has no id one (from its label, else the number in its title).
 
 ### `clear_outline`
 
@@ -212,12 +219,14 @@ Arguments:
 
 ### `list_frames` (read-only)
 
-All frames in reading order with id, positional label (E2.1, Q1, B3: computed, never stored), kind, page, rect, unit, part, and the number of context and continuation regions.
+All frames in reading order with id, label, kind, authority, page, rect, unit, part, and the number of context, continuation and solution regions. Two kinds of exercise: those a person framed for themselves have a positional label (E2.1, Q1, B3: computed, never stored; authority "user"); authoritative book exercises (authority "book") are named by the number the book prints and the section they belong to (reference "1.2:5a"). counts are the positional ones; book says how many book exercises there are.
 
 Arguments:
 
 - `page` (integer): Zero-based page: the first page is 0.
 - `kind` ("exercise" | "question" | "bookmark"): exercise: to solve and be checked; question: to ask the AI tutor about; bookmark: a place worth coming back to (definition, theorem, worked example).
+- `authority` ("book" | "user"): Only authoritative book exercises (book), or only what a person framed for themselves (user).
+- `section` (string): Only the book exercises filed under this section (an outline entry id).
 
 ### `add_frame`
 
@@ -241,7 +250,7 @@ Changes the page, rectangle or kind of a frame (context is dropped when it stops
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `kind` ("exercise" | "question" | "bookmark"): exercise: to solve and be checked; question: to ask the AI tutor about; bookmark: a place worth coming back to (definition, theorem, worked example).
 - `page` (integer): Zero-based page: the first page is 0.
 - `rect` (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
@@ -265,7 +274,7 @@ Moves a frame by dx, dy (fractions of the page; negative = left/up). An exercise
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `dx` (number)
 - `dy` (number)
 - `dry_run` (boolean): Compute and validate but do not write the project.
@@ -276,7 +285,7 @@ Cuts an exercise into parts (a), (b), (c) = 1.1, 1.2, 1.3 that tile one area. "a
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `at`* (number[]): y positions (page fractions, top to bottom) where parts 2, 3, ... start.
 - `first` (number): Where the first part starts (default: the top of the frame).
 - `preamble` ("keep" | "context" | "drop"): What becomes of the text above "first": context (default when first is given) or drop.
@@ -323,7 +332,7 @@ Attaches a region of context (the instruction, question or background printed el
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `page`* (integer): Zero-based page: the first page is 0.
 - `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
 - `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
@@ -335,7 +344,7 @@ Removes one context region of an exercise (index from 0; needed when there are s
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `index` (integer)
 - `all` (boolean)
 - `dry_run` (boolean): Compute and validate but do not write the project.
@@ -346,7 +355,7 @@ Adds a further region of the same task after the main region (for example where 
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `page`* (integer): Zero-based page: the first page is 0.
 - `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
 - `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
@@ -358,14 +367,14 @@ Removes one continuation region (index from 0; needed when there are several) or
 
 Arguments:
 
-- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3.
+- `id`* (string): The frame id (for example f3), as listed by list_frames. Not the label E3. A book exercise can also be named SECTION:LABEL (1.2:5a).
 - `index` (integer)
 - `all` (boolean)
 - `dry_run` (boolean): Compute and validate but do not write the project.
 
 ### `apply_operations`
 
-Applies a list of operations in one atomic batch with ONE validation at the end: any failure, or any new validation error, rejects the whole batch and writes nothing. This is how to mark a 60-page sheet in one call. Each operation has "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, outline.set, outline.add, outline.clear, meta.set, with the fields of the matching tools (rect as [l,t,r,b] or an object; page zero-based). An "add" may carry "ref": "a"; later operations may use "id": "@a" for the frame it created, so you need not guess generated ids. The "operations" returned by propose can be passed as they are.
+Applies a list of operations in one atomic batch with ONE validation at the end: any failure, or any new validation error, rejects the whole batch and writes nothing. This is how to mark a 60-page sheet in one call. Each operation has "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, authority.mark, authority.unmark, label.set, section.set, solution.add, solution.remove, solution.set, outline.set, outline.add, outline.update, outline.delete, outline.ids, outline.clear, meta.set, with the fields of the matching tools (rect as [l,t,r,b] or an object; page zero-based). An "add" may carry "ref": "a"; later operations may use "id": "@a" for the frame it created (or replaced), so you need not guess generated ids; a book exercise can also be named "SECTION:LABEL" ("1.2:5a"). An "add" with "authority": "book", "label" and "section" makes an authoritative book exercise (no "kind" needed; it cannot have a "unit"; "solution" lists regions of the answer key); applying the same batch twice does not duplicate it, the second time is an error naming the exercise, unless the "add" says "replace": true. The "operations" returned by propose can be passed as they are.
 
 Arguments:
 
@@ -375,7 +384,7 @@ Arguments:
 
 ### `validate` (read-only)
 
-Checks the project against every rule of the bundle format. Errors (what the importer would reject; each names the frame id and the fix), repairs (what the importer fixes silently) and warnings (allowed but suspicious: overlaps, an edge cutting a line of text, a header inside a frame, ...). ok=false means errors. A failed validation is a result, not a tool failure.
+Checks the project against every rule of the bundle format. Errors (what the importer would reject; each names the frame id and the fix), repairs (what the importer fixes silently) and warnings (allowed but suspicious: overlaps, an edge cutting a line of text, a header inside a frame, ...). For a book also: a label and a section with every book exercise, (section, label) unique, every section the id of an outline entry, solution regions only on exercises, valid outline ids; warnings for a label written with the "." or ")" the book prints, an exercise printed in another section than the one it is filed under, a solution region lying on the exercise or on another exercise. ok=false means errors. A failed validation is a result, not a tool failure.
 
 Arguments:
 
@@ -383,7 +392,7 @@ Arguments:
 
 ### `export_bundle`
 
-Validates, then writes the bundle (the PDF byte for byte plus frames and outline) atomically and reads it back with the importer's own checks; a bundle that fails them is removed. Errors in the project stop the export. Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.
+Validates, then writes the bundle (the PDF byte for byte plus frames and outline, and for a book the sections, the book exercises, their hidden solution regions and the author, licence and notice from book_meta) atomically and reads it back with the importer's own checks; a bundle that fails them is removed. Errors in the project stop the export. A project with book exercises must be exported with its own outline (the default). Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.
 
 Arguments:
 
@@ -394,7 +403,7 @@ Arguments:
 
 ### `inspect_bundle` (read-only)
 
-Reads a .mcbundle: manifest, entries, frames with their labels, outline, and every problem the importer would find.
+Reads a .mcbundle: manifest (features, author, licence, notice), entries, frames with their labels (a book exercise by SECTION:LABEL), the sections with the number of exercises in each (summary), and every problem the importer would find.
 
 Arguments:
 
@@ -414,8 +423,198 @@ The guide for agents that mark a PDF: coordinate system with a worked example, w
 
 ### `get_schema` (read-only)
 
-The JSON Schema of bundle-manifest, frames, outline or project files.
+The JSON Schema of bundle-manifest, frames, outline or project files, or of the book summary (book_show, book_export).
 
 Arguments:
 
-- `name`* ("bundle-manifest" | "frames" | "outline" | "project")
+- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary")
+
+### `exercises_list` (read-only)
+
+The authoritative exercises by section (in the order of the outline) and, within a section, in reading order: id, label (the number the book prints), section, reference (SECTION:LABEL, how to name it), page, rect, and the number of context, continuation and solution regions. totals say how many there are in the whole project and how many have a solution. Use without_solution to see which still have no answer attached.
+
+Arguments:
+
+- `section` (string): Only the exercises filed under this section.
+- `subtree` (boolean): With section: also the sections below it.
+- `page` (integer): Only exercises that start on this page.
+- `with_solution` (boolean)
+- `without_solution` (boolean)
+
+### `exercises_add`
+
+Adds ONE printed exercise of the book with the label the book prints, in its section. It contains its number and statement and everything up to but not including the next exercise's number, without page headers or footers. It is a single exercise: it has no parts. The parts of a printed exercise (5a, 5b) are two exercises with two labels; the statement printed once above them is attached to each as context. Adding an exercise that exists (same section and label) is an error, so that applying the same calls twice does no harm; replace=true overwrites it in place instead (page, rect and continuation are replaced, context and solution when given). A rect below the minimum is enlarged; with snap the edges move off lines of text. Returns the change report. For many exercises use apply_operations with "authority": "book".
+
+Arguments:
+
+- `section`* (string): The id of the outline entry (the section) the exercise belongs to; get_outline lists them.
+- `label`* (string): The number exactly as the book prints it, without the closing "." or ")": 5, 12, 5a, A.3, II-4 (1 to 24 characters: letters, digits, spaces and . _ - ( ) /).
+- `page`* (integer): Zero-based page: the first page is 0.
+- `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `id` (string): Your own frame id ([A-Za-z0-9_-], up to 40 characters); default generated (f1, f2, ...).
+- `context` ({ page, rect }[]): The instruction or statement the learner sees and the AI receives with every check (printed once above 5a and 5b, say).
+- `continues` ({ page, rect }[]): Further regions of the same exercise, in reading order (the next page, the next column).
+- `solution` ({ page, rect }[]): Where the answer is printed in this PDF (the answer key at the back): hidden from the learner, used only to grade.
+- `replace` (boolean): Overwrite the exercise in place if it exists (same section and label).
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `exercises_mark`
+
+Gives an exercise that a person framed the label the book prints and its section: it keeps its place, context and solution, loses its positional number (E3) and is named by label and section from now on. It cannot be part of a unit (merge_frames first).
+
+Arguments:
+
+- `id`* (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `label`* (string): The number exactly as the book prints it, without the closing "." or ")": 5, 12, 5a, A.3, II-4 (1 to 24 characters: letters, digits, spaces and . _ - ( ) /).
+- `section`* (string): The id of the outline entry (the section) the exercise belongs to; get_outline lists them.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `exercises_unmark`
+
+The exercise loses its label and section, gets a positional number again and can be cut into parts. Its context and solution regions stay.
+
+Arguments:
+
+- `id`* (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `exercises_label`
+
+Changes the printed number of an authoritative exercise. A label that is already taken in the section is refused, naming both exercises.
+
+Arguments:
+
+- `id`* (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `label`* (string): The number exactly as the book prints it, without the closing "." or ")": 5, 12, 5a, A.3, II-4 (1 to 24 characters: letters, digits, spaces and . _ - ( ) /).
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `exercises_section`
+
+Files an authoritative exercise under another section (an outline entry id).
+
+Arguments:
+
+- `id`* (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `section`* (string): The id of the outline entry (the section) the exercise belongs to; get_outline lists them.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `solution_add`
+
+Attaches a region of the SAME PDF where the answer is printed (usually the answer key at the back) to an exercise. It is hidden and used only to grade: the learner never sees it with the exercise and it is never sent to a tutor chat. Typically one small region per exercise (the line "22) 0") or one block that answers several exercises (give the same region to each). Up to 8 per exercise. Then LOOK at it: render_crop with region "solution:0". The instruction that the learner does see is context (add_context), not this.
+
+Arguments:
+
+- `id`* (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `page`* (integer): Zero-based page: the first page is 0.
+- `rect`* (any[] | { left, top, right, bottom }): A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.
+- `snap` (boolean): Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `solution_list` (read-only)
+
+The solution regions of one exercise, or of every exercise that has some (frame, label, reference, regions with index, page and rect). With missing=true instead the book exercises that have no solution region yet.
+
+Arguments:
+
+- `id` (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `missing` (boolean)
+
+### `solution_remove` (destructive)
+
+Removes one solution region of an exercise (index from 0, as solution_list shows; needed when there are several) or all of them (all=true).
+
+Arguments:
+
+- `id`* (string): The exercise: its frame id (f12) or SECTION:LABEL (1.2:5a).
+- `index` (integer)
+- `all` (boolean)
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `book_show` (read-only)
+
+The summary of the book: its information (title, author, licence, ...), every outline entry as a section (index, id, label, title, page, top, depth, parent) with the number of book exercises filed under it (exercises), under it and everything below it (exercisesTotal), how many of them have a solution, and the first and last label; and the totals (sections, book exercises, with and without solution, exercises filed under a section the outline does not have, and what a person framed for themselves). Compare the counts with the book. With exercises=true each section also lists its own exercises. The format is described by get_schema("book-summary").
+
+Arguments:
+
+- `used` (boolean): Only the sections that hold exercises, and the entries above them (text rendering only).
+- `exercises` (boolean): Also list the own exercises of each section.
+
+### `book_meta`
+
+The title and library folder, and the author, series, description, licence (name and address), source address and notice that go into the bundle. The licence travels with the file: a licence that asks for attribution needs its notice shown wherever the book is shown, so give notice the text the licence asks for (who wrote it, under which licence, what was changed). An empty text removes a field; web addresses are http or https. Without arguments it returns the current values.
+
+Arguments:
+
+- `title` (string)
+- `folder` (string): Library folder, names separated by "/", at most seven levels; "" removes it.
+- `author` (string)
+- `series` (string)
+- `description` (string)
+- `license_name` (string): For example "CC BY 3.0". A new name replaces the whole licence (give license_url again).
+- `license_url` (string): Where the licence is (http or https); "" removes it.
+- `no_license` (boolean): Remove the licence.
+- `source_url` (string): Where the work comes from (http or https).
+- `notice` (string): The text the licence asks to be shown with the work.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `book_export`
+
+Writes the summary of book_show as a plain, documented JSON file (camelCase, zero-based pages; get_schema("book-summary")): the sections with their exercise and solution counts, the totals and the information about the book. Default path: name.book.json next to the project.
+
+Arguments:
+
+- `out` (string): Where to write it.
+- `exercises` (boolean): Also list the own exercises of each section.
+
+### `outline_add`
+
+Adds an entry to the outline (the sections of the book), at the end or at position "at" (from 0). It gets an id unless you give one or say no_id; the id is what exercises name as their section. depth 0 is a chapter, 1 a section in it, and so on; a child follows its parent and is one level deeper.
+
+Arguments:
+
+- `title`* (string)
+- `page`* (integer): Zero-based page: the first page is 0.
+- `depth` (integer)
+- `id` (string): The id (letters, digits, . _ -, starting with a letter or digit, up to 60 characters). Default: made from the label or the title.
+- `no_id` (boolean)
+- `label` (string): The number printed with the heading ("1.1", "Chapter 3").
+- `top` (number): Where the heading starts on its page, from the top (0 to 1).
+- `at` (integer): Insert at this position of the outline instead of at the end.
+
+### `outline_update`
+
+Changes one outline entry, named by its id (or by index, its position from 0, when it has none): title, page, depth, label ("" removes it), top (null removes it) or id (new_id; the exercises filed under the old id follow). Changing the depth moves only this entry.
+
+Arguments:
+
+- `id` (string): The id of the entry.
+- `index` (integer): The position of the entry in the outline, for an entry that has no id.
+- `title` (string)
+- `page` (integer): Zero-based page: the first page is 0.
+- `depth` (integer)
+- `new_id` (string)
+- `label` (string)
+- `top` (number | null)
+
+### `outline_delete` (destructive)
+
+Deletes an outline entry, named by id (or index). The entries below it move up one level, or are deleted with it (subtree=true). A section that book exercises are filed under cannot be deleted: move them first (exercises_section).
+
+Arguments:
+
+- `id` (string)
+- `index` (integer)
+- `subtree` (boolean)
+
+### `outline_ids`
+
+Gives every outline entry that has no id one (from its printed label, else the number at the start of its title, else a short form of the title), so that exercises can name it. Entries that have an id keep it. Use it after adopt_pdf_outline or derive_outline.

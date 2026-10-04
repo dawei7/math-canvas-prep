@@ -181,8 +181,6 @@ Wrote ./.mcprep-cache/crop-f11.png (f11 main, page 2, 1401 x 700 px)
 Wrote ./.mcprep-cache/crop-f12.png (f12 main, page 2, 1401 x 201 px)
 ```
 
-_Output shortened._
-
 ## 10. The learner wants the remark at the end of page 3 as a question for the tutor, not a bookmark. Change its kind; numbers follow by themselves (B2 becomes Q1).
 
 ```console
@@ -272,7 +270,7 @@ bundle.json   530    stored  manifest
 document.pdf  5446   stored  pdf
 frames.json   2549   stored  frames
 outline.json  272    stored  outline
-format math-canvas-bundle v1, written 2026-10-03T12:00:00Z by math-canvas-prep 0.1.0
+format math-canvas-bundle v1, written 2026-10-03T12:00:00Z by math-canvas-prep 0.2.0
 document: "Calculus Sheet 1" in Examples/Calculus, 3 pages, 5446 bytes, sha256 d95704c210865464...
 10 frames:
 id   label  kind      page  rect (left,top,right,bottom)  notes
@@ -299,6 +297,4 @@ The importer would ACCEPT this bundle.
   step 5 frames: ok - 10 frames valid, 4 outline entries.
   step 6 library: ok - Would add "Calculus Sheet 1" in the folder "Examples/Calculus" with 5 exercises, 1 question and 1 bookmark and 4 contents entries. A PDF with the same SHA-256 already in the library is not duplicated: the app offers to add the frames to it.
 ```
-
-_Output shortened._
 
