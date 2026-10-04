@@ -8,7 +8,9 @@ import {
   type Frame,
   type FrameKind,
   type FrameNumber,
+  type FrameProposal,
   type OutlineEntry,
+  type ProposalSet,
   type Rect,
   type SectionCounts,
   type SectionTree,
@@ -120,6 +122,24 @@ export const pageContent = (index: FrameIndex, page: number): PageContent => ind
 export function labelOf(index: FrameIndex, frame: Frame): string {
   if (isAuthoritative(frame)) return frame.label ?? frame.id;
   return index.numbers.get(frame.id)?.label ?? frame.id;
+}
+
+/** The proposals of a set that lie on a page (cached per set: proposals can number in the thousands). */
+const proposalCache = new WeakMap<ProposalSet, Map<number, FrameProposal[]>>();
+
+export function proposalsOnPage(set: ProposalSet | null, page: number): readonly FrameProposal[] {
+  if (!set) return [];
+  let pages = proposalCache.get(set);
+  if (!pages) {
+    pages = new Map();
+    for (const proposal of set.proposals) {
+      const list = pages.get(proposal.page);
+      if (list) list.push(proposal);
+      else pages.set(proposal.page, [proposal]);
+    }
+    proposalCache.set(set, pages);
+  }
+  return pages.get(page) ?? [];
 }
 
 // ------------------------------------------------------------------------------------------------------------ sections

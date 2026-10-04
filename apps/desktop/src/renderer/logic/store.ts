@@ -120,7 +120,6 @@ export interface State {
   /** The book exercise being drawn, waiting for its number and section. */
   draft: Draft | null;
   framesFilter: FramesFilter;
-  framesQuery: string;
   /** Groups of the Frames list that are folded away (by group key). */
   collapsed: Record<string, true>;
   /** The selected entry of the Sections list (its place in the outline). */
@@ -165,7 +164,6 @@ const initial = (): State => ({
   welcomeError: null,
   draft: null,
   framesFilter: 'all',
-  framesQuery: '',
   collapsed: {},
   sectionSelection: null,
   sectionFilter: 'all',
@@ -301,7 +299,6 @@ export class Store {
       notice: null,
       draft: null,
       framesFilter: 'all',
-      framesQuery: '',
       collapsed: {},
       sectionSelection: null,
       sectionFilter: 'all',
@@ -762,10 +759,6 @@ export class Store {
 
   setFramesFilter(framesFilter: FramesFilter): void {
     this.set({ framesFilter });
-  }
-
-  setFramesQuery(framesQuery: string): void {
-    this.set({ framesQuery });
   }
 
   toggleGroup(key: string): void {

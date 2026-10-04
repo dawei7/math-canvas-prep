@@ -17,7 +17,7 @@ import { BOOK_COLOR, CONTEXT_COLOR, SOLUTION_COLOR, frameColor } from '../logic/
 import { NO_PARTS_REASON } from '../logic/errors.js';
 import { HANDLES, frameAtTap, handlePositions, middleCut, partsOnPage, rectFromCorners, resizeRect, toScreen, unitArea, type HandleName, type PageBox } from '../logic/geometry.js';
 import { placeChips } from '../logic/labels.js';
-import { frameIndex, labelOf, pageContent } from '../logic/model.js';
+import { frameIndex, labelOf, pageContent, proposalsOnPage } from '../logic/model.js';
 import type { Store, Tool } from '../logic/store.js';
 import { drawPage } from '../pdf.js';
 import { BookForm } from './BookForm.js';
@@ -106,7 +106,7 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
   const content = pageContent(index, state.page);
   const selected = state.selection === null ? undefined : index.byId.get(state.selection);
   const selectedHere = selected !== undefined && selected.page === state.page;
-  const ghosts = state.tab === 'propose' && state.proposals ? state.proposals.proposals.filter((proposal) => proposal.page === state.page && state.decided[proposal.id] === undefined) : [];
+  const ghosts = state.tab === 'propose' ? proposalsOnPage(state.proposals, state.page).filter((proposal) => state.decided[proposal.id] === undefined) : [];
   const text = state.texts[state.page];
   const unitFrames = (frame: Frame): readonly Frame[] => (frame.unit === undefined ? [frame] : (index.units.get(frame.unit) ?? [frame]));
   const picking = state.picking !== null;

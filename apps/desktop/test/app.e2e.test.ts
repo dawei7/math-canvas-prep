@@ -256,7 +256,7 @@ describe.skipIf(!available)('the desktop app', () => {
 
   it('lists the frames, the sections (the bookmarks of the PDF, with ids), the checks and lets a section be edited', async () => {
     await win.locator('.tab', { hasText: 'Frames' }).click();
-    expect(await win.locator('.rows .row').count()).toBeGreaterThan(8);
+    expect(await win.locator('.frames-list .frame-row').count()).toBeGreaterThan(8);
     await win.locator('.tab', { hasText: 'Sections' }).click();
     await win.getByRole('button', { name: "Use the PDF's bookmarks" }).click();
     await win.waitForSelector('.section-row');
@@ -276,7 +276,7 @@ describe.skipIf(!available)('the desktop app', () => {
     await win.evaluate(() => (window as unknown as { __store: { setPage(n: number): void } }).__store.setPage(0));
     await win.waitForTimeout(300);
     // The row shows the first words of the frame, although the person has not looked at its page yet.
-    await win.locator('.side .rows .row', { hasText: 'Exercise 4' }).click();
+    await win.locator('.side .frame-row', { hasText: 'Exercise 4' }).click();
     await win.waitForFunction(() => (document.querySelector('.page-scroll') as HTMLElement).scrollTop > 0);
     const scroller = await win.locator('.page-scroll').boundingBox();
     const body = await win.locator('.frame.selected .body').first().boundingBox();
@@ -312,13 +312,13 @@ describe.skipIf(!available)('the desktop app', () => {
     await win.getByRole('button', { name: 'Find proposals' }).click();
     await win.waitForSelector('.ghost', { timeout: 60000 });
     expect(await win.locator('.ghost').count()).toBe(2);
-    expect(await win.locator('.side .rows .row').count()).toBe(7);
+    expect(await win.locator('.side .proposal-row').count()).toBe(7);
     await win.locator('.ghost .round-button').first().click();
     expect((await frames()).length).toBe(1);
-    await win.locator('.side .rows .row .mini-button[aria-label="Reject"]').first().click();
-    expect(await win.locator('.side .rows .row').count()).toBe(5);
+    await win.locator('.side .proposal-row .mini-button[aria-label="Reject"]').first().click();
+    expect(await win.locator('.side .proposal-row').count()).toBe(5);
     await win.getByRole('button', { name: /Accept all/ }).click();
-    expect(await win.locator('.side .rows .row').count()).toBe(0);
+    expect(await win.locator('.side .proposal-row').count()).toBe(0);
     expect(await state((s) => (s['validation'] as { ok: boolean }).ok)).toBe(true);
     expect((await frames()).length).toBeGreaterThan(6);
   });

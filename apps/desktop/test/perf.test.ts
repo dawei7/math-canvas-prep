@@ -1,0 +1,254 @@
+import { beforeAll, describe, expect, it } from 'vitest';
+import { PdfDocument, validateProject, type Frame, type Project } from '@mcprep/core';
+import { FRAME_ROW_HEIGHT, buildFrameRows, visibleRange } from '../src/renderer/logic/list.js';
+import { placeChips } from '../src/renderer/logic/labels.js';
+import { bookModel, frameIndex, pageContent } from '../src/renderer/logic/model.js';
+import { buildSectionRows, sectionWarnings } from '../src/renderer/logic/sections.js';
+import { Store } from '../src/renderer/logic/store.js';
+import { buildBigBook, type BigBook } from './helpers/big-book.js';
+import { fakeApi, openedDocument } from './helpers/fake-api.js';
+
+/**
+ * A book of the size the owner has in mind: 5 000 book exercises, 100 sections, 44 small frames on a two-column page, an
+ * answer key with 5 000 solution regions. Everything the editor computes for the lists and the page must take a few
+ * milliseconds, and must grow in step with the book (an accidental quadratic loop shows in the last tests). The numbers
+ * below are generous (a slow machine, a busy build) and still far below what a person notices.
+ */
+
+let big: BigBook;
+let small: BigBook;
+
+const timed = <T>(work: () => T): { value: T; ms: number } => {
+  const started = performance.now();
+  const value = work();
+  return { value, ms: performance.now() - started };
+};
+
+/** The median of five runs, after one to warm up. */
+const median = (work: () => unknown): number => {
+  work();
+  const runs = Array.from({ length: 5 }, () => timed(work).ms).sort((a, b) => a - b);
+  return runs[2] as number;
+};
+
+beforeAll(() => {
+  big = buildBigBook();
+  small = buildBigBook({ exercises: 500, sections: 11 });
+}, 60_000);
+
+const freshApi = (book: BigBook, overrides: Parameters<typeof fakeApi>[1] = {}): ReturnType<typeof fakeApi> => fakeApi({ pdf: () => book.pdf, texts: () => book.pageTexts, fresh: () => book.project }, overrides);
+
+async function opened(book: BigBook = big): Promise<{ store: Store; api: ReturnType<typeof fakeApi> }> {
+  const api = freshApi(book);
+  const store = new Store(api);
+  await store.openDocument({ ...openedDocument(book.project, book.pageCount, null), pageSizes: book.pageSizes });
+  return { store, api };
+}
+
+describe('the synthetic big book', () => {
+  it('is what it says: 5 000 book exercises in 100 sections, and a valid project', () => {
+    expect(big.project.frames).toHaveLength(5000);
+    expect(big.project.outline?.entries).toHaveLength(100);
+    expect(big.practicePages).toBe(114);
+    expect(big.pageCount).toBe(135);
+    const validation = validateProject(big.project, new Map(big.pageTexts.map((text) => [text.page, text])));
+    expect(validation.errors).toEqual([]);
+    expect(validation.book).toEqual({ exercises: 5000, withSolution: 5000 });
+    expect(validation.warnings.map((issue) => issue.code).filter((code) => code === 'section-mismatch' || code === 'clips-line')).toEqual([]);
+  });
+
+  it('has no warnings with the text read from its own PDF (so that what a test shows is what the editor adds)', async () => {
+    const pdf = await PdfDocument.fromBytes(big.pdf);
+    const texts = await pdf.allPageText({ fonts: false });
+    await pdf.close();
+    expect(texts).toHaveLength(135);
+    const validation = validateProject(big.project, new Map(texts.map((text) => [text.page, text])));
+    expect(validation.errors).toEqual([]);
+    expect(validation.warnings).toEqual([]);
+  });
+
+  it('puts 44 small frames on a page, in two columns', () => {
+    const index = frameIndex(big.project.frames);
+    expect(pageContent(index, 10).frames).toHaveLength(44);
+    const heights = pageContent(index, 10).frames.map((frame) => frame.rect.bottom - frame.rect.top);
+    expect(Math.max(...heights)).toBeLessThan(0.04);
+  });
+});
+
+describe('what the lists and the page compute for 5 000 frames', () => {
+  it('builds the index of the frames, the sections and their counts once, and quickly', () => {
+    const frames = [...big.project.frames];
+    const index = timed(() => frameIndex(frames));
+    expect(index.ms).toBeLessThan(400);
+    const model = timed(() => bookModel(frames, big.project.outline?.entries, big.pageCount));
+    expect(model.ms).toBeLessThan(400);
+    expect(model.value.counts.totals).toEqual({ exercises: 5000, withSolution: 5000 });
+    expect(model.value.groups.size).toBe(90);
+    // The second time is a lookup.
+    expect(timed(() => frameIndex(frames)).ms).toBeLessThan(5);
+    expect(timed(() => bookModel(frames, big.project.outline?.entries, big.pageCount)).ms).toBeLessThan(5);
+  });
+
+  it('lists the frames by section: a row for each frame and each section, in a few milliseconds', () => {
+    const index = frameIndex(big.project.frames);
+    const model = bookModel(big.project.frames, big.project.outline?.entries, big.pageCount);
+    const all = timed(() => buildFrameRows({ index, model, filter: 'all', query: '', collapsed: {} }));
+    expect(all.value.rows).toHaveLength(5000 + 90);
+    expect(all.value.shown).toBe(5000);
+    expect(all.ms).toBeLessThan(150);
+    expect(all.value.rows[0]).toMatchObject({ type: 'group', title: '1.1 Practice set 1', count: 44 });
+    expect(all.value.rows[1]).toMatchObject({ type: 'frame', label: '1', book: true });
+    expect(buildFrameRows({ index, model, filter: 'ordinary', query: '', collapsed: {} }).rows).toHaveLength(0);
+    // Folded groups keep their heading only; a query looks into folded groups too.
+    const folded = Object.fromEntries([...model.groups.keys()].map((id) => [`sec:${id}`, true as const]));
+    expect(buildFrameRows({ index, model, filter: 'all', query: '', collapsed: folded }).rows).toHaveLength(90);
+    const found = buildFrameRows({ index, model, filter: 'all', query: '3.4:17', collapsed: folded });
+    expect(found.rows.filter((row) => row.type === 'frame').map((row) => (row.type === 'frame' ? `${row.frame.section}:${row.label}` : ''))).toEqual(['3.4:17']);
+    expect(timed(() => buildFrameRows({ index, model, filter: 'book', query: '1', collapsed: {} })).ms).toBeLessThan(150);
+  });
+
+  it('draws at most a screenful of rows, whatever the length of the list', () => {
+    const range = visibleRange(0, 700, FRAME_ROW_HEIGHT, 5090);
+    expect(range.end - range.first).toBeLessThan(30);
+    const far = visibleRange(FRAME_ROW_HEIGHT * 3000, 700, FRAME_ROW_HEIGHT, 5090);
+    expect(far.end - far.first).toBeLessThan(40);
+    expect(far.first).toBeGreaterThan(2900);
+  });
+
+  it('lists the sections with their counts, and the warnings, in a few milliseconds', () => {
+    const model = bookModel(big.project.frames, big.project.outline?.entries, big.pageCount);
+    const rows = timed(() => buildSectionRows(model, { collapsed: {}, filter: 'all' }));
+    expect(rows.value).toHaveLength(100);
+    expect(rows.ms).toBeLessThan(50);
+    // A section holds one or two pages of exercises (44 or 88); a chapter holds the nine sections below it.
+    expect(rows.value[1]?.own).toBeGreaterThanOrEqual(44);
+    expect(rows.value[1]?.total).toBe(rows.value[1]?.own);
+    expect(rows.value[0]).toMatchObject({ own: 0, hasChildren: true });
+    expect(rows.value[0]?.total).toBeGreaterThan(400);
+    expect(buildSectionRows(model, { collapsed: { c1: true }, filter: 'all' }).length).toBeLessThan(100);
+    expect(timed(() => sectionWarnings(model)).ms).toBeLessThan(50);
+    expect(sectionWarnings(model)).toMatchObject({ duplicateIds: [], withoutId: [], unplaced: [], unsolved: 0 });
+  });
+
+  it('places the labels of the 44 frames of a page beside them, readable and without piling up', () => {
+    const index = frameIndex(big.project.frames);
+    const frames = pageContent(index, 10).frames;
+    const box = { width: 892, height: 1263 };
+    const placed = timed(() => placeChips(frames.map((frame) => ({ id: frame.id, label: frame.label as string, rect: frame.rect })), box));
+    expect(placed.ms).toBeLessThan(20);
+    const chips = [...placed.value.values()];
+    expect(chips).toHaveLength(44);
+    expect(chips.every((chip) => chip.side === 'left')).toBe(true);
+    expect(Math.min(...chips.map((chip) => chip.h))).toBeGreaterThanOrEqual(11);
+    // The key page: 240 answers in four columns of 60 lines, labels of eleven pixels, each beside its answer.
+    const key = pageContent(index, big.practicePages).solution;
+    expect(key).toHaveLength(240);
+    const keyBox = { width: 892, height: 1263 };
+    const keyPlaced = timed(() => placeChips(key.map((region, at) => ({ id: String(at), label: `S ${region.frame.label}`, rect: region.rect })), keyBox));
+    expect(keyPlaced.ms).toBeLessThan(150);
+    expect(keyPlaced.value.size).toBe(240);
+  });
+});
+
+describe('the store with 5 000 frames', () => {
+  it('opens the project, with its checks, in well under a second (the text of the pages follows in the background)', async () => {
+    const api = freshApi(big);
+    const store = new Store(api);
+    const started = performance.now();
+    await store.openDocument({ ...openedDocument(big.project, big.pageCount, null), pageSizes: big.pageSizes });
+    expect(performance.now() - started).toBeLessThan(1500);
+    expect(store.state.validation?.ok).toBe(true);
+    expect(store.state.texts[0]).toBeDefined();
+    // The background reading ends with every page that has a frame or a region, and one check of the whole project.
+    await vi_waitFor(() => Object.keys(store.state.texts).length === big.pageCount);
+  });
+
+  it('changes one exercise in a blink: the operation, the checks, the new version', async () => {
+    const { store } = await opened();
+    const target = big.project.frames[2500] as Frame;
+    const label = timed(() => store.setBookLabel(target.id, '99x'));
+    expect(label.value.ok).toBe(true);
+    expect(label.ms).toBeLessThan(250);
+    expect(store.state.dirty).toBe(true);
+    expect(timed(() => store.undo()).ms).toBeLessThan(250);
+    expect(store.state.dirty).toBe(false);
+    expect(timed(() => store.redo()).ms).toBeLessThan(250);
+    const moved = timed(() => store.apply([{ op: 'move', id: target.id, dx: 0, dy: 0.001 }], { quiet: true }));
+    expect(moved.value.ok).toBe(true);
+    expect(moved.ms).toBeLessThan(250);
+  });
+
+  it('adds a book exercise from the form quickly, and offers the next number in a section of fifty', async () => {
+    const { store } = await opened();
+    const page = 10;
+    const started = performance.now();
+    store.startDraft(page, { left: 0.07, top: 0.012, right: 0.93, bottom: 0.02 });
+    expect(performance.now() - started).toBeLessThan(50);
+    const draft = store.state.draft;
+    expect(draft?.section).toBeDefined();
+    expect(draft?.label).not.toBe('1');
+    const confirmed = timed(() => store.confirmDraft('900', draft?.section));
+    expect(confirmed.value).toBe(true);
+    expect(confirmed.ms).toBeLessThan(250);
+    expect(store.state.project?.frames).toHaveLength(5001);
+  });
+
+  it('selects frames and shows them in a few milliseconds, and saves and takes over a change from disk', async () => {
+    const { store, api } = await opened();
+    const picking = timed(() => {
+      for (let at = 0; at < 200; at += 1) store.select((big.project.frames[at * 25] as Frame).id);
+    });
+    expect(picking.ms).toBeLessThan(300);
+    const jumped = timed(() => store.select((big.project.frames[4000] as Frame).id, { jump: true }));
+    expect(jumped.ms).toBeLessThan(100);
+    expect(store.state.page).toBe(Math.floor(4000 / 44));
+    store.apply([{ op: 'meta.set', author: 'A. Author' }], { quiet: true });
+    const saved = await (async () => {
+      const started = performance.now();
+      const ok = await store.save();
+      return { ok, ms: performance.now() - started };
+    })();
+    expect(saved.ok).toBe(true);
+    expect(saved.ms).toBeLessThan(300);
+    expect(api.saved).toHaveLength(1);
+    // An agent changes one label: the window takes the new version over.
+    const edited: Project = { ...(store.state.project as Project), revision: 9, modifiedBy: 'cli', frames: (store.state.project as Project).frames.map((frame, at) => (at === 10 ? { ...frame, label: '77z' } : frame)) };
+    const live = timed(() => store.onDiskChange({ project: edited, modifiedBy: 'cli' }));
+    expect(live.ms).toBeLessThan(300);
+    expect(store.state.notice?.text).toContain('Updated by cli: 1 changed');
+    expect(store.state.project?.frames[10]?.label).toBe('77z');
+  });
+});
+
+describe('the work grows in step with the book', () => {
+  it('lists ten times the frames in far less than a hundred times the time', () => {
+    const run = (book: BigBook): number => {
+      const index = frameIndex([...book.project.frames]);
+      const model = bookModel(book.project.frames, book.project.outline?.entries, book.pageCount);
+      return median(() => buildFrameRows({ index, model, filter: 'all', query: '1', collapsed: {} }));
+    };
+    const ratio = run(big) / Math.max(0.05, run(small));
+    // Ten times the frames: linear is about 10, quadratic a hundred.
+    expect(ratio).toBeLessThan(40);
+  });
+
+  it('builds the index and the section model of ten times the frames in far less than a hundred times the time', () => {
+    const run = (book: BigBook): number =>
+      median(() => {
+        const frames = [...book.project.frames];
+        frameIndex(frames);
+        bookModel(frames, book.project.outline?.entries, book.pageCount);
+      });
+    const ratio = run(big) / Math.max(0.05, run(small));
+    expect(ratio).toBeLessThan(40);
+  });
+});
+
+/** Waits (polling) until a condition holds; the store's background work is asynchronous. */
+async function vi_waitFor(condition: () => boolean, timeoutMs = 20_000): Promise<void> {
+  const started = Date.now();
+  while (!condition()) {
+    if (Date.now() - started > timeoutMs) throw new Error('The condition did not hold in time.');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}

@@ -19,7 +19,10 @@ export function VirtualList<T>({
   rowHeight: number;
   renderRow: (row: T, index: number) => preact.JSX.Element;
   rowKey: (row: T, index: number) => string;
-  /** Scroll to this row when `tick` changes (only if it is out of view). */
+  /**
+   * Scroll to this row when `tick` changes, or when the row appears (its index becomes known): only if it is out of view.
+   * A row that moves because the list above it changed (a folded group) does not make the list jump.
+   */
   scrollTo?: { index: number; tick: number } | null;
   /** Called with the rows in view: a list loads what its rows need (the text of their pages). */
   onRange?: (first: number, end: number) => void;
@@ -55,7 +58,7 @@ export function VirtualList<T>({
       node.scrollTop = target;
       setView((old) => ({ ...old, top: node.scrollTop }));
     }
-  }, [scrollTo?.tick, scrollTo?.index]);
+  }, [scrollTo?.tick, (scrollTo?.index ?? -1) >= 0]);
 
   // The rows shrank (a filter, a folded group): the scroll position may be beyond the end now.
   useEffect(() => {

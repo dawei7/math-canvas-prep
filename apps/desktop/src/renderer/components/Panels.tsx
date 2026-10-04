@@ -1,129 +1,71 @@
-import { KIND_COLORS, isAuthoritative, linesInRect, type Frame, type Issue } from '@mcprep/core/pure';
+import { KIND_COLORS, type Issue } from '@mcprep/core/pure';
 import { useStore } from '../hooks.js';
-import { frameColor } from '../logic/colors.js';
 import { guiFix } from '../logic/errors.js';
-import { frameIndex, labelOf } from '../logic/model.js';
+import { frameIndex } from '../logic/model.js';
 import type { Store, Tab } from '../logic/store.js';
+import { FramesPanel } from './FramesPanel.js';
 import { Inspector } from './Inspector.js';
 import { SectionsPanel } from './SectionsPanel.js';
 import { Info } from './Toolbar.js';
-
-const KIND_SYMBOL = { exercise: '✏', question: '?', bookmark: '🔖' } as const;
-
-function Counts({ exercise, question, bookmark }: { exercise: number; question: number; bookmark: number }): preact.JSX.Element {
-  return (
-    <span class="counts">
-      <span class="count exercise" title="Exercises">{KIND_SYMBOL.exercise} {exercise}</span>
-      <span class="count question" title="Questions">{KIND_SYMBOL.question} {question}</span>
-      <span class="count bookmark" title="Bookmarks">{KIND_SYMBOL.bookmark} {bookmark}</span>
-    </span>
-  );
-}
-
-// ------------------------------------------------------------------------------------------------------- frames
-
-function FramesPanel({ store }: { store: Store }): preact.JSX.Element {
-  const state = useStore(store);
-  const frames = state.project?.frames ?? [];
-  const index = frameIndex(frames);
-  const counts = index.counts;
-  const ordered = [...index.ordinary, ...index.book];
-  const snippet = (frame: Frame): string => {
-    const lines = state.texts[frame.page]?.lines;
-    return lines ? (linesInRect(lines, frame.rect).find((line) => line.headerFooter !== true)?.text.slice(0, 44) ?? '') : '';
-  };
-  const selectedUnit = store.selected()?.unit;
-  const seen = new Set<string>();
-  const rows: preact.JSX.Element[] = [];
-  for (const frame of ordered) {
-    const info = index.numbers.get(frame.id);
-    const label = labelOf(index, frame);
-    const color = frameColor(frame);
-    const book = isAuthoritative(frame);
-    const isPart = frame.unit !== undefined;
-    if (isPart && !seen.has(frame.unit as string)) {
-      seen.add(frame.unit as string);
-      rows.push(
-        <li key={`unit-${frame.unit}`} class="row unit-head" onClick={() => store.select(frame.id, { jump: true })}>
-          <span class="chip" style={{ background: color }}>{`E${info?.number ?? ''}`}</span>
-          <span class="muted">exercise with {info?.partCount ?? 2} parts</span>
-        </li>,
-      );
-    }
-    rows.push(
-      <li key={frame.id} class={`row ${isPart ? 'part' : ''} ${state.selection === frame.id || (isPart && selectedUnit === frame.unit) ? 'selected' : ''}`} onClick={() => store.select(frame.id, { jump: true })}>
-        <span class={`chip ${book ? 'book' : ''}`} style={{ background: color }}>{label}</span>
-        <span class="row-text">{snippet(frame) || frame.kind}</span>
-        <span class="muted">p{frame.page + 1}</span>
-        {frame.context ? <span class="mini" title="Has context">📄{frame.context.length}</span> : null}
-        {frame.solution ? <span class="mini" title="Has a hidden solution">🔑{frame.solution.length}</span> : null}
-        {frame.continues ? <span class="mini" title="Continues">↪{frame.continues.length}</span> : null}
-        <button
-          class="row-delete"
-          aria-label={`Delete ${label}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            store.apply([frame.unit !== undefined ? { op: 'delete', unit: frame.unit } : { op: 'delete', id: frame.id }], { select: null });
-          }}
-        >
-          ×
-        </button>
-      </li>,
-    );
-  }
-  return (
-    <div class="panel-body">
-      <div class="panel-head">
-        <Counts exercise={counts.exercise} question={counts.question} bookmark={counts.bookmark} />
-        {index.book.length > 0 ? <span class="count book" title="Book exercises">📖 {index.book.length}</span> : null}
-      </div>
-      {frames.length === 0 ? <p class="empty">No frames yet. Pick a tool, drag around an exercise, or use Propose.</p> : <ul class="rows">{rows}</ul>}
-    </div>
-  );
-}
+import { VirtualList } from './VirtualList.js';
 
 // ------------------------------------------------------------------------------------------------------- checks
+
+const ISSUE_ROW_HEIGHT = 50;
 
 function ChecksPanel({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
   const validation = state.validation;
   if (!validation) return <div class="panel-body" />;
   const issues: Issue[] = [...validation.errors, ...validation.warnings, ...validation.repairs];
+  const frames = frameIndex(state.project?.frames ?? []).byId;
   const jump = (issue: Issue): void => {
-    if (issue.frameId !== undefined && state.project?.frames.some((frame) => frame.id === issue.frameId)) store.select(issue.frameId, { jump: true });
+    if (issue.frameId !== undefined && frames.has(issue.frameId)) store.select(issue.frameId, { jump: true });
     else if (issue.page !== undefined) store.setPage(issue.page);
   };
   return (
-    <div class="panel-body">
+    <div class="panel-body fill">
       <div class="panel-head">
         <span class={`verdict ${validation.ok ? 'ok' : 'bad'}`}>{validation.ok ? '✓ No errors' : `✕ ${validation.errors.length} error${validation.errors.length === 1 ? '' : 's'}`}</span>
         <span class="muted">{validation.warnings.length} warning{validation.warnings.length === 1 ? '' : 's'}</span>
       </div>
       {issues.length === 0 ? <p class="empty">Nothing to fix.</p> : null}
-      <ul class="rows issues">
-        {issues.map((issue, index) => (
-          <li key={index} class={`row issue ${issue.severity}`} onClick={() => jump(issue)}>
-            <span class="severity">{issue.severity === 'error' ? '✕' : issue.severity === 'warning' ? '!' : '↻'}</span>
-            <span class="issue-text">
-              {issue.message}
-              {guiFix(issue) ? <em> {guiFix(issue)}</em> : null}
-            </span>
-            {issue.frameId ? <span class="muted">{issue.frameId}</span> : null}
-          </li>
-        ))}
-      </ul>
+      {issues.length > 0 ? (
+        <VirtualList
+          label="Checks"
+          class="issues"
+          rows={issues}
+          rowHeight={ISSUE_ROW_HEIGHT}
+          rowKey={(_issue, at) => String(at)}
+          renderRow={(issue) => {
+            const fix = guiFix(issue);
+            return (
+              <div class={`issue-row ${issue.severity}`} title={`${issue.message}${fix ? ` ${fix}` : ''}`} onClick={() => jump(issue)}>
+                <span class="severity">{issue.severity === 'error' ? '✕' : issue.severity === 'warning' ? '!' : '↻'}</span>
+                <span class="issue-text">
+                  {issue.message}
+                  {fix ? <em> {fix}</em> : null}
+                </span>
+                {issue.frameId ? <span class="muted">{issue.frameId}</span> : null}
+              </div>
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
 // ----------------------------------------------------------------------------------------------------- propose
 
+const PROPOSAL_ROW_HEIGHT = 38;
+
 function ProposePanel({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
   const pending = store.pendingProposals();
   const decided = Object.keys(state.decided).length;
   return (
-    <div class="panel-body">
+    <div class="panel-body fill">
       <div class="panel-head column">
         <div class="button-row">
           <button class="text-button small primary" disabled={state.proposalsBusy} onClick={() => void store.runPropose()}>
@@ -136,21 +78,28 @@ function ProposePanel({ store }: { store: Store }): preact.JSX.Element {
         {state.proposals?.notes.map((note) => <span class="muted" key={note}>{note}</span>)}
       </div>
       {state.proposals && pending.length === 0 ? <p class="empty">{decided > 0 ? `All ${decided} proposals decided.` : 'No proposals.'}</p> : null}
-      <ul class="rows">
-        {pending.map((proposal) => (
-          <li key={proposal.id} class="row" onClick={() => store.showProposal(proposal.id)}>
-            <span class="chip" style={{ background: KIND_COLORS[proposal.kind] }}>{proposal.id}</span>
-            <span class="row-text">{proposal.title}</span>
-            <span class="muted">p{proposal.page + 1}</span>
-            <span class="muted">{Math.round(proposal.confidence * 100)}%</span>
-            {proposal.parts ? <span class="mini" title="Has parts">▤{proposal.parts.dividers.length + 1}</span> : null}
-            {proposal.continues ? <span class="mini" title="Continues">↪</span> : null}
-            <Info text={proposal.evidence.join('. ')} label={proposal.title} />
-            <button class="mini-button accept" aria-label="Accept" onClick={(event) => { event.stopPropagation(); store.acceptProposal(proposal.id); }}>✓</button>
-            <button class="mini-button" aria-label="Reject" onClick={(event) => { event.stopPropagation(); store.rejectProposal(proposal.id); }}>✕</button>
-          </li>
-        ))}
-      </ul>
+      {pending.length > 0 ? (
+        <VirtualList
+          label="Proposals"
+          class="proposals"
+          rows={pending}
+          rowHeight={PROPOSAL_ROW_HEIGHT}
+          rowKey={(proposal) => proposal.id}
+          renderRow={(proposal) => (
+            <div class="proposal-row" onClick={() => store.showProposal(proposal.id)}>
+              <span class="chip" style={{ background: KIND_COLORS[proposal.kind] }}>{proposal.id}</span>
+              <span class="row-text">{proposal.title}</span>
+              <span class="muted">p{proposal.page + 1}</span>
+              <span class="muted">{Math.round(proposal.confidence * 100)}%</span>
+              {proposal.parts ? <span class="mini" title="Has parts">▤{proposal.parts.dividers.length + 1}</span> : null}
+              {proposal.continues ? <span class="mini" title="Continues">↪</span> : null}
+              <Info text={proposal.evidence.join('. ')} label={proposal.title} />
+              <button class="mini-button accept" aria-label="Accept" onClick={(event) => { event.stopPropagation(); store.acceptProposal(proposal.id); }}>✓</button>
+              <button class="mini-button" aria-label="Reject" onClick={(event) => { event.stopPropagation(); store.rejectProposal(proposal.id); }}>✕</button>
+            </div>
+          )}
+        />
+      ) : null}
       {state.proposals && state.proposals.contexts.length > 0 ? (
         <p class="muted pad">Instructions found: {state.proposals.contexts.map((entry) => `${entry.id} applies to ${entry.appliesTo.join(', ') || '(unknown)'}`).join('; ')}. They are added when you accept those exercises.</p>
       ) : null}

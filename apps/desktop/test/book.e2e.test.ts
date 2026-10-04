@@ -100,7 +100,7 @@ describe.skipIf(!available)('auditing a book in the desktop app', () => {
     // The label on the page and in the list is the printed one, never an E-number.
     const onPage = await win.locator('.frame .chip text').allTextContents();
     expect(onPage.sort()).toEqual(['1', '2', '3a', '3b']);
-    expect(await win.locator('.side .rows .chip').allTextContents()).toEqual(expect.arrayContaining(['1', '2', '3a', '3b']));
+    expect(await win.locator('.side .frame-row .chip').allTextContents()).toEqual(expect.arrayContaining(['1', '2', '3a', '3b']));
     expect((await win.locator('.statusbar').innerText()).includes('4 book exercises')).toBe(true);
     expect(await win.locator('.frame.book').count()).toBe(4);
   });

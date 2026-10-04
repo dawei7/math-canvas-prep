@@ -1194,7 +1194,6 @@ button:disabled {
   left: 0;
   right: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
-  overflow: hidden;
 }
 
 .vrow:hover {
@@ -1541,4 +1540,131 @@ button:disabled {
 
 .info-field .help {
   font-size: 11px;
+}
+
+/* ------------------------------------------------------------------ the Frames, Checks and Propose lists */
+
+.counts-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.segmented {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segment {
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.segment:last-child {
+  border-right: 0;
+}
+
+.segment.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.frame-row,
+.issue-row,
+.proposal-row,
+.frame-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px 0 12px;
+  cursor: pointer;
+}
+
+.frame-row.part {
+  padding-left: 28px;
+}
+
+.frame-row.selected {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+}
+
+.frame-row.unit-head {
+  font-weight: 600;
+}
+
+.frame-group {
+  background: var(--panel-2);
+  font-weight: 600;
+  border-top: 1px solid var(--line);
+}
+
+.frame-group.problem {
+  color: var(--bad);
+}
+
+.chevron-text {
+  flex: none;
+  width: 12px;
+  color: var(--muted);
+}
+
+.group-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  flex: none;
+  font-weight: 400;
+}
+
+.mini.solution {
+  color: #15803d;
+}
+
+.issue-row {
+  align-items: flex-start;
+  padding-top: 5px;
+}
+
+.issue-row .severity {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.issue-row.error .severity {
+  color: var(--bad);
+}
+
+.issue-row.warning .severity {
+  color: var(--warn);
+}
+
+.issue-row .issue-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.issue-row .issue-text em {
+  display: inline;
+  color: var(--muted);
+  font-style: normal;
 }
