@@ -109,7 +109,7 @@ generated.
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources): 738 tests
+npm test             # unit tests (Vitest, against the sources): 741 tests
 npm run lint
 npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md

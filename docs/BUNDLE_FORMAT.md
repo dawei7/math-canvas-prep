@@ -23,7 +23,10 @@ This page is the contract. The reference implementation of reading, validating a
 | `frames.json` | yes | The marked regions (section 3). May hold an empty list. |
 | `outline.json` | no | A table of contents (section 4). |
 
-- Any other entry is ignored and never extracted. A reader must not use entry names as file paths.
+- Any other entry is ignored and never extracted, with one exception: an entry whose name has a `..` segment (a part
+  between slashes that is exactly `..`), starts with `/` or has a backslash makes the **whole bundle invalid**, and a reader
+  rejects it (such a name could leave its folder when the archive is unpacked, and Android 14 and later cannot read past
+  it). A reader must not use entry names as file paths.
 - Limits a reader enforces (reject the bundle when exceeded): at most 16 entries, `document.pdf` at most 512 MiB, each
   JSON entry at most 16 MiB, the whole archive at most 600 MiB.
 - A JSON entry is UTF-8 text (a leading byte order mark is ignored) whose objects and lists nest at most 32 levels deep; a
@@ -254,7 +257,7 @@ A book prepared as an authority names its sections with `id`, `label` and `top`:
 
 ## 5. Importing: what a reader does
 
-1. Open the archive, apply the limits, find the four entry names; ignore the rest.
+1. Open the archive, apply the limits, find the four entry names; ignore the rest, but reject an unsafe entry name (section 1).
 2. Parse `bundle.json`, check `format`, `version`, the document block and the entry names it gives (section 2).
 3. Stream `document.pdf` once while computing SHA-256 and compare with the manifest; check `bytes`.
 4. Open the PDF; its page count must equal `pageCount` (a password-protected PDF may not be openable: then `pageCount` is trusted).

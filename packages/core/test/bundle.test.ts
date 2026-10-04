@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkBundle, type BundleReport } from '../src/bundle/reader.js';
+import { checkBundle, isUnsafeEntryName, type BundleReport } from '../src/bundle/reader.js';
 import { buildBundleBytes, canonicalizeFrames, writeBundle } from '../src/bundle/writer.js';
 import { ZipArchive, bytesSource, entryFromBytes, zipToBytes } from '../src/bundle/zip.js';
 import type { Frame } from '../src/model/types.js';
@@ -89,19 +89,46 @@ describe('a valid bundle', () => {
 });
 
 describe('step 1: the archive', () => {
+  // The content of an entry of this name: a directory has none.
+  const content = (name: string): Uint8Array => (name.endsWith('/') ? new Uint8Array(0) : json('x'));
+
   it('ignores every entry that is not one of the four, never extracting it', async () => {
-    const report = await check({
-      extra: [
-        ['../../evil.txt', json('x')],
-        ['sub/dir/', new Uint8Array(0)],
-        ['C:\\windows\\system32\\x.dll', json('x')],
-        ['notes.txt', json('x')],
-        ['BUNDLE.JSON', json('{}')],
-      ],
-    });
+    const harmless = ['sub/dir/', 'notes.txt', 'BUNDLE.JSON', 'docs/notes/readme.txt', './x', 'a..b', '..x', 'x..', 'a/..b/c', 'dir.with.dots/y'];
+    const report = await check({ extra: harmless.map((name): [string, Uint8Array] => [name, content(name)]) });
     expect(report.ok).toBe(true);
-    expect(report.warnings.filter((entry) => entry.code === 'entry-ignored')).toHaveLength(5);
-    expect(report.archive?.entries.filter((entry) => entry.role === 'ignored')).toHaveLength(5);
+    expect(report.warnings.filter((entry) => entry.code === 'entry-ignored')).toHaveLength(harmless.length);
+    expect(report.archive?.entries.filter((entry) => entry.role === 'ignored')).toHaveLength(harmless.length);
+  });
+
+  it('rejects the whole bundle when an entry name has a ".." segment, a leading "/" or a backslash', async () => {
+    const unsafe = ['../x', '../../evil.txt', '/x', '/', 'a/../b', 'a/b/..', '..', 'a/../', 'a\\b', '\\x', '..\\..\\evil.txt', 'C:\\windows\\system32\\x.dll'];
+    for (const name of unsafe) {
+      const report = await check({ extra: [[name, content(name)]] });
+      expect(report.ok, name).toBe(false);
+      expect(report.rejection, name).toMatchObject({ code: 'entry-unsafe-name' });
+      expect(report.rejection?.message, name).toContain(JSON.stringify(name));
+      expect(report.rejection?.message, name).toContain('makes the whole bundle invalid');
+      expect(report.rejection?.fix, name).toContain('Remove the entry');
+      expect(codes(report), name).toEqual(['entry-unsafe-name']);
+      // The entry is refused, not ignored: the report does not say both.
+      expect(report.warnings.filter((entry) => entry.code === 'entry-ignored'), name).toEqual([]);
+      expect(report.steps.map((step) => `${step.step}:${step.status}`), name).toEqual(['1:failed']);
+    }
+  });
+
+  it('names every unsafe entry in one message, and still reports what else is wrong with the archive', async () => {
+    const report = await check({ omit: ['frames.json'], extra: [['../a.txt', json('x')], ['b\\c.txt', json('x')], ['fine.txt', json('x')]] });
+    expect(codes(report)).toEqual(['entry-unsafe-name', 'entry-missing']);
+    expect(report.rejection?.message).toContain('entries with an unsafe name ("../a.txt", "b\\\\c.txt")');
+    expect(report.rejection?.fix).toContain('Remove the entries');
+    expect(report.warnings.map((entry) => entry.message)).toEqual([expect.stringContaining('fine.txt')]);
+  });
+
+  it('knows which entry names are unsafe', () => {
+    for (const name of ['../x', '/x', 'a/../b', 'a/b/..', '..', '/', 'a\\b', '\\x', '..\\x']) expect(isUnsafeEntryName(name), name).toBe(true);
+    for (const name of ['x', 'a/b', 'a..b', '..x', 'x..', 'a/..b/c', './x', 'dir/', '', 'bundle.json', 'document.pdf', 'frames.json', 'outline.json']) {
+      expect(isUnsafeEntryName(name), name).toBe(false);
+    }
   });
 
   it('needs bundle.json, document.pdf and frames.json by their exact names', async () => {

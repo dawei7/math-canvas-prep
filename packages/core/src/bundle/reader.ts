@@ -64,6 +64,16 @@ const show = (value: unknown): string => {
   return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 };
 
+/**
+ * Whether the name of an archive entry is one that makes a bundle invalid (docs/BUNDLE_FORMAT.md, section 1): it has a ".."
+ * segment (a part between slashes that is exactly "..", so "a..b" is fine), starts with "/", or has a backslash. The app
+ * refuses such a bundle: the name could leave its folder when the archive is unpacked, and Android 14 and later cannot read
+ * past it.
+ */
+export function isUnsafeEntryName(name: string): boolean {
+  return name.startsWith('/') || name.includes('\\') || name.split('/').includes('..');
+}
+
 /** How deeply objects and lists nest in `json`, ignoring brackets inside strings (the count the app makes before it parses). */
 function nesting(json: string): number {
   let depth = 0;
@@ -156,8 +166,18 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
       method: entry.method === 0 ? 'stored' : 'deflate',
       role: roles[entry.name] ?? 'ignored',
     }));
+    // An entry whose name could leave its folder is not ignored like the others: it makes the whole bundle invalid (section 1).
+    const unsafe = infos.filter((entry) => isUnsafeEntryName(entry.name)).map((entry) => show(entry.name));
+    if (unsafe.length > 0) {
+      const one = unsafe.length === 1;
+      fail(
+        'entry-unsafe-name',
+        `The archive has ${one ? 'an entry' : 'entries'} with an unsafe name (${unsafe.join(', ')}): ${one ? 'it has' : 'each has'} a ".." segment, a leading "/" or a backslash. A name like that could leave its folder when the archive is unpacked, so the format does not ignore ${one ? 'it' : 'them'}: it makes the whole bundle invalid, and a reader rejects the bundle.`,
+        `Remove ${one ? 'the entry' : 'the entries'} from the archive. A bundle holds only bundle.json, document.pdf, frames.json and, if it has one, outline.json (\`mcprep export\` writes exactly these).`,
+      );
+    }
     for (const entry of infos) {
-      if (entry.role === 'ignored') {
+      if (entry.role === 'ignored' && !isUnsafeEntryName(entry.name)) {
         warnings.push(
           issue('warning', 'entry-ignored', `The entry "${entry.name}" is not one of the four fixed names; the importer ignores it and never extracts it.`, {
             fix: 'Entry names are case-sensitive and fixed: bundle.json, document.pdf, frames.json, outline.json.',
@@ -190,7 +210,7 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
     }
     // The app reads the archive as a stream, entry after entry, and a stored entry that has its size after its data (flag
     // bit 3, as a writer that streams makes it) cannot be read that way, whether or not the entry is one of the four.
-    const unreadable = archive.entries.filter((entry) => entry.method === 0 && (entry.flags & 0x8) !== 0).map((entry) => `"${entry.name}"`);
+    const unreadable = archive.entries.filter((entry) => entry.method === 0 && (entry.flags & 0x8) !== 0).map((entry) => show(entry.name));
     if (unreadable.length > 0) {
       fail(
         'zip-stored-descriptor',
