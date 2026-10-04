@@ -688,3 +688,28 @@ name only, because the command line takes it from a file.
 Two agents that were given the same instruction (docs/AUDIT_A_BOOK.md has one) and made the same calls with the same arguments on the
 same project took the same decisions as far as the tools can tell. `exercises verify` and `exercises sample` are what make the checking
 and the looking, which depend most on the model, the same for every agent.
+
+## 16. Finishing an audit: the gate
+
+A sample shows that the audit is good where you looked. The gate shows that it is complete everywhere: it runs every check that needs no
+looking and passes only when nothing is **open**. The whole of it is in docs/AUDIT_A_BOOK.md ("The gate"); the order is this.
+
+1. `exercises_verify` (command `exercises verify`) until there are no errors; read every warning. It also looks for text that no region
+   holds (a missed exercise, the cut-off end of an exercise or an answer), for an instruction on the wrong exercise, for answers under the
+   marker of another section, for a span of regions that skips text. `ink=true` (`--ink`) adds the pixel check of the edges.
+   An answer headed by a word ("Lösung 1.1.2") needs `--item-pattern` (or `--item-pattern-file`) for the heading, as for the proposals.
+2. `book_compare` (`book compare REFERENCE.json`): the count of every section against the book's own list. Look at the pages of every
+   section that differs: the book prints it (acknowledge) or the audit is wrong (repair).
+3. `exercises_sheets` (`exercises sheets --out DIR --solutions`): contact sheets of every exercise, in the order of the book. Look at
+   **every** sheet: the instruction in blue, the exercise in red, the continuations in orange, the answer in green; a cell that is cut,
+   holds a neighbour or shows the wrong answer is repaired. After a repair draw the sheet again (`--sheet N`). Write the numbers of the
+   sheets you looked at in a file (`1-40`); if you cannot look at images, say so: do not list a sheet you did not see.
+4. `audit_gate` (`audit gate --reference ... --ink --sheets-seen ...`): read `open`. Repair what is open and run it again. It writes
+   `<project>.audit-gate.json`; a later change to a frame or to the outline makes that certificate stale (`--status`; `export` says so).
+5. `audit_ack` (`audit ack`) only for what the **book** itself prints: a number printed twice, an answer missing from the key, a practice
+   set with more exercises than the reference lists, a remark printed between two exercises. Give the reason (what the book prints and
+   where), the page and, for a section, how many findings it covers. **Never** acknowledge a defect of ours (a region that cuts a line, an
+   exercise or an answer that was missed, an answer on the wrong exercise): repair it. A blanket acknowledgement is refused.
+6. Report the counts, the certificate and every acknowledgement with its reason: the gate lists them, nothing is left out.
+
+A book is finished when `audit_gate` says `passed: true`, the certificate is current and `export` and `import-check` were done after it.

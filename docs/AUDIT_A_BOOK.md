@@ -297,6 +297,92 @@ or `solution:0`. **Look at exactly these**: `mcprep crop <ref> --region <region>
 cannot see: the right end of every line, text that a region holds below its last line, a figure that is cut, an answer that is not the
 answer to this exercise.
 
+## The gate: proving that an audit is complete
+
+Looking at a sample cannot show that every one of thousands of exercises is right. The **gate** is the end of an audit: it runs every
+check that needs no looking, lists what is **open** (neither repaired nor acknowledged) and passes only when nothing is. Nothing is
+silent: what the book itself prints is acknowledged with a reason that anybody can read, everything else is repaired.
+
+```console
+mcprep exercises verify --details verify.json       # 1. the text checks (about two seconds for a book of 3,000 exercises)
+mcprep exercises verify --ink                       #    and the pixel check of the edges of every region (renders the pages once)
+mcprep book compare reference.json --details c.json # 2. the sections and their counts against the book's own list
+mcprep exercises sheets --out sheets/ --solutions   # 3. contact sheets of EVERY exercise: look at every one
+mcprep audit gate --reference reference.json --ink --sheets-seen sheets/seen.txt   # 4. the gate; exit code 0 only when nothing is open
+mcprep audit ack --code duplicate --ref 3.2:7 --page 120 --reason "..."             # 5. only for what the book prints
+mcprep export && mcprep import-check book.mcbundle  # 6. export says whether the gate is current
+```
+
+**What the gate runs.** `validate` (0 errors: never acknowledgeable); `exercises verify` with every check of the table above (every
+error and warning must be repaired or acknowledged; information needs nothing); with `--ink` the edges of the regions; with
+`--reference FILE` the comparison of `book compare` (a count that differs, a section on one side only, a title: each is a finding
+`reference-count`, `reference-missing`, `reference-extra`, `reference-title`); the bundle exported last, when there is one (it must pass
+the importer's checks and have the frames of the project: `bundle-rejected`, `bundle-stale`); and with `--sheets-seen FILE` the contact
+sheets (below). It reports `open`, `acknowledged` (each with its reason) and exits with code 4 unless `open` is empty. Give it the same
+`--item-pattern` as the audit (or put them in the notes file, as `itemPatterns`): the certificate lists them.
+
+**The contact sheets** (`exercises sheets`, MCP `exercises_sheets`) are for an exhaustive look: every exercise of the book in the
+order of the book, each cell captioned `SECTION:LABEL` and the zero-based pages of its regions (`p. 12, 13-14`), the instruction in a
+blue frame, the exercise in red, its continuations in orange and, with `--solutions`, its answer in green, one region under the other.
+A cell is 740 pixels wide; at most `--per-sheet` (12) cells make a sheet, and a sheet is closed as soon as the next cell would make it
+taller than 2,600 pixels, so that it stays readable; a cell taller than that has a sheet of its own (`tall`; drawn smaller only above
+6,000 pixels, `scaled`). The files are `sheet-0001.png`, ... and `sheets.json`, which lists the references and the pages of each sheet and
+a hash of what it shows. `--sheet N` and `--from-sheet N` draw again after a repair. When you have looked at a sheet, list its number in a
+file (JSON `{"seen": [1, 2, 3]}` or text such as `1-40`) and give the file to the gate: it asks that the sheets cover every exercise
+(`sheets-partial`, `sheets-incomplete`), that each shows its exercises as they are now (`sheets-stale`) and that each is listed
+(`sheets-unseen`). None of these can be acknowledged.
+
+**An acknowledgement** says that a finding is what **the book itself prints**: a number printed twice, an answer missing from the
+key, a practice set with more exercises than the reference lists, a remark printed between two exercises. It is **never** for a defect
+of ours (a region that cuts a line, an exercise or an answer that was missed, an answer on the wrong exercise, an instruction on the wrong
+exercise): those are repaired. `mcprep audit ack --code C --ref R --reason "..." [--page N] [--quote "..."] [--count N]` appends one to
+`<project>.audit-notes.json` after checking that the finding exists now:
+
+- the finding is named by its code and the exercise (`SECTION:LABEL`) or section it is about, as `audit gate` and `exercises verify`
+  name it; `--page` and `--quote` (at most 60 characters of its evidence or message) narrow the note to it;
+- a note for a whole section must say how many findings it covers (`--count N`) or quote the line, so that it cannot cover findings that
+  appear later; a note with `count` applies only while exactly that many findings match, and then it is **stale** (the gate lists it and the
+  findings are open again); a note for a finding that is gone (it was repaired) is **unused** and listed so that it can be removed;
+- a blanket note (no code, a wildcard, a code that is not a finding code) and a reason of under ten characters are refused; so is a note
+  for a finding that does not exist;
+- the notes file is plain JSON (`mcprep schema notes`); the gate lists every note with its reason, and the certificate keeps them.
+
+**The certificate** `<project>.audit-gate.json` (`mcprep schema gate`) holds the SHA-256 of the frames and of the outline, the counts, the
+open and the acknowledged findings, the checks that ran and `passed`. Any later change to a frame or to the outline changes the hash and
+makes the certificate **stale**: `mcprep audit gate --status` says whether it is current and passed (exit code 0 only then), and `export`
+says so in its last lines (`gate` in its JSON result). Run the gate again after every repair; it takes seconds.
+
+### The proof that the gate has teeth
+
+`node scripts/inject-defects.mjs` damages the audited synthetic workbook and the three-page span in a seeded, reproducible way, one
+damaged project for each defect, and runs the gate on each; it must not pass and must name the exercise. Kinds of defect (the number is
+the share named, with 5 injected for each kind and `--ink` on):
+
+| defect | what is done | gate stops and names it |
+| --- | --- | --- |
+| `region-cut-top` | the top edge moves down into the text of the exercise | 100 percent |
+| `region-cut-bottom` | the bottom edge moves up, the last lines are left out | 100 percent |
+| `region-grow` | the region grows down over the next exercise | 100 percent |
+| `region-move` | the region moves down by more than its height | 100 percent |
+| `label-change` | the label is not the number the book prints | 100 percent |
+| `exercise-delete` | an exercise is missing | 100 percent |
+| `exercise-duplicate` | an exercise is there twice | 100 percent |
+| `solutions-swapped` | the answers of two exercises of a section are swapped | 100 percent |
+| `solution-other-section` | an exercise points at the answer of another section | 100 percent |
+| `solution-deleted` | the answer of an exercise is missing | 100 percent |
+| `context-dropped` | an exercise in a group has lost the instruction its neighbours share | 100 percent |
+| `context-wrong` | an exercise has the instruction of another group | 100 percent |
+| `continuation-left-out` | an exercise over a page break has lost its continuation (the workbook has one) | 100 percent |
+| `stray-frame` | a frame that no book exercise is | 100 percent |
+| `stray-exercise` | an extra book exercise framed over the text of another | 100 percent |
+| `span-middle-deleted`, `span-swapped`, `span-shrunk` | the middle continuation of a span is deleted, two are swapped, one is shrunk so that it leaves text out | 100 percent |
+
+The untouched projects pass. What the checks **cannot see** (they need a person looking at the sheets): a continuation that holds no
+text (a figure) that was left out; an instruction dropped from the first or the last exercise of a group (its neighbours on one side
+differ, so only the exercise in the middle of a group is judged); a region that is too large on blank paper (it holds nothing a learner
+would miss); an edge that cuts between two words and so no glyph (with `--ink` those that cut a glyph are found); two exercises swapped
+together with their answers. The test `packages/cli/test/inject-defects.test.ts` runs the same injection in the test suite.
+
 ## Other books: the words and patterns are options
 
 Nothing is built for one book. The defaults read English headings and numbers like `5)`, `5.`, `(5)`, `5a)`; a book that words or numbers
