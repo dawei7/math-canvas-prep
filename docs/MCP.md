@@ -117,7 +117,7 @@ write reads the file fresh under a lock; the desktop app asks which version to k
 
 ## Tool reference
 
-58 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+60 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
 
 ### `create_project`
 
@@ -436,15 +436,15 @@ The guide for agents that mark a PDF: coordinate system with a worked example, w
 
 ### `get_schema` (read-only)
 
-The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export), of the report of exercises_verify, of the sample of exercises_sample, of the gate certificate and the audit notes (gate, notes), of book_compare (compare) and of the contact sheets (sheets).
+The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export), of the report of exercises_verify, of the sample of exercises_sample, of the gate certificate and the audit notes (gate, notes), of book_compare (compare), of the contact sheets (sheets) and of the visual record (visual).
 
 Arguments:
 
-- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify" | "sample" | "gate" | "notes" | "compare" | "sheets")
+- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify" | "sample" | "gate" | "notes" | "compare" | "sheets" | "visual")
 
 ### `exercises_list` (read-only)
 
-The authoritative exercises by section (in the order of the outline) and, within a section, in reading order: id, label (the number the book prints), section, reference (SECTION:LABEL, how to name it), page, rect, and the number of context, continuation and solution regions. totals say how many there are in the whole project and how many have a solution. Use without_solution to see which still have no answer attached.
+The authoritative exercises by section (in the order of the outline) and, within a section, in reading order: id, label (the number the book prints), section, reference (SECTION:LABEL, how to name it), page, rect, and the number of context, continuation and solution regions. totals say how many there are in the whole project and how many have a solution. Use without_solution to see which still have no answer attached. With regions=true every exercise also has regions: { context, continues, solution }, each a list of { page, rect }: copy the instruction of a neighbour with add_context (page, rect) or exercises_add (context).
 
 Arguments:
 
@@ -453,6 +453,7 @@ Arguments:
 - `page` (integer): Only exercises that start on this page.
 - `with_solution` (boolean)
 - `without_solution` (boolean)
+- `regions` (boolean): Also give, for each exercise, its context, continuation and solution regions as { page, rect } objects.
 
 ### `exercises_add`
 
@@ -733,7 +734,7 @@ Arguments:
 
 ### `audit_gate` (read-only)
 
-The end of an audit. Runs validate (0 errors), exercises_verify with every check of whole pages, instructions, spans and the answer key (every error and warning must be repaired or acknowledged; ink=true adds the pixel check of the edges), the comparison with a reference list of the book when reference is given (every difference acknowledged), the import check of the bundle exported last when there is one (it must import and have the frames of the project) and, with sheets_seen, that every contact sheet of exercises_sheets (scope all) shows the exercises as they are now and is listed as looked at. The result has open (neither repaired nor acknowledged), acknowledged (with the reason), passed and the counts; the command exits with code 4 unless nothing is open, which is a result here, not a failure. It writes the certificate <name>.audit-gate.json next to the project (the SHA-256 of the frames and the outline): any later change to them makes it stale. status=true only says whether the certificate is current and passed. Acknowledgements (<name>.audit-notes.json, added with audit_ack) are ONLY for what the BOOK prints (a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists), NEVER for a defect of ours: repair those.
+The end of an audit. Runs validate (0 errors), exercises_verify with every check of whole pages, instructions, spans and the answer key (every error and warning must be repaired or acknowledged; ink=true adds the pixel check of the edges), the comparison with a reference list of the book when reference is given (every difference acknowledged), the import check of the bundle exported last when there is one (it must import and have the frames of the project) and, with sheets_seen, that every contact sheet of exercises_sheets (scope all) shows the exercises as they are now and is listed as looked at, and with visual the visual record: a JSON list with ONE ENTRY PER EXERCISE, written by whoever looked at its cell, { ref: "1.2:5", startsWith: "the first three words after the number", instruction: true (the cell shows a blue box), answerStartsWith: "5" (the number at the start of the green box, or ""), ok: true } (ok: false with defect: "CODE" for a defect). The gate checks that every exercise has an entry, that startsWith is a piece of the text of the exercise's region, that instruction is whether the exercise has an instruction and that answerStartsWith is the number at the start of the text of its answer: a mismatch is open as visual-mismatch (the cell was not looked at), ok false as visual-defect, no entry as visual-missing; a bare sheets_seen list proves nothing (exhaustive is true only when the visual record covers every exercise). The result has open (neither repaired nor acknowledged), acknowledged (with the reason), passed, unconfirmed (acknowledgements that no second reviewer confirmed with audit_confirm), perfect (nothing open, the visual record covers every exercise, nothing unconfirmed) and the counts; final=true makes the exit code 4 unless it is perfect; the command exits with code 4 unless nothing is open, which is a result here, not a failure. It writes the certificate <name>.audit-gate.json next to the project (the SHA-256 of the frames and the outline): any later change to them makes it stale. status=true only says whether the certificate is current and passed. Acknowledgements (<name>.audit-notes.json, added with audit_ack) are ONLY for what the BOOK prints (a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists), NEVER for a defect of ours: a label-not-first, solution-label-missing, overlap, duplicate-region, section-unknown, section-page, span-gap, continuation-order, context-range, context-missing, context-inconsistent, context-not-nearest, solution-section-mismatch or region-holds-item can not be acknowledged at all: repair those.
 
 Arguments:
 
@@ -741,12 +742,14 @@ Arguments:
 - `chapter_offset` (integer): Added to the chapter numbers of a reference with chapters.
 - `ink` (boolean): Also render the pages and check the edges of the regions (edge-on-ink). Slower.
 - `item_patterns` (string[]): How the number of an exercise or an answer starts a line, as for exercises_verify (regular expressions with the label in group 1).
+- `visual` (string): The visual record: a JSON list with one entry per exercise { ref, startsWith, instruction, answerStartsWith, ok, defect? }, written by whoever looked at its cell.
+- `final` (boolean): The last gate of a book: exit code 4 unless it is perfect (nothing open, the visual record covers every exercise, no acknowledgement unconfirmed).
 - `sheets_seen` (string): The list of the contact sheets that were looked at (JSON {"seen": [1, 2]} or text such as 1-12, 14), next to the sheets.json of exercises_sheets with scope all.
 - `status` (boolean): Only say whether the certificate on disk is for the project as it is now and whether it passed; run no check.
 
 ### `audit_ack`
 
-Appends one acknowledgement to <name>.audit-notes.json after checking that the finding exists now. code is the code of the finding (duplicate, no-solution, gap, reference-count, ...), ref the exercise (SECTION:LABEL) or the section, page the page of the finding, quote a piece of its text (at most 60 characters), count how many findings the note covers (required for a section: the note applies only while exactly that many match), reason what the book prints and where (a sentence). Acknowledge ONLY what the BOOK itself prints: a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark between two exercises. A region that cuts a line, an exercise or an answer that was missed, an answer on the wrong exercise are defects of ours: repair them. A blanket acknowledgement (no code, no exercise, a wildcard) is refused. Give the same reference, ink and item_patterns as for audit_gate when the finding comes from them.
+Appends one acknowledgement to <name>.audit-notes.json after checking everything that can be checked. code is the code of the finding as audit_gate names it (duplicate, no-solution, gap, reference-count, ...): a code that names a defect of the audit (label-not-first, solution-label-missing, overlap, duplicate-region, section-unknown, section-page, span-gap, continuation-order, context-range, context-missing, context-inconsistent, context-not-nearest, solution-section-mismatch, region-holds-item) is REFUSED, with the command that repairs it. ref is the exercise (SECTION:LABEL) or the section, exactly as the finding names it; page the zero-based page of the finding; quote a piece of the text printed ON THAT PAGE (4 to 60 characters, copied from get_page_lines; it must be in the text layer of the page: a piece of the finding's own message does not count); reason what the book prints and where, in your own words (at least 10 characters; one that repeats the finding is refused); count how many findings the note covers (required for a section). Every error says what is wrong and what to give instead. The new note is NOT confirmed: a second reviewer (another by) looks at it (audit_review) and confirms it (audit_confirm); audit_gate reports unconfirmed. Acknowledge ONLY what the BOOK itself prints: a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark between two exercises. A region that cuts a line, an exercise or an answer that was missed, an answer or an instruction on the wrong exercise are defects of ours: repair them. Give the same reference, ink and item_patterns as for audit_gate when the finding comes from them.
 
 Arguments:
 
@@ -754,10 +757,34 @@ Arguments:
 - `chapter_offset` (integer): Added to the chapter numbers of a reference with chapters.
 - `ink` (boolean): Also render the pages and check the edges of the regions (edge-on-ink). Slower.
 - `item_patterns` (string[]): How the number of an exercise or an answer starts a line, as for exercises_verify (regular expressions with the label in group 1).
-- `code`* (string): The code of the finding.
-- `ref`* (string): The exercise (SECTION:LABEL) or the section the finding is about, as the finding names it.
-- `reason`* (string): Why it is not a defect: what the book prints and where.
-- `page` (integer): The zero-based page of the finding.
-- `quote` (string): A piece of the evidence or the message of the finding (at most 60 characters).
-- `count` (integer): How many findings the note covers (required for a section).
-- `by` (string): Who looked (default "agent").
+- `code`* (string): The code of the finding, as audit_gate names it.
+- `ref`* (string): The exercise (SECTION:LABEL) or the section the finding is about, exactly as the finding names it.
+- `reason`* (string): What the book prints that makes the finding correct, and where, in your own words (at least 10 characters; not the text of the finding).
+- `page` (number): The zero-based page of the finding (required for a finding that has a page).
+- `quote` (string): A piece of the text printed on that page, 4 to 60 characters, copied from get_page_lines (required with page; it must be in the text layer of the page).
+- `count` (number): How many findings the note covers (required for a section).
+- `by` (string): Who looked (default "agent"); the one who confirms the note must be another.
+
+### `audit_confirm`
+
+A second reviewer confirms acknowledgements of <name>.audit-notes.json: it looked at each one (audit_review shows the picture, the reason and the quote) and the book prints what it says. by must be ANOTHER identity than the one who wrote the note. Name one note with ref (and code, page when the exercise has several), or confirm every note of the others with all=true. A note that is changed or replaced is not confirmed again. audit_gate reports how many notes are unconfirmed; confirm only what the book really prints and repair the rest.
+
+Arguments:
+
+- `by`* (string): Who confirms: another name than the one that wrote the note.
+- `ref` (string): The acknowledgement to confirm (as in the notes).
+- `code` (string): With ref: narrow to this code.
+- `page` (number): With ref: narrow to this page.
+- `all` (boolean): Confirm every acknowledgement that was written by someone else than by.
+
+### `audit_review` (read-only)
+
+For every acknowledgement of <name>.audit-notes.json writes, into out_dir, a picture of what it is about (the exercise region or the place on the page, without any grid) named NNN-code-ref.png, and an index.md that lists every note on one line (code, ref, page, who wrote it, whether it is confirmed, the reason, the quote and whether the quote is on the page) and then each note with its picture, the finding it covers and the command that confirms it; review.json has the same for a program. Notes that no longer apply and notes that are not allowed are listed as such. Nothing in the project is changed. Look at each picture, read the reason, then audit_confirm what the book really prints; repair the others.
+
+Arguments:
+
+- `reference` (string): Also compare with this reference list of the book (see book_compare).
+- `chapter_offset` (integer): Added to the chapter numbers of a reference with chapters.
+- `ink` (boolean): Also render the pages and check the edges of the regions (edge-on-ink). Slower.
+- `item_patterns` (string[]): How the number of an exercise or an answer starts a line, as for exercises_verify (regular expressions with the label in group 1).
+- `out_dir`* (string): The folder for the pictures, index.md and review.json.

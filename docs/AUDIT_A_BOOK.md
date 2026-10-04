@@ -142,7 +142,7 @@ some other way (`Problem 12.`).
 | `context-range` | error | The instruction that is the `context` of an exercise names numbers (`Exercises 5 - 10`, `For 10-13`, `Problems 3 and 4`) and the exercise's own number is not among them: it has the instruction of another group. Plain numbers only (a dotted label is not named by a range). | `crop SECTION:LABEL --region context:0`; give the exercise the instruction printed for it (`context remove`, `context add`). |
 | `context-missing` | error | An instruction line of the section names this exercise's number (`Exercises 2 - 3`) and is not its context (nor inside its own region). | `context add SECTION:LABEL --page P --rect l,t,r,b --snap` with the instruction's region. |
 | `context-not-nearest` | warning | An instruction (a bold line that tells what to do, or one that starts like an instruction) is printed between the instruction the exercise has and the exercise, and is neither inside the region of an exercise nor attached to this one. | Look at the page: the nearer instruction is probably the exercise's own (`context remove`, `context add`); a bold line that is no instruction (a heading of a part) is acknowledged. |
-| `context-inconsistent` | warning | The exercise before this one and the exercise after it share an instruction (`context`) that this one does not have: it has none, or another one that is not printed between the previous exercise and this one. An instruction that was dropped or put on the wrong exercise. The first and the last exercise of a group are not judged (their neighbours differ). | `crop SECTION:LABEL --region context:0`; give it the instruction of its neighbours (`context add SECTION:LABEL --page P --rect l,t,r,b --snap`, `context remove` for the wrong one). An exercise with an instruction of its own printed right above it is the book's. |
+| `context-inconsistent` | warning | The instruction of an exercise (`context`, compared as the set of its regions: an instruction across a page break is two) is not the one of its group: (a) an instruction printed right above it, between the end of the previous exercise and its top, that other exercises have and it does not (the first exercise of a group, an exercise that was put back without it); (b) the exercises before and after it share an instruction that it does not have, and it has none or another one that is not printed above it; (c) it has none, the exercise before it has an instruction that two or more exercises share, and nothing is printed between them (the last exercise of a group). Not judged: an exercise with an instruction of its own printed above it, an exercise alone in its group, a section whose exercises stand inline. Can never be acknowledged. | `crop SECTION:LABEL --region context:0`; copy the regions of its neighbour: `exercises list --section S --regions`, then `context add SECTION:LABEL --page P --rect l,t,r,b` for each region (`context remove` for a wrong one). |
 | `solution-section-mismatch` | error | The answer key is set in sections, with a marker (the section's number alone on a row, or a heading with its unique title), and the solution region of an exercise lies under the marker of another section. | `crop SECTION:LABEL --region solution:0`; point the exercise at its own answer (`solution remove`, `solution add`). |
 | `solution-order` | warning | The answers of one section do not run in the order of their numbers within a column of the key (numbers are compared as numbers, a dotted label number by number). Answers that share one region are left out. | Look at the answer and its neighbours: a region that was put on the wrong exercise (`solution add`) or a label that was mistyped (`exercises label`). |
 | `edge-on-ink` | warning | Only with `--ink` (MCP `ink: true`): the top, bottom, left or right edge of a region of an exercise, instruction, continuation or solution lies on dark pixels of the rendered page (more than 2 percent of the pixels along it in the three rows or columns around it): a printed glyph is cut. Worst first, with the side. Evidence: the side and the share. | `crop SECTION:LABEL` and move that edge into the white (`frames update`, `--snap` places an edge in the white between two lines). |
@@ -304,25 +304,34 @@ answer to this exercise.
 
 Looking at a sample cannot show that every one of thousands of exercises is right. The **gate** is the end of an audit: it runs every
 check that needs no looking, lists what is **open** (neither repaired nor acknowledged) and passes only when nothing is. Nothing is
-silent: what the book itself prints is acknowledged with a reason that anybody can read, everything else is repaired.
+silent: what the book itself prints is acknowledged with a reason that anybody can read and a second reviewer confirms, everything else is
+repaired, and that every exercise was looked at is proved exercise by exercise.
 
 ```console
 mcprep exercises verify --details verify.json       # 1. the text checks (about two seconds for a book of 3,000 exercises)
 mcprep exercises verify --ink                       #    and the pixel check of the edges of every region (renders the pages once)
 mcprep book compare reference.json --details c.json # 2. the sections and their counts against the book's own list
-mcprep exercises sheets --out sheets/ --solutions   # 3. contact sheets of EVERY exercise: look at every one
-mcprep audit gate --reference reference.json --ink --sheets-seen sheets/seen.txt   # 4. the gate; exit code 0 only when nothing is open
-mcprep audit ack --code duplicate --ref 3.2:7 --page 120 --reason "..."             # 5. only for what the book prints
-mcprep export && mcprep import-check book.mcbundle  # 6. export says whether the gate is current
+mcprep exercises sheets --out sheets/ --solutions   # 3. contact sheets of EVERY exercise: look at every one, write the visual record
+mcprep audit gate --reference reference.json --ink --visual visual.json   # 4. the gate; exit code 0 only when nothing is open
+mcprep audit ack --code duplicate --ref 3.2:7 --page 120 --quote "7. Find the" --reason "..."   # 5. only for what the book prints
+mcprep audit review --out review/ && mcprep audit confirm --by REVIEWER --all  # 6. a second reviewer looks at each note
+mcprep audit gate --reference reference.json --ink --visual visual.json --final   # 7. exit code 0 only when the book is perfect
+mcprep export && mcprep import-check book.mcbundle  # 8. export says whether the gate is current
 ```
 
 **What the gate runs.** `validate` (0 errors: never acknowledgeable); `exercises verify` with every check of the table above (every
 error and warning must be repaired or acknowledged; information needs nothing); with `--ink` the edges of the regions; with
 `--reference FILE` the comparison of `book compare` (a count that differs, a section on one side only, a title: each is a finding
 `reference-count`, `reference-missing`, `reference-extra`, `reference-title`); the bundle exported last, when there is one (it must pass
-the importer's checks and have the frames of the project: `bundle-rejected`, `bundle-stale`); and with `--sheets-seen FILE` the contact
-sheets (below). It reports `open`, `acknowledged` (each with its reason) and exits with code 4 unless `open` is empty. Give it the same
-`--item-pattern` as the audit (or put them in the notes file, as `itemPatterns`): the certificate lists them.
+the importer's checks and have the frames of the project: `bundle-rejected`, `bundle-stale`); with `--sheets-seen FILE` the contact
+sheets (below); and with `--visual FILE` the visual record (below). It reports `open`, `acknowledged` (each with its reason) and exits with
+code 4 unless `open` is empty. Give it the same `--item-pattern` as the audit (or put them in the notes file, as `itemPatterns`): the
+certificate lists them.
+
+**Perfect.** The report says `passed` (nothing is open), `unconfirmed` (how many acknowledgements no second reviewer confirmed) and
+`perfect`: nothing is open, the visual record has an entry for every exercise and nothing is unconfirmed. `--final` makes the exit code 4
+unless the book is perfect. A book is finished when `audit gate --final` exits with 0, the certificate is current, and `export` and
+`import-check` were done after it.
 
 **The contact sheets** (`exercises sheets`, MCP `exercises_sheets`) are for an exhaustive look: every exercise of the book in the
 order of the book, each cell captioned `SECTION:LABEL` and the zero-based pages of its regions (`p. 12, 13-14`), the instruction in a
@@ -333,58 +342,103 @@ taller than 2,600 pixels, so that it stays readable; a cell taller than that has
 a hash of what it shows. `--sheet N` and `--from-sheet N` draw again after a repair. When you have looked at a sheet, list its number in a
 file (JSON `{"seen": [1, 2, 3]}` or text such as `1-40`) and give the file to the gate: it asks that the sheets cover every exercise
 (`sheets-partial`, `sheets-incomplete`), that each shows its exercises as they are now (`sheets-stale`) and that each is listed
-(`sheets-unseen`). None of these can be acknowledged.
+(`sheets-unseen`). None of these can be acknowledged. **A list of numbers proves nothing**: `exhaustive` in the certificate is true only
+when the visual record covers every exercise.
+
+**The visual record** (`audit gate --visual FILE`, `mcprep schema visual`) is the proof of looking: a JSON list with **one entry for
+every exercise**, written by whoever looked at its cell on the sheets (an object `{"visual": [...]}` is accepted as well):
+
+```json
+[{ "ref": "1.2:5", "startsWith": "Find the value", "instruction": true, "answerStartsWith": "5", "ok": true },
+ { "ref": "1.2:6", "startsWith": "Find the value", "instruction": true, "answerStartsWith": "6", "ok": false, "defect": "context-missing" }]
+```
+
+- `ref` is `SECTION:LABEL`; `startsWith` the first three words printed after the number, as you read them in the cell;
+  `instruction` whether the cell shows a blue box; `answerStartsWith` the number at the start of the green box (`""` when there is none);
+  `ok` false, with `defect` (a finding code or a word), when the cell shows anything wrong.
+- The gate checks each entry against the project and the text layer: every exercise has an entry (`visual-missing`, one finding for the
+  exercises of a section); `startsWith` (its first three words, case and spaces do not matter) is a piece of the text of the exercise's
+  region; `instruction` is whether the exercise has an instruction (a `context` region); `answerStartsWith` is the number at the start of the
+  text of its answer region (or `""` for an exercise without one). An entry that does not fit is open as `visual-mismatch`: it shows that
+  the cell was not looked at, or that the exercise changed afterwards. An entry with `ok` false is open as `visual-defect`. An entry for
+  something that is no exercise, a repeated entry and an entry that lacks a field are `visual-mismatch` too. None of these can be
+  acknowledged: repair the exercise, look at its sheet again and change its entry.
+- Write what the cell shows, not what the project says: a cell without a blue box is `"instruction": false`, and the gate (and
+  `context-inconsistent`) then say what is missing.
 
 **An acknowledgement** says that a finding is what **the book itself prints**: a number printed twice, an answer missing from the
 key, a practice set with more exercises than the reference lists, a remark printed between two exercises. It is **never** for a defect
-of ours (a region that cuts a line, an exercise or an answer that was missed, an answer on the wrong exercise, an instruction on the wrong
-exercise): those are repaired. `mcprep audit ack --code C --ref R --reason "..." [--page N] [--quote "..."] [--count N]` appends one to
-`<project>.audit-notes.json` after checking that the finding exists now:
+of ours: the findings `label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`, `section-unknown`, `section-page`,
+`span-gap`, `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`,
+`solution-section-mismatch` and `region-holds-item` can **not be acknowledged at all**: `audit ack` refuses them with the command that
+repairs each, and the gate takes no note for them from the file either (it lists the note under `refusedAcknowledgements`; the finding
+stays open). `mcprep audit ack --code C --ref R --page N --quote "..." --reason "..." [--count N] [--by NAME]` appends one to
+`<project>.audit-notes.json` after checking everything that can be checked, and every refusal says what is wrong and what to give instead:
 
-- the finding is named by its code and the exercise (`SECTION:LABEL`) or section it is about, as `audit gate` and `exercises verify`
-  name it; `--page` and `--quote` (at most 60 characters of its evidence or message) narrow the note to it;
-- a note for a whole section must say how many findings it covers (`--count N`) or quote the line, so that it cannot cover findings that
-  appear later; a note with `count` applies only while exactly that many findings match, and then it is **stale** (the gate lists it and the
-  findings are open again); a note for a finding that is gone (it was repaired) is **unused** and listed so that it can be removed;
-- a blanket note (no code, a wildcard, a code that is not a finding code) and a reason of under ten characters are refused; so is a note
-  for a finding that does not exist;
+- `--code` must be the code of a finding that exists now for `--ref` (an exercise as `SECTION:LABEL`, a section as its id, exactly as the
+  finding names it), and not one of the codes above;
+- `--page` (zero-based) is required for a finding that has a page, and it picks the finding;
+- `--quote`, 4 to 60 characters, must be a piece of the **text printed on that page** (case and spaces do not matter): copy it from
+  `mcprep lines PAGE`. A piece of the finding's own message is not on the page and is refused. It shows the reviewer what the book prints;
+- `--reason` says what the book prints and where, in your own words: at least 10 characters, and not the text of the finding;
+- a note for a whole section (a ref without a label) must say how many findings it covers (`--count N`); a note with a count applies only
+  while exactly that many findings match, then it is **stale** (the gate lists it and the findings are open again); a note for a finding
+  that is gone (repaired) is **unused** and listed so that it can be removed;
 - the notes file is plain JSON (`mcprep schema notes`); the gate lists every note with its reason, and the certificate keeps them.
 
+**A second reviewer** confirms every acknowledgement. A new note is `confirmed: false`; `mcprep audit review --out DIR` writes, for every
+note, the picture of what it is about (the exercise's region or the line on the page, without any grid), the reason, the quote (and whether
+it is on the page) and an `index.md` (and `review.json`) so that a person or another agent can check each one quickly; the reviewer then
+runs `mcprep audit confirm --by NAME --ref R --code C` (or `--all`) with a name that is **not** the name of the one who wrote the note.
+A note that is changed or replaced is not confirmed again. The gate stays `passed` with unconfirmed notes but says `unconfirmed: N`, the
+certificate records it, `export` prints "N acknowledgements are not yet confirmed by a second reviewer", and the book is not `perfect`.
+
+**Repairing from a neighbour.** `mcprep exercises list --section S --regions` (MCP `exercises_list` with `regions`) prints for each
+exercise its instruction (`context`), continuation and solution regions as `page:left,top,right,bottom` (JSON: the objects under
+`regions`): to give an exercise the instruction of its neighbour, `mcprep context add REF --page P --rect l,t,r,b` for each region of it
+(an instruction across a page break is two regions), or `exercises add ... --context P:l,t,r,b`.
+
 **The certificate** `<project>.audit-gate.json` (`mcprep schema gate`) holds the SHA-256 of the frames and of the outline, the counts, the
-open and the acknowledged findings, the checks that ran and `passed`. Any later change to a frame or to the outline changes the hash and
-makes the certificate **stale**: `mcprep audit gate --status` says whether it is current and passed (exit code 0 only then), and `export`
-says so in its last lines (`gate` in its JSON result). Run the gate again after every repair; it takes seconds.
+open and the acknowledged findings, `unconfirmed`, `perfect`, the checks that ran and `passed`. Any later change to a frame or to the
+outline changes the hash and makes the certificate **stale**: `mcprep audit gate --status` says whether it is current and passed (exit code
+0 only then), and `export` says so in its last lines (`gate` in its JSON result). Run the gate again after every repair; it takes seconds.
 
 ### The proof that the gate has teeth
 
 `node scripts/inject-defects.mjs` damages the audited synthetic workbook and the three-page span in a seeded, reproducible way, one
-damaged project for each defect, and runs the gate on each; it must not pass and must name the exercise. Kinds of defect (the number is
-the share named, with 5 injected for each kind and `--ink` on):
+damaged project for each defect, and runs the gate on each; it must not pass and must name the exercise. Kinds of defect (every one is
+stopped and named in 100 percent of the damaged projects, with 5 or 6 injected for each kind and `--ink` on, for the seed 20261004 and for
+four other seeds):
 
-| defect | what is done | gate stops and names it |
-| --- | --- | --- |
-| `region-cut-top` | the top edge moves down into the text of the exercise | 100 percent |
-| `region-cut-bottom` | the bottom edge moves up, the last lines are left out | 100 percent |
-| `region-grow` | the region grows down over the next exercise | 100 percent |
-| `region-move` | the region moves down by more than its height | 100 percent |
-| `label-change` | the label is not the number the book prints | 100 percent |
-| `exercise-delete` | an exercise is missing | 100 percent |
-| `exercise-duplicate` | an exercise is there twice | 100 percent |
-| `solutions-swapped` | the answers of two exercises of a section are swapped | 100 percent |
-| `solution-other-section` | an exercise points at the answer of another section | 100 percent |
-| `solution-deleted` | the answer of an exercise is missing | 100 percent |
-| `context-dropped` | an exercise in a group has lost the instruction its neighbours share | 100 percent |
-| `context-wrong` | an exercise has the instruction of another group | 100 percent |
-| `continuation-left-out` | an exercise over a page break has lost its continuation (the workbook has one) | 100 percent |
-| `stray-frame` | a frame that no book exercise is | 100 percent |
-| `stray-exercise` | an extra book exercise framed over the text of another | 100 percent |
-| `span-middle-deleted`, `span-swapped`, `span-shrunk` | the middle continuation of a span is deleted, two are swapped, one is shrunk so that it leaves text out | 100 percent |
+| defect | what is done |
+| --- | --- |
+| `region-cut-top` | the top edge moves down into the text of the exercise |
+| `region-cut-bottom` | the bottom edge moves up, the last lines are left out |
+| `region-grow` | the region grows down over the next exercise |
+| `region-move` | the region moves down by more than its height |
+| `label-change` | the label is not the number the book prints |
+| `exercise-delete` | an exercise is missing |
+| `exercise-duplicate` | an exercise is there twice |
+| `solutions-swapped` | the answers of two exercises of a section are swapped |
+| `solution-other-section` | an exercise points at the answer of another section |
+| `solution-deleted` | the answer of an exercise is missing |
+| `context-dropped` | an exercise in the middle of a group has lost the instruction its neighbours share |
+| `context-dropped-start` | the first exercise of a group has lost the instruction printed right above it (an exercise put back without it) |
+| `context-dropped-end` | the last exercise of a group has lost the instruction of the exercises before it |
+| `context-wrong` | an exercise has the instruction of another group |
+| `continuation-left-out` | an exercise over a page break has lost its continuation (the workbook has one) |
+| `stray-frame` | a frame that no book exercise is |
+| `stray-exercise` | an extra book exercise framed over the text of another |
+| `span-middle-deleted`, `span-swapped`, `span-shrunk` | the middle continuation of a span is deleted, two are swapped, one is shrunk so that it leaves text out |
 
-The untouched projects pass. What the checks **cannot see** (they need a person looking at the sheets): a continuation that holds no
-text (a figure) that was left out; an instruction dropped from the first or the last exercise of a group (its neighbours on one side
-differ, so only the exercise in the middle of a group is judged); a region that is too large on blank paper (it holds nothing a learner
-would miss); an edge that cuts between two words and so no glyph (with `--ink` those that cut a glyph are found); two exercises swapped
-together with their answers. The test `packages/cli/test/inject-defects.test.ts` runs the same injection in the test suite.
+The untouched projects pass. What the checks **cannot see** (they need a person looking at the sheets, and the visual record makes them
+say so): a continuation that holds no text (a figure) that was left out; an instruction dropped from an exercise that is alone in its group
+(nothing else carries it, so only the unattached line shows, as text left behind); a region that is too large on blank paper (it holds
+nothing a learner would miss); an edge that cuts between two words and so no glyph (with `--ink` those that cut a glyph are found; a cut
+that only touches the tops of the glyphs, under 2 percent of the edge, is not); two exercises swapped together with their answers. The test
+`packages/cli/test/inject-defects.test.ts` runs the same injection in the test suite, and `packages/cli/test/gate-review.test.ts` the seven
+defects of a cold-start test of the harness (a label cut, a region over the next exercise, an exercise deleted and put back without its
+instruction, a wrong label, a wrong answer, an instruction removed, an answer cut in half).
 
 ## Other books: the words and patterns are options
 

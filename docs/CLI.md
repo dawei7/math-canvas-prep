@@ -112,14 +112,16 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`book export`](#book-export): Write the book summary (sections with exercise counts, totals, document information) as a plain JSON file.
 - [`book compare`](#book-compare): Compare the audited sections and their exercise counts with a reference list of the book; exit code 4 when anything differs.
 - [`audit gate`](#audit-gate): The end of an audit: run every check without looking, say what is open, exit 0 only when nothing is; writes the certificate.
-- [`audit ack`](#audit-ack): Acknowledge a finding as what the BOOK prints, with the reason; never for a defect of ours.
+- [`audit ack`](#audit-ack): Acknowledge a finding as what the BOOK prints, with the reason and a quote of the page; never for a defect of the audit.
+- [`audit confirm`](#audit-confirm): A second reviewer confirms acknowledgements: it looked at each one and the book prints what it says.
+- [`audit review`](#audit-review): Write what a second reviewer needs to check every acknowledgement: the picture, the reason, the quote and an index.
 - [`meta`](#meta): Show or change the title and library folder of the project (author, licence and notice: `book meta`).
 - [`relink`](#relink): Point the project at the PDF where it now is.
 - [`validate`](#validate): Check the project against every rule of the bundle format; errors name the frame and the fix.
 - [`export`](#export): Write the project as a .mcbundle: the PDF plus its frames and outline, ready for the Android app's library.
 - [`inspect-bundle`](#inspect-bundle): Look inside a .mcbundle: manifest, entries, frames with their labels, outline, problems.
 - [`import-check`](#import-check): Do exactly what the Android importer does with a bundle, step by step, and say whether it would accept it.
-- [`schema`](#schema): Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets.
+- [`schema`](#schema): Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual.
 - [`guide`](#guide): Print the guide for AI agents that mark a PDF with this tool.
 
 ## init
@@ -1289,6 +1291,7 @@ Options:
 - `--page <n>`: Only exercises that start on this zero-based page.
 - `--with-solution`: Only exercises that have a solution region.
 - `--without-solution`: Only exercises that have no solution region.
+- `--regions`: Also print, for each exercise, its instruction (context), continuation and solution regions as page:left,top,right,bottom (JSON: the objects under `regions`), to copy the instruction of a neighbour: `context add REF --page P --rect l,t,r,b` or `exercises add ... --context P:l,t,r,b`.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
@@ -1300,9 +1303,10 @@ Examples:
 $ mcprep exercises list
 $ mcprep exercises list --section 1.2 --json
 $ mcprep exercises list --without-solution
+$ mcprep exercises list --section 1.2 --regions
 ```
 
-With `--json`, `result` is: `{ exercises: [{ id, label, section, reference, page, rect, context, continues, solution }], count, totals: { exercises, withSolution } }; totals are for the whole project, count for the list`
+With `--json`, `result` is: `{ exercises: [{ id, label, section, reference, page, rect, context, continues, solution, regions? }], count, totals: { exercises, withSolution } }; context, continues and solution are counts; with --regions each exercise also has regions: { context: [{ page, rect }], continues: [...], solution: [...] }; totals are for the whole project, count for the list`
 
 ## exercises add
 
@@ -1728,7 +1732,7 @@ The end of an audit: run every check without looking, say what is open, exit 0 o
 mcprep audit gate [options]
 ```
 
-Runs `validate` (0 errors), `exercises verify` with every check of whole pages, instructions, spans and the answer key (every error and warning is repaired or acknowledged; `--ink` adds the pixel check of the edges), the comparison with a reference list of the book when `--reference` is given (every difference acknowledged), `import-check` of the bundle exported last when there is one (it must import and have the frames of the project), and, with `--sheets-seen FILE`, that every contact sheet of `exercises sheets --all` shows the exercises as they are now and is listed as looked at (FILE is JSON {"seen": [1, 2, 3]} or text such as 1-12, 14). It reports `open` (neither repaired nor acknowledged) and `acknowledged` (with the reason) and exits with code 4 unless `open` is empty. The certificate is written next to the project as <name>.audit-gate.json: the SHA-256 of the frames and of the outline, the counts, the acknowledgements and `passed`; any later change to the frames or the outline makes it stale (`--status` says whether it is current, `export` says so too). Acknowledgements are read from <name>.audit-notes.json and added with `mcprep audit ack`: ONLY for what the BOOK prints (a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists), NEVER for a defect of ours (a region that cuts a line, an exercise that was missed, an answer on the wrong exercise): repair those. A blanket "everything" is refused, a note for a section must say how many findings it covers, and a note whose findings changed no longer applies.
+Runs `validate` (0 errors), `exercises verify` with every check of whole pages, instructions, spans and the answer key (every error and warning is repaired or acknowledged; `--ink` adds the pixel check of the edges), the comparison with a reference list of the book when `--reference` is given (every difference acknowledged), `import-check` of the bundle exported last when there is one (it must import and have the frames of the project), with `--sheets-seen FILE` that every contact sheet of `exercises sheets --all` shows the exercises as they are now and is listed as looked at (FILE is JSON {"seen": [1, 2, 3]} or text such as 1-12, 14), and with `--visual FILE` the visual record: ONE ENTRY PER EXERCISE, written by whoever looked at its cell, [{ "ref": "1.2:5", "startsWith": "the first three words after the number", "instruction": true, "answerStartsWith": "5", "ok": true }] ("instruction": whether the cell shows a blue box; "answerStartsWith": the number at the start of the green box, or ""; "ok": false with "defect": "CODE" when the cell shows a defect). The gate checks that every exercise has an entry, that startsWith is a piece of the text of the exercise's region (three words, case and spaces do not matter), that instruction is whether the exercise has an instruction, and that answerStartsWith is the number at the start of the text of its answer: a mismatch is open as `visual-mismatch` (the cell was not looked at), `ok: false` as `visual-defect`, an exercise without an entry as `visual-missing`. A bare list of sheets (`--sheets-seen`) proves nothing: `exhaustive` is true only when the visual record covers every exercise. It reports `open` (neither repaired nor acknowledged) and `acknowledged` (with the reason) and exits with code 4 unless `open` is empty. It also says `unconfirmed`: how many acknowledgements no second reviewer has confirmed (`audit confirm`); `perfect` is true only when nothing is open, the visual record covers every exercise and nothing is unconfirmed, and `--final` exits with code 4 unless it is. The certificate is written next to the project as <name>.audit-gate.json: the SHA-256 of the frames and of the outline, the counts, the acknowledgements, `passed`, `unconfirmed` and `perfect`; any later change to the frames or the outline makes it stale (`--status` says whether it is current, `export` says so too). Acknowledgements are read from <name>.audit-notes.json and added with `mcprep audit ack`: ONLY for what the BOOK prints (a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists), NEVER for a defect of ours: a region that cuts a line, an exercise or an answer that was missed, an answer or an instruction on the wrong exercise can not be acknowledged at all (`audit ack` refuses these codes and the gate takes no note for them): repair them.
 
 Options:
 
@@ -1738,6 +1742,8 @@ Options:
 - `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file (itemPatterns) apply as well. The certificate lists them with every letter outside ASCII written as an escape.
 - `--item-pattern-file <file>`: The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis).
 - `--sheets-seen <file>`: The list of the contact sheets that were looked at (JSON {"seen": [1, 2]} or text such as 1-12, 14), next to the sheets.json of `exercises sheets --all`.
+- `--visual <file>`: The visual record: a JSON list with ONE ENTRY PER EXERCISE, { ref, startsWith, instruction, answerStartsWith, ok, defect? }, written by whoever looked at its cell; checked against the project and the text layer.
+- `--final`: The last gate of a book: exit with code 4 unless it is perfect (nothing open, the visual record covers every exercise, every acknowledgement confirmed).
 - `--status`: Only say whether the certificate on disk is for the project as it is now and whether it passed (exit code 0 only when it is current and passed); run no check.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
@@ -1748,31 +1754,32 @@ Examples:
 
 ```console
 $ mcprep audit gate
-$ mcprep audit gate --reference reference.json --chapter-offset -1 --ink --sheets-seen sheets/seen.txt
+$ mcprep audit gate --reference reference.json --chapter-offset -1 --ink --visual visual.json --sheets-seen sheets/seen.txt
+$ mcprep audit gate --visual visual.json --final
 $ mcprep audit gate --status
 ```
 
-With `--json`, `result` is: `{ format: "math-canvas-audit-gate", version: 1, createdAt, passed, project: { name, frames, outline, hash }, counts: { sections, exercises, solutions, errors, warnings, infos, open, acknowledged }, checks: { validate, verify, reference, bundle, sheets }, itemPatterns, open: [{ source, code, severity, ref, page, message, evidence, acknowledgeable }] (the first 300; openOmitted says how many more), acknowledged: [{ finding, acknowledgement }], staleAcknowledgements, unusedAcknowledgements, certificate: path }; with --status { status: "none"|"stale"|"failed"|"passed", ... }; the exit code is 4 unless the gate passed`
+With `--json`, `result` is: `{ format: "math-canvas-audit-gate", version: 1, createdAt, passed, perfect, unconfirmed, project: { name, frames, outline, hash }, counts: { sections, exercises, solutions, errors, warnings, infos, open, acknowledged }, checks: { validate, verify, reference, bundle, sheets, visual }, itemPatterns, open: [{ source, code, severity, ref, page, message, evidence, acknowledgeable }] (the first 300; openOmitted says how many more), acknowledged: [{ finding, acknowledgement }], staleAcknowledgements, unusedAcknowledgements, refusedAcknowledgements, certificate: path }; with --status { status: "none"|"stale"|"failed"|"passed", unconfirmed, exhaustive, ... }; the exit code is 4 unless the gate passed (with --final: unless it is perfect)`
 
 ## audit ack
 
-Acknowledge a finding as what the BOOK prints, with the reason; never for a defect of ours.
+Acknowledge a finding as what the BOOK prints, with the reason and a quote of the page; never for a defect of the audit.
 
 ```
-mcprep audit ack --code <code> --ref <SECTION:LABEL|SECTION> --reason <sentence> [options]
+mcprep audit ack [options]
 ```
 
-Appends one acknowledgement to <name>.audit-notes.json after checking that the finding exists now: --code is the code of the finding (as `exercises verify` or `audit gate` name it: `duplicate`, `no-solution`, `gap`, `reference-count`, ...), --ref the exercise (SECTION:LABEL) or the section, --page the page of the finding and --quote a piece of the line (at most 60 characters; the first characters of the evidence are used when it is left out for an exercise). A note for a whole section (a ref without a label) must say how many findings it covers with --count, or quote the line: if the findings change, it no longer applies. --reason says what the book prints and where (a sentence). Acknowledge ONLY what the BOOK itself prints: a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark between two exercises. A region that cuts a line, an exercise or an answer that was missed, an answer on the wrong exercise are defects of ours: repair them. A blanket acknowledgement (no code, no exercise, a wildcard) is refused. Give the same --reference, --ink and --item-pattern as for the gate when the finding comes from them.
+Appends one acknowledgement to <name>.audit-notes.json after checking everything that can be checked: --code is the code of the finding (as `audit gate` prints it in square brackets: `duplicate`, `no-solution`, `gap`, `reference-count`, ...; a code that names a defect of the audit, such as label-not-first, overlap, span-gap or any of the context-* and solution-* ones, is REFUSED: repair it), --ref the exercise (SECTION:LABEL) or the section it is about, exactly as the finding names it, --page the zero-based page of the finding, --quote a piece of the text printed on THAT PAGE (4 to 60 characters, copied from `mcprep lines PAGE`; it must be in the text layer of the page, a piece of the finding's own message does not count) and --reason what the book prints and where, in your own words (at least 10 characters; a reason that repeats the finding is refused). A note for a whole section (a ref without a label) must say how many findings it covers with --count; a note with a count applies only while exactly that many findings match. Every error says what is wrong and what to give instead. A new note is NOT confirmed: a second reviewer, another --by, looks at it (`mcprep audit review --out DIR`) and confirms it (`mcprep audit confirm`); the gate reports how many are unconfirmed. Acknowledge ONLY what the BOOK itself prints: a number printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark between two exercises. A region that cuts a line, an exercise or an answer that was missed, an answer or an instruction on the wrong exercise are defects of ours: repair them. Give the same --reference, --ink and --item-pattern as for the gate when the finding comes from them.
 
 Options:
 
-- `--code <code>` (required): The code of the finding.
-- `--ref <SECTION:LABEL|SECTION>` (required): The exercise or the section the finding is about, as the finding names it.
-- `--reason <sentence>` (required): Why it is not a defect: what the book prints and where (at least 10 characters).
-- `--page <n>`: The zero-based page of the finding (narrows the note to it).
-- `--quote <text>`: A piece of the evidence or of the message of the finding, at most 60 characters (narrows the note to it).
+- `--code <code>`: Required: the code of the finding, as `audit gate` prints it.
+- `--ref <SECTION:LABEL|SECTION>`: Required: the exercise or the section the finding is about, exactly as the finding names it.
+- `--reason <sentence>`: Required: what the book prints that makes the finding correct, and where, in your own words (at least 10 characters; not the text of the finding).
+- `--page <n>`: The zero-based page of the finding (required for a finding that has a page).
+- `--quote <text>`: A piece of the text printed on that page, 4 to 60 characters, copied from `mcprep lines PAGE` (required with --page; it must be in the text layer of the page).
 - `--count <n>`: How many findings the note covers; required for a section; the note applies only while exactly that many match.
-- `--by <name>`: Who looked (default "agent").
+- `--by <name>`: Who looked (default "agent"); the one who confirms the note must be another.
 - `--reference <file>`: Also compare with this reference list of the book (see `mcprep book compare`): every difference must be repaired or acknowledged.
 - `--chapter-offset <n>`: Added to the chapter numbers of a reference with chapters (as for `book compare`).
 - `--ink`: Also render the pages and check the edges of the regions (`edge-on-ink`; slower).
@@ -1786,11 +1793,73 @@ Options:
 Examples:
 
 ```console
-$ mcprep audit ack --code duplicate --ref 3.2:7 --page 120 --reason "The book prints the number 7 twice on page 120 (the second is a typo in the book)"
-$ mcprep audit ack --code reference-count --ref 4.1 --count 1 --reason "The practice set of 4.1 prints 42 exercises; the reference lists 40"
+$ mcprep audit ack --code duplicate --ref 3.2:7 --page 120 --quote "7. Find the area" --reason "The book prints the number 7 twice on page 120 (the second is a typo in the book)"
+$ mcprep audit ack --code reference-count --ref 4.1 --count 1 --page 150 --quote "42. Simplify" --reason "The practice set of 4.1 prints 42 exercises; the reference lists 40"
 ```
 
-With `--json`, `result` is: `{ path, acknowledgement: { code, ref, reason, evidence, by, count? }, covers: number of findings it covers now, replaced: boolean }`
+With `--json`, `result` is: `{ path, acknowledgement: { code, ref, reason, evidence, by, count?, confirmed: false }, covers: number of findings it covers now, replaced: boolean }`
+
+## audit confirm
+
+A second reviewer confirms acknowledgements: it looked at each one and the book prints what it says.
+
+```
+mcprep audit confirm [options]
+```
+
+Marks acknowledgements of <name>.audit-notes.json as confirmed by --by, which must be ANOTHER identity than the one who wrote the note (its --by): a note confirms by someone who looked at it. Name one note with --ref (and --code, --page when the exercise has several), or confirm every note of the others with --all. `mcprep audit review --out DIR` writes the picture, the reason and the quote of every note for the reviewer to look at first; confirm only what the book really prints. A note that is changed or replaced is not confirmed again. The gate reports how many notes are unconfirmed (`unconfirmed`), and `export` says so.
+
+Options:
+
+- `--by <name>`: Required: who confirms, another name than the one that wrote the note.
+- `--ref <SECTION:LABEL|SECTION>`: The acknowledgement to confirm (as in the notes).
+- `--code <code>`: With --ref: narrow to this code.
+- `--page <n>`: With --ref: narrow to this page.
+- `--all`: Confirm every acknowledgement that was written by someone else than --by.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep audit confirm --by reviewer --ref 3.2:7 --code duplicate
+$ mcprep audit confirm --by reviewer --all
+```
+
+With `--json`, `result` is: `{ path, confirmed: [{ code, ref, by, confirmedBy, ... }], skipped: [{ acknowledgement, why }] }`
+
+## audit review
+
+Write what a second reviewer needs to check every acknowledgement: the picture, the reason, the quote and an index.
+
+```
+mcprep audit review [options]
+```
+
+For every acknowledgement of <name>.audit-notes.json writes, into --out, a picture of what it is about (the exercise's region, or the place on the page, without any grid) named NNN-code-ref.png, and an index.md that lists every note on one line (code, ref, page, who wrote it, whether it is confirmed, the reason, the quote and whether the quote is on the page) and then each note with its picture, the finding it covers and the command that confirms it; review.json has the same for a program. The notes that do not apply any more (the finding is gone or changed) and the notes that are not allowed are listed as such. Nothing in the project is changed. The reviewer (a person or another agent) looks at each picture, reads the reason, and runs `mcprep audit confirm` for the ones the book really prints; the others are repaired. Give the same --reference, --ink and --item-pattern as for the gate.
+
+Options:
+
+- `-o, --out <folder>`: Required: where the pictures, index.md and review.json go.
+- `--reference <file>`: Also compare with this reference list of the book (see `mcprep book compare`): every difference must be repaired or acknowledged.
+- `--chapter-offset <n>`: Added to the chapter numbers of a reference with chapters (as for `book compare`).
+- `--ink`: Also render the pages and check the edges of the regions (`edge-on-ink`; slower).
+- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, as for `exercises verify` (group 1 is the label); repeatable. The patterns of the notes file (itemPatterns) apply as well. The certificate lists them with every letter outside ASCII written as an escape.
+- `--item-pattern-file <file>`: The same patterns, one to a line in a UTF-8 file (for a shell that mangles letters such as o with a diaeresis).
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep audit review --out review/
+```
+
+With `--json`, `result` is: `{ out, index, json, unconfirmed, entries: [{ number, code, ref, page, by, confirmed, reason, quote?, quoteOnPage, status: "applies"|"unused"|"stale"|"refused", findings, finding?, image, line }] }`
 
 ## meta
 
@@ -1963,7 +2032,7 @@ With `--json`, `result` is: `{ wouldImport: boolean, rejection?: Issue, steps: [
 
 ## schema
 
-Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets.
+Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual.
 
 ```
 mcprep schema [name] [options]
@@ -1971,7 +2040,7 @@ mcprep schema [name] [options]
 
 Arguments:
 
-- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets. Without a name the available schemas are listed.
+- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual. Without a name the available schemas are listed.
 
 Options:
 

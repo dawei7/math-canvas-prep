@@ -695,21 +695,40 @@ A sample shows that the audit is good where you looked. The gate shows that it i
 looking and passes only when nothing is **open**. The whole of it is in docs/AUDIT_A_BOOK.md ("The gate"); the order is this.
 
 1. `exercises_verify` (command `exercises verify`) until there are no errors; read every warning. It also looks for text that no region
-   holds (a missed exercise, the cut-off end of an exercise or an answer), for an instruction on the wrong exercise, for answers under the
-   marker of another section, for a span of regions that skips text. `ink=true` (`--ink`) adds the pixel check of the edges.
+   holds (a missed exercise, the cut-off end of an exercise or an answer), for an instruction on the wrong exercise or missing from one
+   (`context-inconsistent`, also for an instruction of several regions), for answers under the marker of another section, for a span of
+   regions that skips text. `ink=true` (`--ink`) adds the pixel check of the edges.
    An answer headed by a word ("Lösung 1.1.2") needs `--item-pattern` (or `--item-pattern-file`) for the heading, as for the proposals.
 2. `book_compare` (`book compare REFERENCE.json`): the count of every section against the book's own list. Look at the pages of every
    section that differs: the book prints it (acknowledge) or the audit is wrong (repair).
 3. `exercises_sheets` (`exercises sheets --out DIR --solutions`): contact sheets of every exercise, in the order of the book. Look at
-   **every** sheet: the instruction in blue, the exercise in red, the continuations in orange, the answer in green; a cell that is cut,
-   holds a neighbour or shows the wrong answer is repaired. After a repair draw the sheet again (`--sheet N`). Write the numbers of the
-   sheets you looked at in a file (`1-40`); if you cannot look at images, say so: do not list a sheet you did not see.
-4. `audit_gate` (`audit gate --reference ... --ink --sheets-seen ...`): read `open`. Repair what is open and run it again. It writes
+   **every** cell: the instruction in blue, the exercise in red, the continuations in orange, the answer in green; a cell that is cut,
+   holds a neighbour, lacks its instruction or shows the wrong answer is repaired. To repair an instruction, copy it from the neighbour:
+   `exercises_list` with `regions` (`exercises list --section S --regions`) prints the regions as `page:l,t,r,b`, `context_add` takes them.
+   After a repair draw the sheet again (`--sheet N`).
+4. **Write the visual record**: a JSON list with **one entry per exercise** `{ref, startsWith, instruction, answerStartsWith, ok, defect?}`:
+   `startsWith` the first three words printed after the number, `instruction` whether the cell shows a blue box, `answerStartsWith` the
+   number at the start of the green box (`""` when there is none), `ok: false` with `defect` when the cell shows anything wrong. Write what
+   the cell **shows**, not what you expect: the gate compares every entry with the text layer and the project, and an entry that does not fit
+   is open (`visual-mismatch`, `visual-defect`, `visual-missing`) and cannot be acknowledged. If you cannot look at images, say so and do not
+   write entries: a book without a record is not `perfect`.
+5. `audit_gate` (`audit gate --reference ... --ink --visual FILE`): read `open`. Repair what is open and run it again. It writes
    `<project>.audit-gate.json`; a later change to a frame or to the outline makes that certificate stale (`--status`; `export` says so).
-5. `audit_ack` (`audit ack`) only for what the **book** itself prints: a number printed twice, an answer missing from the key, a practice
-   set with more exercises than the reference lists, a remark printed between two exercises. Give the reason (what the book prints and
-   where), the page and, for a section, how many findings it covers. **Never** acknowledge a defect of ours (a region that cuts a line, an
-   exercise or an answer that was missed, an answer on the wrong exercise): repair it. A blanket acknowledgement is refused.
-6. Report the counts, the certificate and every acknowledgement with its reason: the gate lists them, nothing is left out.
+6. `audit_ack` (`audit ack --code C --ref R --page N --quote "..." --reason "..."`) only for what the **book** itself prints: a number
+   printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark printed between
+   two exercises. Give the page, a quote that is **printed on that page** (`mcprep lines N`), the reason (what the book prints and where, at
+   least 10 characters) and, for a section, how many findings it covers (`--count`). **Never** acknowledge a defect of ours: a region that
+   cuts a line, an exercise or an answer that was missed, an instruction missing, an answer on the wrong exercise. These codes are
+   refused (`label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`, `section-unknown`, `section-page`, `span-gap`,
+   `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`, `solution-section-mismatch`,
+   `region-holds-item`): the message says how to repair each. Every refusal says what is wrong and what to give instead; read it.
+7. A **different** reviewer runs `audit_review` (`audit review --out DIR`: a picture of what each note is about, its reason and quote, and
+   an index) and then `audit_confirm` (`audit confirm --by NAME --ref R --code C`, or `--all`) with a name that is not the author's.
+   Until then the gate says `unconfirmed: N`, `export` says "N acknowledgements are not yet confirmed by a second reviewer" and the book
+   is not `perfect`.
+8. `audit_gate` with `final` (`--final`): exit code 0 only when the book is **perfect** (nothing open, the visual record covers every
+   exercise, no acknowledgement unconfirmed). Report the counts, the certificate and every acknowledgement with its reason: the gate
+   lists them, nothing is left out.
 
-A book is finished when `audit_gate` says `passed: true`, the certificate is current and `export` and `import-check` were done after it.
+A book is finished when `audit_gate` with `final` says `perfect: true`, the certificate is current and `export` and `import-check` were
+done after it.
