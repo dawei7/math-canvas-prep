@@ -192,7 +192,7 @@ export async function collectFindings(session: ProjectSession, options: GateRunO
   ];
   const checks: GateReport['checks'] = {
     validate: { errors: validation.errors.length, warnings: validation.warnings.length },
-    verify: { errors: verify.summary.errors, warnings: verify.summary.warnings, infos: verify.summary.infos, ink },
+    verify: { errors: verify.summary.errors, warnings: verify.summary.warnings, infos: verify.summary.infos, ink, interlocked: verify.findings.filter((entry) => entry.code === 'edge-interlocked').length },
     reference: null,
     bundle: null,
     sheets: null,
@@ -258,6 +258,8 @@ export async function runGate(session: ProjectSession, options: GateRunOptions =
     staleAcknowledgements: judged.stale,
     unusedAcknowledgements: judged.unused,
     refusedAcknowledgements: judged.refused,
+    // Information that needs nothing and that nothing keeps silent: the edges that only tips of ink go across, where no rectangle can do better.
+    interlocked: collected.verify.findings.filter((entry) => entry.code === 'edge-interlocked').map((entry) => ({ ref: entry.ref, page: entry.page, message: entry.message, evidence: entry.evidence })),
   };
   return { report, notes };
 }

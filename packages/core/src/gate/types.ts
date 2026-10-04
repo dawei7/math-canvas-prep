@@ -83,7 +83,7 @@ export interface GateReport {
   perfect: boolean;
   checks: {
     validate: { errors: number; warnings: number };
-    verify: { errors: number; warnings: number; infos: number; ink: boolean };
+    verify: { errors: number; warnings: number; infos: number; ink: boolean; interlocked: number };
     reference: { file: string; differences: number } | null;
     bundle: { path: string; ok: boolean; frames: number | null } | null;
     sheets: { file: string; sheets: number; seen: number; missing: number[]; exhaustive: boolean; current: boolean } | null;
@@ -100,6 +100,12 @@ export interface GateReport {
   unusedAcknowledgements: Acknowledgement[];
   /** Acknowledgements that are not allowed (a defect of the audit, a blanket note): they apply to nothing and the findings stay open. */
   refusedAcknowledgements: StaleAcknowledgement[];
+  /**
+   * The edges that only tips of ink go across and that no position within three points avoids (`edge-interlocked`, information): the lines are set
+   * too tightly for a rectangle to separate them. They need no acknowledgement and do not keep the gate from passing; the certificate lists them
+   * (with the pixels in the evidence) so that nothing is silent.
+   */
+  interlocked: { ref: string; page: number | null; message: string; evidence: string }[];
 }
 
 /** Whether the certificate on disk is for the project as it is now. */

@@ -40,6 +40,7 @@ export function gateText(report: GateReport, path: string | undefined): string {
     `Checks: ${parts.join('; ')}.`,
   ];
   if (!report.ink) lines.push('The pixel check of the edges of the regions did not run (--no-ink): run the gate without --no-ink; the book is not perfect until it has run.');
+  if (report.interlocked.length > 0) lines.push(`${plural(report.interlocked.length, 'edge')} ${report.interlocked.length === 1 ? 'is' : 'are'} interlocked with ink that no rectangle can separate (information, nothing to repair, listed in the certificate): ${report.interlocked.slice(0, 4).map((entry) => entry.ref).join(', ')}${report.interlocked.length > 4 ? ', ...' : ''}.`);
   if (report.passed && report.unconfirmed > 0) lines.push(`${report.unconfirmed} acknowledgement${report.unconfirmed === 1 ? ' is' : 's are'} not yet confirmed by a second reviewer: \`mcprep audit review --out DIR\` shows each one, \`mcprep audit confirm --by NAME\` confirms it.`);
   if (report.passed && !report.perfect) {
     lines.push(
@@ -102,7 +103,7 @@ export const auditGate: CommandSpec = {
   ],
   examples: ['mcprep audit gate', 'mcprep audit gate --reference reference.json --chapter-offset -1 --visual visual.json --sheets-seen sheets/seen.txt', 'mcprep audit gate --no-ink', 'mcprep audit gate --visual visual.json --final', 'mcprep audit gate --status'],
   output:
-    '{ format: "math-canvas-audit-gate", version: 1, createdAt, passed, perfect, unconfirmed, ink, project: { name, frames, outline, hash }, counts: { sections, exercises, solutions, errors, warnings, infos, open, acknowledged }, checks: { validate, verify, reference, bundle, sheets, visual }, itemPatterns, open: [{ source, code, severity, ref, page, message, evidence, acknowledgeable }] (the first 300; openOmitted says how many more), acknowledged: [{ finding, acknowledgement }], staleAcknowledgements, unusedAcknowledgements, refusedAcknowledgements, certificate: path }; with --status { status: "none"|"stale"|"failed"|"passed", unconfirmed, exhaustive, ... }; the exit code is 4 unless the gate passed (with --final: unless it is perfect)',
+    '{ format: "math-canvas-audit-gate", version: 1, createdAt, passed, perfect, unconfirmed, ink, project: { name, frames, outline, hash }, counts: { sections, exercises, solutions, errors, warnings, infos, open, acknowledged }, checks: { validate, verify, reference, bundle, sheets, visual }, itemPatterns, open: [{ source, code, severity, ref, page, message, evidence, acknowledgeable }] (the first 300; openOmitted says how many more), acknowledged: [{ finding, acknowledgement }], staleAcknowledgements, unusedAcknowledgements, refusedAcknowledgements, interlocked: [{ ref, page, message, evidence }] (edge-interlocked, information), certificate: path }; with --status { status: "none"|"stale"|"failed"|"passed", unconfirmed, exhaustive, ... }; the exit code is 4 unless the gate passed (with --final: unless it is perfect)',
   async run(context) {
     const session = await context.session();
     if (flag(context.options, 'status')) {

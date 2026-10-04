@@ -4,7 +4,7 @@
   "title": "The certificate of the gate of an audit (mcprep audit gate --json and <name>.audit-gate.json)",
   "description": "What the gate found when it ran: every check that needs no looking, what is open (neither repaired nor acknowledged), what is acknowledged with its reason, and whether it passed. It is for the frames and the outline whose SHA-256 it records: any later change makes it stale. Pages are zero-based. Plain JSON, camelCase.",
   "type": "object",
-  "required": ["format", "version", "createdAt", "passed", "perfect", "unconfirmed", "ink", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements", "refusedAcknowledgements"],
+  "required": ["format", "version", "createdAt", "passed", "perfect", "unconfirmed", "ink", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements", "refusedAcknowledgements", "interlocked"],
   "properties": {
     "format": { "const": "math-canvas-audit-gate" },
     "version": { "const": 1 },
@@ -44,7 +44,7 @@
       "required": ["validate", "verify", "reference", "bundle", "sheets", "visual"],
       "properties": {
         "validate": { "type": "object", "required": ["errors", "warnings"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
-        "verify": { "type": "object", "required": ["errors", "warnings", "infos", "ink"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 }, "infos": { "type": "integer", "minimum": 0 }, "ink": { "type": "boolean", "description": "Whether the pixel check of the edges ran." } }, "additionalProperties": false },
+        "verify": { "type": "object", "required": ["errors", "warnings", "infos", "ink", "interlocked"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 }, "infos": { "type": "integer", "minimum": 0 }, "ink": { "type": "boolean", "description": "Whether the pixel check of the edges ran." }, "interlocked": { "type": "integer", "minimum": 0, "description": "How many edges are `edge-interlocked` (information): only tips of ink go across them and no rectangle can do better. The certificate lists them." } }, "additionalProperties": false },
         "reference": { "type": ["object", "null"], "required": ["file", "differences"], "properties": { "file": { "type": "string" }, "differences": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
         "bundle": { "type": ["object", "null"], "required": ["path", "ok", "frames"], "properties": { "path": { "type": "string" }, "ok": { "type": "boolean" }, "frames": { "type": ["integer", "null"], "minimum": 0 } }, "additionalProperties": false },
         "sheets": {
@@ -100,6 +100,11 @@
       "type": "array",
       "items": { "type": "object", "required": ["acknowledgement", "why"], "properties": { "acknowledgement": { "$ref": "#/$defs/acknowledgement" }, "why": { "type": "string" } }, "additionalProperties": false },
       "description": "Notes that are not allowed (a defect of the audit, a blanket note): they cover nothing and the findings stay open."
+    },
+    "interlocked": {
+      "type": "array",
+      "items": { "type": "object", "required": ["ref", "page", "message", "evidence"], "properties": { "ref": { "type": "string" }, "page": { "type": ["integer", "null"], "minimum": 0 }, "message": { "type": "string" }, "evidence": { "type": "string" } }, "additionalProperties": false },
+      "description": "The edges that only tips of ink go across and that no position within three points avoids (`edge-interlocked`, information): the lines are set too tightly for a rectangle to separate them. They need no acknowledgement and do not keep the gate from passing; they are listed so that nothing is silent (the pixels are in the evidence)."
     },
     "openOmitted": { "type": "integer", "minimum": 0, "description": "Only in the printed result of the command: how many open findings were left out after the first 300." },
     "acknowledgedOmitted": { "type": "integer", "minimum": 0 },

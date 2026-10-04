@@ -2,9 +2,10 @@ import { copyFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/p
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Frame, Project } from '@mcprep/core';
-import { NON_ACKNOWLEDGEABLE } from '@mcprep/core';
+import { NON_ACKNOWLEDGEABLE, PdfDocument, newProject } from '@mcprep/core';
+import { buildPdf } from '@mcprep/core/testing';
 import { auditedBook, visualRecord, type VisualEntry } from './audited.js';
-import { isPng, type Cli, type Result } from './helpers.js';
+import { isPng, workspace, type Cli, type Result } from './helpers.js';
 
 /**
  * The gate cannot be talked round: the defects of the audit are never acknowledged, a note needs the page and a quote of its text, a
@@ -221,6 +222,17 @@ describe('the pixel check of the edges is part of the gate', () => {
     expect(found?.message).toContain('The top edge of the region of 0.1:5');
     expect(found?.message).toContain('cuts printed ink: the ink goes on across it at');
     expect(found?.evidence).toMatch(/ink goes across it at \d+ px/);
+    // The finding names the position to move the edge to: one `frames update` repairs it, and the finding is gone.
+    expect(found?.message).toMatch(/Move it to y=0\.\d+ \(\d+ pixels?, [\d.]+ points? up\): there no ink goes across it\./);
+    const position = Number(/move top to y=(0\.\d+) \(-\d+ px\)/.exec(found?.evidence ?? '')?.[1]);
+    expect(position).toBeGreaterThan(0);
+    expect(position).toBeLessThan(frame.rect.top);
+    const repaired = await cli(['frames', 'update', '0.1:5', '--rect', `${frame.rect.left},${position},${frame.rect.right},${frame.rect.bottom}`]);
+    expect(repaired.code).toBe(0);
+    expect(named(gateOf(await cli(['audit', 'gate'])))).not.toContain('edge-on-ink 0.1:5');
+    // Back to the cut, for the rest of the test.
+    await cli(['frames', 'update', '0.1:5', '--rect', `${frame.rect.left},${frame.rect.top},${frame.rect.right},${frame.rect.bottom}`]);
+    expect(named(gateOf(await cli(['audit', 'gate'])))).toContain('edge-on-ink 0.1:5');
     expect(named(gateOf(await cli(['audit', 'gate', '--no-ink'])))).not.toContain('edge-on-ink 0.1:5');
     // The note for it: audit ack runs the pixel check as well, so the finding exists; with --no-ink it does not.
     const quote = 'Evaluate each expression';
@@ -235,6 +247,67 @@ describe('the pixel check of the edges is part of the gate', () => {
     expect(review.entries.map((entry) => entry.status)).toEqual(['applies']);
     const without = (await cli(['audit', 'review', '--out', 'review', '--no-ink'])).json.result as unknown as { entries: { status: string }[] };
     expect(without.entries.map((entry) => entry.status)).toEqual(['unused']);
+  });
+});
+
+describe('the gate and what no rectangle can do better', () => {
+  /** Two lines of 12 point Courier whose descenders (g) and ascenders (l) overlap in height and do not touch, and one exercise region on each side of `boundary` (points from the top). */
+  async function interlocking(boundary: number): Promise<Cli> {
+    const cli = await workspace({ init: false });
+    const texts = [];
+    for (let k = 0; k < 12; k += 1) {
+      texts.push({ text: 'g', x: 72 + 16 * k, y: 100, size: 12, font: 'Courier' as const });
+      texts.push({ text: 'l', x: 80 + 16 * k, y: 109.5, size: 12, font: 'Courier' as const });
+    }
+    const pdf = buildPdf({ pages: [{ texts }] });
+    await writeFile(join(cli.dir, 'book.pdf'), pdf);
+    const doc = await PdfDocument.fromBytes(pdf);
+    const { sha256, bytes } = doc;
+    await doc.close();
+    const at = (top: number, bottom: number): Frame['rect'] => ({ left: 60 / 595, top: top / 842, right: 280 / 595, bottom: bottom / 842 });
+    const project: Project = {
+      ...newProject({ pdf: { path: 'book.pdf', sha256, bytes, pageCount: 1 }, title: 'Interlock' }),
+      outline: { source: 'manual', entries: [{ title: 'Interlock', page: 0, depth: 0, id: 'a', label: '1.1', top: 0.02 }] },
+      frames: [
+        { id: 'f1', kind: 'exercise', page: 0, rect: at(90, boundary), authority: 'book', label: '1', section: 'a' },
+        { id: 'f2', kind: 'exercise', page: 0, rect: at(boundary, 118), authority: 'book', label: '2', section: 'a' },
+      ],
+    };
+    await writeFile(join(cli.dir, 'book.mcprep.json'), JSON.stringify(project));
+    return cli;
+  }
+
+  interface Interlocked {
+    open: { code: string; ref: string }[];
+    interlocked: { ref: string; page: number; message: string; evidence: string }[];
+    checks: { verify: { interlocked: number; infos: number } };
+  }
+
+  it('lists the edges that only tips of ink go across in the certificate and the text, counts them, and does not hold the gate back for them', async () => {
+    const cli = await interlocking(101);
+    const gate = (await cli(['audit', 'gate'])).json.result as unknown as Interlocked;
+    expect(gate.open.map((finding) => finding.code)).not.toContain('edge-interlocked');
+    expect(gate.open.map((finding) => finding.code)).not.toContain('edge-on-ink');
+    expect(gate.interlocked.map((entry) => entry.ref)).toEqual(['a:1', 'a:2']);
+    expect(gate.checks.verify.interlocked).toBe(2);
+    expect(gate.checks.verify.infos).toBeGreaterThanOrEqual(2);
+    expect(gate.interlocked[0]?.evidence).toMatch(/ink goes across it at \d+ px, at most 2 px deep/);
+    const certificate = JSON.parse(await readFile(join(cli.dir, 'book.audit-gate.json'), 'utf8')) as { interlocked: unknown[] };
+    expect(certificate.interlocked).toHaveLength(2);
+    const text = await cli(['audit', 'gate'], { json: false });
+    expect(text.stdout).toContain('2 edges are interlocked with ink that no rectangle can separate (information, nothing to repair, listed in the certificate): a:1, a:2.');
+    // Nothing to acknowledge: there is no finding that could hold a note.
+    const note = await cli(['audit', 'ack', '--code', 'edge-interlocked', '--ref', 'a:1', '--page', '0', '--quote', 'xxxx', '--reason', 'The lines are set so tightly.']);
+    expect(note.code).toBe(2);
+    expect(said(note)).toContain('There is no finding edge-interlocked for a:1 now');
+  });
+
+  it('is a warning, not information, when the edge cuts deeper than tips', async () => {
+    const cli = await interlocking(104);
+    const gate = (await cli(['audit', 'gate'])).json.result as unknown as Interlocked;
+    expect(gate.open.filter((finding) => finding.code === 'edge-on-ink').map((finding) => finding.ref).sort()).toEqual(['a:1', 'a:2']);
+    expect(gate.interlocked).toEqual([]);
+    expect(gate.checks.verify.interlocked).toBe(0);
   });
 });
 

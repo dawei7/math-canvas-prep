@@ -716,8 +716,11 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    acknowledged. If you cannot look at images, say so and do not write entries: a book without a record is not `perfect`.
 5. `audit_gate` (`audit gate --reference ... --visual FILE`): read `open`. Repair what is open and run it again. The pixel check of the
    edges of every region (`edge-on-ink`) is part of the gate and runs by default; `--no-ink` (`ink=false`) skips it for a quick loop, and a
-   book is not perfect until the gate has run without it. It writes `<project>.audit-gate.json` (`ink: true` when the pixel check ran); a
-   later change to a frame or to the outline makes that certificate stale (`--status`; `export` says so).
+   book is not perfect until the gate has run without it. An `edge-on-ink` finding says what to change: "Move it to y=0.5123 (4 pixels, 2
+   points up)", one `frames update` with that edge; where it names no position, look at the crop (a figure or a formula that the edge cuts
+   in two), and `edge-interlocked` is information that needs nothing (tips of the next line, no rectangle can do better). It writes
+   `<project>.audit-gate.json` (`ink: true` when the pixel check ran); a later change to a frame or to the outline makes that certificate
+   stale (`--status`; `export` says so).
 6. `audit_ack` (`audit ack --code C --ref R --page N --quote "..." --reason "..."`) only for what the **book** itself prints: a number
    printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark printed between
    two exercises. Give the page, a quote that is **printed on that page** (`mcprep lines N`), the reason (what the book prints and where, at
