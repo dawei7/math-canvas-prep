@@ -399,6 +399,44 @@ describe('edge-on-ink: an edge that runs through printed glyphs', () => {
   });
 });
 
+describe('context-inconsistent: an exercise between two that share an instruction', () => {
+  it('warns when it has none or another one, not when its own instruction is printed right above it', async () => {
+    const { book, frames } = small();
+    book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+    book.text(0, 72, 45, 'Solve each equation.', 11, BOLD);
+    book.text(0, 72, 160, 'Simplify each fraction.', 11, BOLD);
+    const shared = around(0, 72, 60, { width: 200 });
+    for (const frame of frames) frame.context = [shared];
+    expect(codes(await check(book))).not.toContain('context-inconsistent');
+    const dropped = frames[2] as Frame;
+    delete dropped.context;
+    expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:3']);
+    dropped.context = [around(0, 72, 45, { width: 200 })];
+    expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:3']);
+    // An instruction of its own, printed between the exercise before and this one, is a group of one: the book's.
+    dropped.context = [around(0, 72, 160, { width: 200 })];
+    expect(codes(await check(book))).not.toContain('context-inconsistent');
+    // The first and the last exercise of a group are not judged.
+    delete (frames[0] as Frame).context;
+    expect(refs(await check(book), 'context-inconsistent')).toEqual([]);
+  });
+});
+
+describe('stray-frame: a frame that no book exercise is', () => {
+  it('is reported in a project that holds book exercises, not in one that does not, and not when sections are chosen', async () => {
+    const { book } = small();
+    book.ordinary(0, 72, 400, 'A remark framed for oneself.');
+    const found = all(await check(book), 'stray-frame');
+    expect(found).toMatchObject([{ severity: 'warning', page: 0 }]);
+    expect(found[0]?.ref).toMatch(/^f\d+$/);
+    expect(all(await check(book, { sections: ['a'] }), 'stray-frame')).toEqual([]);
+    const plain = new Workbook(1);
+    plain.outline = sectionEntries([{ id: 's', page: 0 }]);
+    plain.ordinary(0, 72, 100, 'Just an exercise framed for oneself.');
+    expect(codes(await check(plain))).not.toContain('stray-frame');
+  });
+});
+
 describe('the new codes', () => {
   it('are in the table of the codes, each with the severities it can have', () => {
     for (const code of COVERAGE_CODES) expect(VERIFY_CODES.find((entry) => entry.code === code), code).toBeDefined();
