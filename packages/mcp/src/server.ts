@@ -5,6 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { run } from '@mcprep/cli';
 import { VERSION, readAgentGuide } from '@mcprep/core';
 import { z } from 'zod';
+import { registerBookTools } from './book-tools.js';
 
 /**
  * The MCP server: the same operations as the `mcprep` command line, as typed tools with descriptions that teach the
@@ -25,6 +26,8 @@ const INSTRUCTIONS = `Math Canvas Prep marks exercises, parts, context, question
 Conventions: pages are ZERO-BASED (the first page is 0). Positions are fractions of the page as displayed (after /Rotate), origin at the TOP-LEFT, x to the right, y downwards, all between 0 and 1; a rectangle is [left, top, right, bottom]. Labels like E4.2, Q1, B3 are computed from position and never stored: refer to frames by id.
 
 Workflow: create_project (or open_project) -> project_info -> render_page with a grid to understand the layout -> propose -> apply_operations (one atomic batch) -> render_crop for EVERY frame and LOOK at the images -> fix -> validate -> export_bundle -> import_check -> tell the user where the bundle is. Read the resource mcprep://guide (or call get_guide) first: it explains where exercises start and end, how to cut parts, context, continuations, scans and what not to do.
+
+A textbook that is audited once as an authority (its exercises keep the numbers the book prints, its answer key grades them): create_project -> outline_derive_book (look at it, then apply) -> exercises_propose (with solutions=true; look at render_crop images of a sample, then apply) -> solutions_propose when the answers come separately -> validate -> export_bundle -> import_check. What the book prints is what is proposed; every gap, duplicate and doubt is in the result's notes.
 
 Nothing is sent anywhere: the tools make no network calls.`;
 
@@ -640,6 +643,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
     },
     async (args) => toResult(await cli(['schema', args.name], { project: '' })),
   );
+
+  registerBookTools({ tool, cli, toResult: toResult as never, projectOf, projectArg });
 
   server.registerResource(
     'agent-guide',

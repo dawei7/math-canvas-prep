@@ -185,7 +185,7 @@ export const exercisesPropose: CommandSpec = {
   ],
   examples: ['mcprep exercises propose', 'mcprep exercises propose --section 0.1,0.2 --ops batch.json', 'mcprep exercises propose --solutions --apply'],
   output:
-    '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution }, proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations, skipped: string[], notes, applied }',
+    '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution }, proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), skipped: string[], notes, applied }',
   async run(context) {
     const first = await load(context);
     const sections = sectionsFor(first.session, first.pages);
@@ -220,7 +220,7 @@ export const exercisesPropose: CommandSpec = {
       sections: summaries,
       counts,
       ...(proposals.length <= 300 ? { proposals } : { proposalsOmitted: proposals.length }),
-      operations,
+      ...(operations.length <= 300 ? { operations } : { operationsOmitted: operations.length }),
       skipped,
       notes,
       applied: false,
@@ -299,7 +299,7 @@ export const solutionsPropose: CommandSpec = {
   ],
   examples: ['mcprep solutions propose', 'mcprep solutions propose --ops solutions.json', 'mcprep solutions propose --apply'],
   output:
-    '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise }, operations, skipped: string[], notes, applied }',
+    '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise }, operations? (when there are at most 300; else operationsOmitted: n and the --ops file), skipped: string[], notes, applied }',
   async run(context) {
     const first = await load(context);
     const sections = sectionsFor(first.session, first.pages);
@@ -346,7 +346,7 @@ export const solutionsPropose: CommandSpec = {
         notes: section.notes,
       })),
       counts,
-      operations,
+      ...(operations.length <= 300 ? { operations } : { operationsOmitted: operations.length }),
       skipped,
       notes,
       applied: false,
