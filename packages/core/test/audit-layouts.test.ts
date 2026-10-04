@@ -4,6 +4,8 @@ import { compareSolution, compareWithProposal, exerciseToOperation, exercisesToO
 import { bookKey } from '../src/model/authority.js';
 import { enlargeToMinimum, roundRect } from '../src/model/rect.js';
 import { proposeExercises, type ExerciseOptions } from '../src/audit/exercises.js';
+import { endsLikeAnItem, explodeMergedRows, type PLine } from '../src/audit/layout.js';
+import { INK_BANDS } from '../src/model/types.js';
 import { locateSections, type BookEntry } from '../src/audit/sections.js';
 
 /**
@@ -92,6 +94,22 @@ describe('lines the text extraction merged', () => {
     expect(set.gaps).toEqual([]);
   });
 
+  it('does not cut at a number that closes an interval or follows a minus sign', () => {
+    // "( - inf, - 5) U ..." holds "5)" where the second column starts, but what comes before it is an unfinished bracket.
+    const specs: Spec[] = [
+      { text: '1) item 1 text', left: 0.143, top: 0.2 },
+      { text: '2) m > − 4 or m < − 5 : ( − ∞, − 5) ⋃ [ − 4, ∞)', left: 0.143, top: 0.23, right: 0.8 },
+      { text: '3) item 3 text', left: 0.143, top: 0.26 },
+      { text: '4) item 4 text', left: 0.517, top: 0.2 },
+      { text: '5) item 5 text', left: 0.517, top: 0.23 },
+      { text: '6) item 6 text', left: 0.517, top: 0.26 },
+    ];
+    const { set } = run([page(0, [heading, ...specs])]);
+    expect(set.proposals.map((entry) => entry.label)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(set.duplicates).toEqual([]);
+    expect(set.proposals.find((entry) => entry.label === '2')?.rect.right).toBeGreaterThan(0.7);
+  });
+
   it('does not cut a sentence that holds a number and a dot', () => {
     const specs: Spec[] = [
       { text: '1) If the side is increased by 5 the area is multiplied by 4. Find the', left: 0.143, top: 0.2, right: 0.83 },
@@ -103,6 +121,101 @@ describe('lines the text extraction merged', () => {
     const { set } = run([page(0, [heading, ...specs])]);
     expect(set.proposals.map((entry) => entry.label)).toEqual(['1', '2', '3', '4']);
     expect(set.rejected).toEqual([]);
+  });
+});
+
+describe('where a joined line may be cut', () => {
+  it('cuts only after something that can end an item', () => {
+    expect(endsLikeAnItem('5) first item')).toBe(true);
+    expect(endsLikeAnItem('(−∞, −5]')).toBe(true);
+    // A fill-in item may end with an equals sign.
+    expect(endsLikeAnItem('3 + 4 =')).toBe(true);
+    expect(endsLikeAnItem('2) m > − 4 or m < − 5 : ( − ∞, − ')).toBe(false);
+    expect(endsLikeAnItem('f(x) = 3 +')).toBe(false);
+    expect(endsLikeAnItem('x ∈ (−∞, 3) ∪')).toBe(false);
+    expect(endsLikeAnItem('a,')).toBe(false);
+    expect(endsLikeAnItem('   ')).toBe(false);
+  });
+
+  it('gives each item of a row that joins two columns the height of the piece that stands where it does', () => {
+    const numbered = (n: number, left: number, top: number): PLine => ({
+      page: 0,
+      index: n,
+      role: 'other',
+      line: { text: `${n}) answer ${n}`, rect: { left, top, right: left + 0.17, bottom: top + 0.0155 }, fontSize: 12, column: 0, chars: 12 },
+    });
+    const joined: PLine = {
+      page: 0,
+      index: 40,
+      role: 'other',
+      line: {
+        text: '17) (2x + 7y2)(y − 4x) 26) (7a − 2)(8b − 7)',
+        rect: { left: 0.39, top: 0.6476, right: 0.81, bottom: 0.6776 },
+        fontSize: 12,
+        column: 0,
+        chars: 36,
+        parts: [
+          { left: 0.39, top: 0.6476, right: 0.56, bottom: 0.6633 },
+          { left: 0.64, top: 0.6603, right: 0.81, bottom: 0.6776 },
+        ],
+      },
+    };
+    const lines = [numbered(13, 0.39, 0.5), numbered(14, 0.39, 0.55), numbered(15, 0.39, 0.6), numbered(22, 0.64, 0.5), numbered(23, 0.64, 0.55), numbered(24, 0.64, 0.6), joined];
+    const exploded = explodeMergedRows(lines).filter((entry) => entry.line.text.startsWith('17)') || entry.line.text.startsWith('26)'));
+    expect(exploded.map((entry) => entry.line.text.slice(0, 3))).toEqual(['17)', '26)']);
+    const [first, second] = exploded as [PLine, PLine];
+    expect([first.line.rect.top, first.line.rect.bottom]).toEqual([0.6476, 0.6633]);
+    expect([second.line.rect.top, second.line.rect.bottom]).toEqual([0.6603, 0.6776]);
+    expect(first.line.parts).toBeUndefined();
+    expect(second.line.rect.left).toBeCloseTo(0.64, 6);
+  });
+
+  it('keeps the whole height of a row when the extraction says nothing about its pieces', () => {
+    const numbered = (n: number, left: number, top: number): PLine => ({
+      page: 0,
+      index: n,
+      role: 'other',
+      line: { text: `${n}) answer ${n}`, rect: { left, top, right: left + 0.17, bottom: top + 0.0155 }, fontSize: 12, column: 0, chars: 12 },
+    });
+    const joined: PLine = {
+      page: 0,
+      index: 40,
+      role: 'other',
+      line: { text: '17) first answer 26) second answer', rect: { left: 0.39, top: 0.6476, right: 0.81, bottom: 0.6776 }, fontSize: 12, column: 0, chars: 30 },
+    };
+    const lines = [numbered(13, 0.39, 0.5), numbered(14, 0.39, 0.55), numbered(15, 0.39, 0.6), numbered(22, 0.64, 0.5), numbered(23, 0.64, 0.55), numbered(24, 0.64, 0.6), joined];
+    const exploded = explodeMergedRows(lines).filter((entry) => entry.line.text.startsWith('17)') || entry.line.text.startsWith('26)'));
+    expect(exploded).toHaveLength(2);
+    for (const entry of exploded) expect([entry.line.rect.top, entry.line.rect.bottom]).toEqual([0.6476, 0.6776]);
+  });
+});
+
+describe('figures that stand beside other columns', () => {
+  /** Three columns of numbers: the middle one holds figures (the number stands alone, the drawing is ink without text). */
+  function figurePage(): PageText {
+    const specs: Spec[] = [heading];
+    // Left column: text answers down the page, one right below the label of figure 8.
+    for (const [n, top] of [[1, 0.2], [2, 0.26], [3, 0.32], [4, 0.38], [5, 0.44], [6, 0.5], [7, 0.56]] as const) specs.push({ text: `${n}) answer ${n} of the left column`, left: 0.143, top });
+    // Middle column: labels only; the drawings lie below them.
+    for (const [n, top] of [[8, 0.3], [9, 0.42], [10, 0.54]] as const) specs.push({ text: `${n})`, left: 0.392, top });
+    // Right column: labels only.
+    for (const [n, top] of [[11, 0.38], [12, 0.51]] as const) specs.push({ text: `${n})`, left: 0.64, top });
+    const base = page(0, specs);
+    // Ink: a drawing under each label of the middle column, from 0.02 below the label to 0.02 above the next one.
+    const ink = new Array<number>(INK_BANDS).fill(0);
+    for (const [from, to] of [[0.32, 0.4], [0.44, 0.52]] as const) for (let band = Math.floor(from * INK_BANDS); band < Math.ceil(to * INK_BANDS); band += 1) ink[band] = 0.2;
+    return { ...base, ink };
+  }
+
+  it('reaches over the whole drawing although an item of another column starts right below its label', () => {
+    const { set } = run([figurePage()]);
+    const figure = set.proposals.find((entry) => entry.label === '9');
+    expect(figure?.layout).toBe('figure');
+    // The drawing of 9 ends at 0.52; the left column has item 5 at 0.44 and the right column item 12 at 0.51.
+    expect(figure?.rect.bottom).toBeGreaterThan(0.5);
+    expect(figure?.rect.bottom).toBeLessThan(0.54);
+    // It does not reach into the column on the right.
+    expect(figure?.rect.right).toBeLessThanOrEqual(0.64);
   });
 });
 

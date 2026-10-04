@@ -108,10 +108,24 @@ export function lowestInk(ink: readonly number[], from: number, to: number): num
 }
 
 /**
+ * Whether the text before a number can be the end of an item. Its brackets are closed, and it does not stop at an
+ * operator or a comma: "( - inf, - 5) U [5, inf)" holds the number 5 twice, and neither is the start of an item.
+ */
+export function endsLikeAnItem(before: string): boolean {
+  const trimmed = before.trimEnd();
+  if (trimmed.length === 0) return false;
+  const open = (trimmed.match(/[([{]/g) ?? []).length;
+  const close = (trimmed.match(/[)\]}]/g) ?? []).length;
+  if (open > close) return false;
+  return !/[-−–—+±<>≤≥≠×·÷/,;([{|^_⋃⋂∪∩]$/u.test(trimmed);
+}
+
+/**
  * The text extraction sometimes joins the two items of one row of a two-column list into one line ("5) first 6)
  * second"), when the gap between the columns is not wide enough to be seen as a gutter. Such a line is cut again where
  * the next number begins; the cut sits on the left edge of the column that other items start at, else where the text
- * says. Only a line that starts with a number and holds larger numbers at the position of a column is cut.
+ * says. Only a line that starts with a number and holds larger numbers at the position of a column is cut, and only
+ * where the text before the number can be the end of an item (see {@link endsLikeAnItem}).
  */
 export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
   const numbered = lines.filter((entry) => /^\s*\d{1,3}[).]/.test(entry.line.text));
@@ -134,12 +148,15 @@ export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
     const cuts: { at: number; boundary: number }[] = [];
     let expected = Number(first[1]);
     let pieceLeft = left;
+    let pieceFrom = 0;
     const embedded = /(?<=\s)(\d{1,3})[).](?=\s)/g;
     let found: RegExpExecArray | null;
     while ((found = embedded.exec(text)) !== null) {
       const n = Number(found[1]);
       // Along the rows the next number is 1 to 3 further; down flowing columns it is a whole column further.
       if (n <= expected || n - expected > 80 || found.index <= 3) continue;
+      // Not a number that closes a bracket or follows an operator: that is part of the expression.
+      if (!endsLikeAnItem(text.slice(pieceFrom, found.index))) continue;
       // The cut has to fall on a column where other items start; a number inside a sentence does not.
       const estimate = left + ((right - left) * found.index) / Math.max(1, text.length);
       const column = columns
@@ -149,6 +166,7 @@ export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
       cuts.push({ at: found.index, boundary: column.center });
       expected = n;
       pieceLeft = column.center;
+      pieceFrom = found.index;
     }
     if (cuts.length === 0) {
       result.push(entry);
@@ -166,8 +184,20 @@ export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
   return result;
 }
 
+/**
+ * One item cut out of a joined line. When the extraction says what the joined pieces looked like (`parts`), the item
+ * takes the height of the pieces that stand where it does, not of the whole row: items of neighbouring columns that
+ * sit a little higher or lower than each other would otherwise make each other taller.
+ */
 function piece(entry: PLine, text: string, left: number, right: number, k: number): PLine {
-  const line: TextLine = { ...entry.line, text, chars: text.replace(/\s/g, '').length, rect: { ...entry.line.rect, left, right: Math.max(right, left + 0.02) } };
+  const rect = { ...entry.line.rect, left, right: Math.max(right, left + 0.02) };
+  const own = (entry.line.parts ?? []).filter((part) => (part.left + part.right) / 2 >= left && (part.left + part.right) / 2 <= right);
+  if (own.length > 0 && own.length < (entry.line.parts ?? []).length) {
+    rect.top = Math.min(...own.map((part) => part.top));
+    rect.bottom = Math.max(...own.map((part) => part.bottom));
+  }
+  const line: TextLine = { ...entry.line, text, chars: text.replace(/\s/g, '').length, rect };
+  delete line.parts;
   return { page: entry.page, index: entry.index + k * 0.001, line, role: 'other' };
 }
 
@@ -447,10 +477,15 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
       }
       const ownerIn = (column_: ItemAcc[], strict: boolean): ItemAcc | undefined => {
         // A line that shares its row with the first line of an item (the sign of a root, the rows of a fraction) belongs to it.
-        const byOverlap = column_.find(
-          (item) => Math.min(item.start.line.rect.bottom, entry.line.rect.bottom) - Math.max(item.start.line.rect.top, entry.line.rect.top) > 0.3 * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top),
-        );
-        if (byOverlap) return byOverlap;
+        // When two rows qualify (the sign of a root reaches up between two tight rows), the one whose text it stands in wins,
+        // then the one it overlaps more.
+        const overlapWith = (item: ItemAcc): number => Math.min(item.start.line.rect.bottom, entry.line.rect.bottom) - Math.max(item.start.line.rect.top, entry.line.rect.top);
+        const sharing = column_.filter((item) => overlapWith(item) > 0.3 * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top));
+        if (sharing.length > 0) {
+          const centreX = (entry.line.rect.left + entry.line.rect.right) / 2;
+          const standsIn = (item: ItemAcc): boolean => centreX >= item.start.line.rect.left - 0.005 && centreX <= item.start.line.rect.right + 0.005;
+          return [...sharing].sort((a2, b2) => Number(standsIn(b2)) - Number(standsIn(a2)) || overlapWith(b2) - overlapWith(a2))[0];
+        }
         const above = [...column_].reverse().find((item) => item.start.line.rect.top <= entry.line.rect.top + 0.004);
         const below = column_.find((item) => item.start.line.rect.top > entry.line.rect.top + 0.004);
         const aboveGap = above ? entry.line.rect.top - Math.max(...above.own.map((own) => own.line.rect.bottom)) : Infinity;
@@ -594,7 +629,7 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
     const body = all.filter((entryLine) => !isRunningLine(entryLine));
     const bodyRight = Math.max(layout.bodyRight, body.length > 0 ? Math.max(...body.map((entryLine) => entryLine.rect.right)) + PAD : 0);
     const rightNeighbours = items
-      .filter((other) => other.page === item.page && other.band === item.band && other.start.line.rect.left > item.start.line.rect.left + 0.1 && Math.abs(other.start.line.rect.top - item.start.line.rect.top) <= 0.03)
+      .filter((other) => other.page === item.page && other.band === item.band && other.start.line.rect.left > item.start.line.rect.left + 0.1 && Math.abs(other.start.line.rect.top - item.start.line.rect.top) <= 0.12)
       .map((other) => other.start.line.rect.left - PAD);
     right = Math.max(right, Math.min(rightNeighbours.length > 0 ? Math.min(...rightNeighbours) : bodyRight, bodyRight));
   }
@@ -604,7 +639,7 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
   const ownTop = firstLine.line.rect.top;
   let top = clamp01(lineStart(firstLine.line, AUTHORING.startPadding, all));
   // The frame never starts inside a line of something else beside it (an instruction, the fraction row of the item above):
-  // it starts at that line's baseline region, but never below the first line of the item itself.
+  // it starts under that line, so that its descenders stay out, but never below the first line of the item itself.
   const ownLines = new Set<TextLine>(item.own.map((entryLine) => entryLine.line));
   for (const other of all) {
     if (ownLines.has(other) || isRunningLine(other)) continue;
@@ -612,7 +647,7 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
     if (centre < left || centre > right) continue;
     const height = other.rect.bottom - other.rect.top;
     if (height <= 0 || height > 0.05 || other.rect.top >= ownTop || other.rect.bottom <= top) continue;
-    top = Math.max(top, Math.min(other.rect.bottom - 0.25 * height, ownTop - 0.0005));
+    top = Math.max(top, Math.min(other.rect.bottom, ownTop - 0.0005));
   }
   const lastText = Math.max(...item.own.map((entryLine) => entryLine.line.rect.bottom));
   let bottom = clamp01(lastText + AUTHORING.endPadding);
@@ -630,7 +665,13 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
     // first line beside it.
     const foreign = figure
       ? items
-          .filter((other) => other !== item && other.page === item.page && other.start.line.rect.top > lastText + 0.002)
+          .filter(
+            (other) =>
+              other !== item &&
+              other.page === item.page &&
+              other.start.line.rect.top > lastText + 0.002 &&
+              Math.min(right, Math.max(...other.own.map((entryLine) => entryLine.line.rect.right))) > Math.max(left, Math.min(...other.own.map((entryLine) => entryLine.line.rect.left))),
+          )
           .flatMap((other) => other.own.map((entryLine) => entryLine.line.rect.top - 0.003))
       : all
           .filter((entryLine) => !isRunningLine(entryLine) && entryLine.rect.top > lastText + 0.002 && (entryLine.rect.left >= right - 0.02 || entryLine.rect.right <= left + 0.02))

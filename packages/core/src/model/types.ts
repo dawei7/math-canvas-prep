@@ -122,6 +122,12 @@ export interface TextLine {
   bold?: boolean;
   /** True for a running header or footer (same text, ignoring digits, in the top or bottom band of several pages). */
   headerFooter?: boolean;
+  /**
+   * Set only for a line that the extraction joined from pieces standing side by side (the rows of a fraction, or the rows
+   * of two columns whose heights overlap): the box of each piece, so that a reader can tell where each one lies. `rect` is
+   * the union of them.
+   */
+  parts?: Rect[];
 }
 
 export interface PageSize {

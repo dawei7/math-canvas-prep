@@ -41,6 +41,22 @@ describe('grouping text runs into lines', () => {
     const rows = [item('a+b', 120, 93.2, 10, 20), item('x =', 100, 100, 10, 14), item('c', 126, 106.9, 10, 5)];
     const { lines } = groupTextLines(rows, page);
     expect(lines).toHaveLength(1);
+    // The line says what it was joined from; a line that is one piece does not.
+    expect(lines[0]?.parts).toHaveLength(3);
+    expect(groupTextLines([item('plain', 72, 100)], page).lines[0]?.parts).toBeUndefined();
+  });
+
+  it('keeps the box of each piece when two columns whose rows are a little apart are joined into one line', () => {
+    // Items of two answer columns stand 0.4 of their height apart: they are one line to the reader of the text, and the
+    // line keeps where each of them lies, so that an item is framed by its own height.
+    const { lines } = groupTextLines([item('17) first answer', 72, 100, 10, 80), item('26) second answer', 180, 104, 10, 85)], page);
+    expect(lines).toHaveLength(1);
+    const parts = lines[0]?.parts ?? [];
+    expect(parts).toHaveLength(2);
+    expect(parts[0]?.right).toBeLessThan(parts[1]?.left ?? 0);
+    expect((parts[1]?.top ?? 0) - (parts[0]?.top ?? 0)).toBeCloseTo(4 / 800, 4);
+    expect(lines[0]?.rect.top).toBeCloseTo(parts[0]?.top ?? 1, 6);
+    expect(lines[0]?.rect.bottom).toBeCloseTo(parts[1]?.bottom ?? 0, 6);
   });
 
   it('splits a row at a wide gap (an equation number at the right margin)', () => {
