@@ -82,6 +82,74 @@ Exercises are identified by their section and label, so the commands can be run 
 - `--dry-run` runs the whole batch and its validation and writes nothing; `--force` writes a batch even if it introduces validation
   errors (almost never what you want).
 
+## Checking without looking: `exercises verify`
+
+`mcprep exercises verify` (MCP tool `exercises_verify`) reads the project that is stored on disk and the text layer of its PDF (no
+pixels, no network) and reports what a person would find by looking at the crops: an exercise whose region does not start with its
+number, an answer region that holds another number, regions that lie on each other, numbers that are missing, printed twice or out
+of order. It exists so that any agent, whatever model it is and whether or not it can look at images, gets the **same list** for the
+same project and takes the same decisions from it.
+
+```console
+mcprep exercises verify                          # a table of the sections, then every finding
+mcprep exercises verify --section 1.2 --section 1.3
+mcprep exercises verify --details verify.json    # the whole report as JSON (format math-canvas-verify, `mcprep schema verify`)
+mcprep exercises verify --fail-on warning        # exit code 4 for a warning or an error (default: error; none: always 0)
+```
+
+The findings come in a fixed order: errors, then warnings, then infos; within one severity by code, in the order of the table below;
+then in the order of the book (the sections as the outline lists them, the exercises in reading order). The order of the frames in
+the file does not matter. A finding is `{ code, severity, ref, page, message, evidence }`: `ref` is `SECTION:LABEL` (the section id alone
+for a finding about a whole section, the frame id for an exercise a person framed), `page` is the zero-based page to look at,
+`evidence` is what was found (the first 40 characters of the text, the numbers that were measured). The report also has `summary`
+(the counts) and `sections` (for each section: how many exercises, the first and the last label, how many have a solution, the numbers
+that are missing, the labels that are repeated). `--section ID` (repeatable) checks only those sections; `--item-pattern REGEX` is the
+same option as for `exercises propose` and is for a book that prints its numbers some other way (`Problem 12.`).
+
+| code | severity | what it means | what to do |
+| --- | --- | --- | --- |
+| `label-not-first` | error | The first text at the left margin of the exercise's own region is not its label: a closing `.` or `)` and parentheses are ignored, a label glued to the text counts, and `5a` may also start with its part marker `(a)` or `a)`. Or the left edge of the region cuts through the number (the text starts to the right of the region's edge). Evidence: the first 40 characters found. | `mcprep crop SECTION:LABEL`. Move the top edge down below the previous exercise (`frames update`), or correct the label (`exercises label`), or the section. |
+| `no-text` | warning | The region holds no text: a picture (a figure, a scan), a frame that is not on its text, or a page without a text layer. | Look at the crop; an exercise that really is a picture is fine, a frame that is off is not (`frames update`). |
+| `solution-label-missing` | error | A solution region whose text does not hold the exercise's label as the start of an item: the first text at its left margin starts with the label, or an item starts with it later in the first row (`1. 115 3. A = 52 5. 45`), or a range or a list in front of the answer contains it (`1-7.`, `1, 3, 5.`). The answer of `5a` may also stand under the number of its exercise (`5. (a) 4 (b) 7`) or start from `(a)`. A region that several exercises share (one block of answers) may hold the label on any row. Evidence: the first 40 characters found. | `mcprep crop SECTION:LABEL --region solution:0`. The region is on another answer: `solution add`/`solution.set` with the right region. |
+| `solution-no-text` | info | The solution region holds no text: a picture, such as a graph. Its number cannot be checked. | Look at the crop. |
+| `overlap` | error | The regions of two different exercises on a page (an exercise's own region or one of its continuations) share more than 5 percent of the smaller region and at least 0.004 of the page height (a quarter of a line: less than that and regions only touch). Instructions (`context`) are not compared here. Reported once for the two, under the first of them. | `crop` both; move an edge (`frames update`) so the two only touch. |
+| `context-overlaps-frame` | warning | An instruction region (`context`, which several exercises share) lies on an exercise: at least a tenth of the smaller region and 0.004 of the page height, as in `validate`. One finding for each exercise and each region, however many exercises share it. | `crop --region context:0`; shorten the instruction's region (`context.set`) or the exercise's. |
+| `duplicate-region` | error | Two exercises have the same main region (every edge within 0.001 on the same page): one is framed on the other's text. | Frame each printed exercise on its own text; delete the copy. |
+| `region-size` | warning | The exercise's region is taller than 0.45 of the page, narrower than 0.05 or smaller than 0.002 in area (the parts of a unit are not measured): not the size of one printed exercise. | Look: a region that holds several exercises is split, a sliver that only holds the number is widened. |
+| `section-unknown` | error | The exercise is filed under a section id that is not an entry of the outline (or the project has no outline). | `outline` shows the ids; `exercises section SECTION:LABEL <id>` or `outline update`. |
+| `section-page` | error | The exercise is on a page before the page its section starts on, or after the page where the next entry of the same or a lower depth starts. (An exercise on the page of the next heading is not judged: only its position could tell, and `validate` warns `section-mismatch` for it.) | The exercise is in another section, or the heading's `page` is wrong: `exercises section`, or `outline update <id> --page ...`. |
+| `gap` | warning | Numbers between the first and the last are missing from the section: labels that start with an integer, strays (`label-outlier`) left out. One finding for each run of missing numbers, under the exercise before it. | Look for them on the page: an exercise that the proposal missed is added (`exercises add`); a number the book itself skips stays skipped. |
+| `duplicate` | error | Two or more exercises of a section have the same label (only a project written by hand or with `--force` can). | One printed exercise has one frame: delete the copy, or give it the number the book prints. |
+| `non-numeric-label` | info | Labels of the section are not plain numbers (`5a`, `A.3`). One finding for the section. The sequence is checked for the labels that start with an integer (`5a` counts as 5), not for `A.3`. | Nothing, if the book prints them so. |
+| `order` | warning | An exercise whose number does not fit its place: in its column (the regions that start at the same left edge, over all the pages of the section, from top to bottom) the labels do not run in numeric order. The columns of a page may alternate (1 left, 2 right, 3 left) or run one after the other (1 to 20 on the left, 21 to 40 on the right): both are in order, however the rows are staggered. Not checked in a section that has a duplicate. | Look at the exercise and its neighbours: a label that was mistyped (`exercises label`). |
+| `no-solution` | info or warning | A section that has exercises but no solution at all (info), or in which fewer than 80 percent of the exercises have one (warning; the exercises without one are listed once, in the evidence). | The book may print no answers for the section; otherwise `solutions propose`, or `solution add`. |
+| `label-outlier` | warning | A number more than 3 times the median of the numbers of its section, such as a number from the text taken for a label. It is left out of `gap` and `order`. | Look at the exercise; `exercises label` if the number is wrong. |
+
+The thresholds (0.05, 0.004, 0.45, 0.05, 0.002, 80 percent, 3 times) are `VERIFY_LIMITS` in `packages/core/src/verify/types.ts`. They were
+tuned on a real audit of a textbook of about 3,000 exercises, so that a book that was audited with care gives few findings, and each
+finding that remains is something to look at.
+
+What the check reads, so that you can do it by hand:
+
+- **The text of a region** is the text lines of its page whose centre is between the region's left and right edge and that are at
+  least half inside it from top to bottom. A line that the text layer joined from pieces standing side by side (the rows of two
+  columns, a fraction) is read piece by piece. Running headers and footers are left out.
+- **"First" is first at the left margin.** The margin is the left edge of the leftmost text of the region, with 0.012 of the page
+  width of tolerance. A fraction's numerator, an exponent, the bars of an absolute value and the labels of a figure stand above the
+  number and to the right of it: they do not come before it. A line of the previous exercise that starts at the margin does.
+- **Compared as text:** compatibility forms are folded (NFKC), every kind of dash is a hyphen, white space is one space. The label is
+  compared as a string; `5` and `5.` are the same label.
+
+What it cannot see, and what to do about it:
+
+- The text layer gives the box of a whole line, not of each character. A region that cuts the number off at the left is found from the
+  number's share of the characters of its line (an estimate); a region that cuts the right end of a line, or that holds text that does
+  not belong to the exercise below its last line, is not found: look at the crops of the sample (`exercises sample`).
+- A text layer that joins two exercises of a row into one text run cannot be cut at the column. The check then asks only that the label
+  starts an item of that line.
+- A picture has no text: `no-text` and `solution-no-text` are the only things the check can say about it.
+- An indented line of the previous exercise at the top of a region is not at the margin: `overlap` sees it when the regions touch.
+
 ## Other books: the words and patterns are options
 
 Nothing is built for one book. The defaults read English headings and numbers like `5)`, `5.`, `(5)`, `5a)`; a book that words or numbers
