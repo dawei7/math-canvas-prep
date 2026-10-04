@@ -160,7 +160,7 @@ themselves stay **ordinary** (free, positional numbers). The two kinds can live 
   by its label and its section.
 - A reader that does not know `authority` shows the frame as an ordinary exercise; nothing else changes.
 
-An authoritative exercise with its shared statement as context, a continuation and the answer in the key at the back:
+An authoritative exercise with its shared statement as context and its answer in the key at the back of the same PDF:
 
 ```json
 {

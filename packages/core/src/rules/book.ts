@@ -53,7 +53,7 @@ export function checkBook(frames: readonly Frame[], outline: readonly OutlineEnt
         fix:
           ids.size === 0
             ? 'Give the book its sections first (`mcprep outline pdf --adopt`, `outline derive` or `outline set`, then `outline ids`), then use the ids with `exercises section`.'
-            : `Use an existing id (\`mcprep outline\` lists them with \`exercises section ${frame.id} <id>\`), or add the section: \`mcprep outline add --title "..." --page <n> --id ${frame.section}\`.`,
+            : `File it under an existing section (\`mcprep outline\` lists their ids): \`mcprep exercises section ${frame.id} <id>\`, or add the section: \`mcprep outline add --title "..." --page <n> --id ${frame.section}\`.`,
         data: { section: frame.section },
       }),
     );
