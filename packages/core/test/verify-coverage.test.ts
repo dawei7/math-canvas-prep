@@ -415,6 +415,48 @@ describe('edge-on-ink: an edge that runs through printed glyphs', () => {
     const shares = found.map((finding) => Number(/(\d+)% dark/.exec(finding.evidence)?.[1]));
     expect(shares).toEqual([...shares].sort((a, b) => b - a));
   });
+
+  it('reports an edge that the ink goes across, with the number of pixels, also when few of the pixels around it are dark', async () => {
+    const { book } = small();
+    // One percent of the pixels around the edge are dark (below the share that reports it) and the ink goes across it at 6 pixels at
+    // the top of a:1 (its region, and its answer, which stands at the same height) and at 1 pixel elsewhere (a graze, not reported).
+    const lookup: VerifyOptions['ink'] = (region) => ({
+      top: 0.01,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      cross: { top: Math.abs(region.rect.top - 0.1057) < 0.001 ? 6 : 1, bottom: 0, left: 0, right: 0 },
+      length: { horizontal: 400, vertical: 40 },
+    });
+    const found = all(await check(book, { ink: lookup }), 'edge-on-ink');
+    expect(found.map((finding) => finding.ref)).toEqual(['a:1', 'a:1']);
+    expect(found.every((finding) => finding.severity === 'warning')).toBe(true);
+    expect(found[0]?.message).toContain('The top edge of the region of a:1');
+    expect(found[0]?.message).toContain('cuts printed ink: the ink goes on across it at 6 pixels of its 400 (1.5%)');
+    expect(found[0]?.evidence).toContain('top edge 1% dark; ink goes across it at 6 px');
+    expect(found[1]?.message).toContain('solution region of a:1');
+  });
+
+  it('reports two pixels and not one, and a share above two percent without any crossing as before', async () => {
+    const { book } = small();
+    const at = (cross: number, share: number): VerifyOptions['ink'] => () => ({ top: share, bottom: 0, left: 0, right: 0, cross: { top: cross, bottom: 0, left: 0, right: 0 }, length: { horizontal: 400, vertical: 40 } });
+    expect(all(await check(book, { ink: at(1, 0.01) }), 'edge-on-ink')).toHaveLength(0);
+    expect(all(await check(book, { ink: at(2, 0.01) }), 'edge-on-ink')).toHaveLength(12);
+    const share = all(await check(book, { ink: at(0, 0.05) }), 'edge-on-ink');
+    expect(share).toHaveLength(12);
+    expect(share[0]?.message).toContain('runs through printed ink: 5% of the pixels along it are dark');
+    expect(share[0]?.evidence).toContain('ink goes across it at 0 px');
+    // An edge that is cut and has much ink around it comes before one that only grazes, the worst first.
+    const both = all(await check(book, { ink: (region) => ({ top: Math.abs(region.rect.top - 0.1057) < 0.001 ? 0.5 : 0.03, bottom: 0, left: 0, right: 0, cross: { top: 400, bottom: 0, left: 0, right: 0 } }) }), 'edge-on-ink');
+    expect(both[0]?.message).toContain('cuts printed ink: the ink goes on across it at 400 pixels');
+    expect(both[0]?.evidence).toContain('top edge 50% dark');
+  });
+
+  it('knows a measure that took no crossing (it only has the share), and an edge of no length', async () => {
+    const { book } = small();
+    const found = all(await check(book, { ink: () => ({ top: 0.5, bottom: 0, left: 0, right: 0, cross: { top: 3, bottom: 0, left: 0, right: 0 } }) }), 'edge-on-ink');
+    expect(found[0]?.message).toContain('cuts printed ink: the ink goes on across it at 3 pixels, so a glyph or a line is cut.');
+  });
 });
 
 describe('context-inconsistent: an exercise between two that share an instruction', () => {

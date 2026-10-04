@@ -90,8 +90,15 @@ export const VERIFY_LIMITS = {
   openEndLength: 0.8,
   /** `region-open-end`: the line below a region goes on from it when its top is no further than this many line pitches below the region's last line. */
   openEndPitch: 1.2,
-  /** `edge-on-ink`: an edge is on ink when more than this share of the pixels along it (in the three rows or columns around it) is dark. */
+  /** `edge-on-ink`: an edge is on ink when more than this share of the pixels along it (in the three rows or columns around it) is dark ... */
   inkEdgeShare: 0.02,
+  /**
+   * ... or when the ink goes on across it at this many pixels or more: the pixels along the edge at which the row (or column) just inside
+   * the region and the one just outside it are both dark (the page drawn at 2 pixels per point, dark = luminance below 150). Edges in white
+   * paper give 0, and one pixel is a glyph tip that grazes the edge (a radical's point, a comma's tail), so two is the smallest number that
+   * does not report those; a hairline of a figure that the edge cuts is 2 pixels wide at this resolution.
+   */
+  inkCrossPixels: 2,
 } as const;
 
 export interface VerifyFinding {
@@ -146,12 +153,28 @@ export interface VerifyReport {
   sections: VerifySection[];
 }
 
-/** How much of the pixels along each edge of a region is dark (0 to 1), measured on the rendered page. */
+/** The number of pixels along each edge of a region. */
+export interface EdgeCount {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/** How much of the pixels along each edge of a region is dark (0 to 1), and where the ink goes across it, measured on the rendered page. */
 export interface EdgeInk {
   top: number;
   bottom: number;
   left: number;
   right: number;
+  /**
+   * The pixels along each edge at which the ink goes on across it: the row (for the top and bottom edge) or the column (for the left and
+   * right edge) just inside the region and the one just outside it are both dark at the same place. A glyph, a rule or the border of a
+   * box that the edge cuts shows here; a clean edge in white paper has 0. Absent for a measure that did not take it.
+   */
+  cross?: EdgeCount;
+  /** How many pixels the horizontal edges (top, bottom) and the vertical edges (left, right) are long. */
+  length?: { horizontal: number; vertical: number };
 }
 
 /** The ink of the edges of a region, or undefined for a region that was not measured. */
