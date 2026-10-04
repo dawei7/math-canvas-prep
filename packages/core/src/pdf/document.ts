@@ -164,6 +164,7 @@ export class PdfDocument {
       }
     }
     const items: RawTextItem[] = [];
+    const stretched = new Set<number>();
     for (const item of content.items) {
       if (!('str' in item) || item.str.length === 0) continue;
       const style = content.styles[item.fontName];
@@ -171,6 +172,7 @@ export class PdfDocument {
       const [a, b, c, d, e, f] = pdfjs.Util.transform(viewport.transform, item.transform) as [number, number, number, number, number, number];
       if (a <= 0 || Math.abs(Math.atan2(b, a)) > 0.17) continue;
       const fontSize = Math.hypot(c, d);
+      if (fontSize > 6 * Math.hypot(a, b)) stretched.add(items.length);
       items.push({
         text: item.str,
         left: e,
@@ -181,6 +183,14 @@ export class PdfDocument {
         descent: style?.descent ?? 0,
         ...(bold.has(item.fontName) ? { bold: bold.get(item.fontName) as boolean } : {}),
       });
+    }
+    if (stretched.size > 0) {
+      // A glyph drawn with a text matrix that scales it very differently along and against the line (the unmapped "not
+      // equal" sign of some TeX fonts is set at 120 points in a font that draws it at 12) reports a size that has nothing to
+      // do with the page. It takes the usual size of the page, so that its box does not swallow the rows around it.
+      const usual = items.filter((_item, at) => !stretched.has(at)).map((entry) => entry.fontSize).sort((x, y) => x - y);
+      const typical = usual[Math.floor(usual.length / 2)] ?? 12;
+      for (const at of stretched) items[at] = { ...(items[at] as RawTextItem), fontSize: Math.min((items[at] as RawTextItem).fontSize, typical) };
     }
     const grouped = groupTextLines(items, size);
     const chars = grouped.lines.reduce((sum, line) => sum + line.chars, 0);

@@ -20,6 +20,11 @@ export interface PdfText {
   y: number;
   size?: number;
   font?: PdfFont;
+  /**
+   * Draws the text with a text matrix that scales it by `across` along the line and `up` against it (the font size is then
+   * 1): a glyph that some TeX fonts report at 120 points although the page shows it at 12.
+   */
+  stretch?: { across: number; up: number };
 }
 
 export interface PdfBox {
@@ -191,7 +196,9 @@ export function buildPdf(spec: PdfSpec): Uint8Array {
     }
     for (const item of page.texts ?? []) {
       const resource = FONT_RESOURCES[item.font ?? 'Helvetica'];
-      content += `BT /${resource} ${num(item.size ?? 11)} Tf ${num(item.x)} ${num(height - item.y)} Td ${literal(item.text)} Tj ET\n`;
+      content += item.stretch
+        ? `BT /${resource} 1 Tf ${num(item.stretch.across)} 0 0 ${num(item.stretch.up)} ${num(item.x)} ${num(height - item.y)} Tm ${literal(item.text)} Tj ET\n`
+        : `BT /${resource} ${num(item.size ?? 11)} Tf ${num(item.x)} ${num(height - item.y)} Td ${literal(item.text)} Tj ET\n`;
     }
     content += 'Q\n';
 

@@ -15,6 +15,40 @@ const pngSize = (bytes: Uint8Array): { width: number; height: number } => {
   return { width: view.getUint32(16), height: view.getUint32(20) };
 };
 
+describe('a glyph whose size the PDF reports wrongly', () => {
+  it('does not swallow the rows around it: it takes the usual size of the page', async () => {
+    const rows = [
+      { text: '15) (3x - 5)(x - 4)', x: 100, y: 300 },
+      { text: '16) (3u - 2v)(u + 5v)', x: 100, y: 330 },
+      { text: '17) (3x + 2y)(x + 5y)', x: 100, y: 360 },
+    ];
+    const bytes = buildPdf({
+      pages: [
+        {
+          texts: [
+            { text: 'Answers - Trinomials where a', x: 100, y: 270, size: 12 },
+            // The stray glyph: scaled 0.1 across and 120 up, set where the header says "not equal".
+            { text: 'x', x: 290, y: 270, stretch: { across: 0.1, up: 120 } },
+            ...rows.map((row) => ({ ...row, size: 12 })),
+          ],
+        },
+      ],
+    });
+    const doc = await PdfDocument.fromBytes(bytes);
+    try {
+      const text = await doc.pageText(0);
+      expect(Math.max(...text.lines.map((line) => line.fontSize))).toBeLessThanOrEqual(12.5);
+      const found = text.lines.map((line) => line.text);
+      for (const row of rows) expect(found.some((line) => line.startsWith(row.text.slice(0, 3)) && line.includes(row.text.slice(4, 10)))).toBe(true);
+      // Every row is a line of its own, as high as one line of text.
+      for (const line of text.lines) expect(line.rect.bottom - line.rect.top).toBeLessThan(0.03);
+      expect(text.lines).toHaveLength(4);
+    } finally {
+      await doc.close();
+    }
+  });
+});
+
 describe('the synthetic sample', () => {
   const sample = buildSampleSheet();
   let doc: PdfDocument;
