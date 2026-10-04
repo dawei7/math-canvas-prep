@@ -231,7 +231,7 @@ function proposeSection(pages: readonly PageText[], entry: BookEntry, options: E
   const byColumn = groupByColumn(items);
   const built: { n: number; suffix: string; proposal: ExerciseProposal }[] = [];
   for (const item of items) {
-    const { rect, continues, figure } = itemFrame(item, { pages, items, byColumn, layout });
+    const { rect, continues, figure } = itemFrame(item, { pages, items, byColumn, layout, headingSize: body * 1.25 });
     const candidate = item.candidate;
     const instruction = item.block ? found_.get(item.block) : undefined;
     if (instruction) instruction.governs.push(candidate.label);

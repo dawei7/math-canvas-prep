@@ -289,7 +289,7 @@ export function proposeSolutions(pages: readonly PageText[], sections: readonly 
   for (const item of layout.items) {
     const section = chosenAt.get(`${item.candidate.page}:${item.candidate.index}`)?.section;
     if (section === undefined) continue;
-    const frame = itemFrame(item, { pages, items: layout.items, byColumn, layout });
+    const frame = itemFrame(item, { pages, items: layout.items, byColumn, layout, headingSize: body * 1.25 });
     const how = item.block ? blockSection.get(item.block)?.how : undefined;
     const evidence: string[] = [];
     const selection = selections.get(section);

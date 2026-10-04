@@ -200,6 +200,16 @@ describe('where a joined line may be cut', () => {
       { left: 0.517, top: 0.1, right: 0.57, bottom: 0.135 },
     );
     expect(detachFragments([fraction])).toHaveLength(1);
+    // The denominator of a fraction under the number is more than a glyph, and stays with its item although it lies below and to the right.
+    const denominator = joined(
+      [
+        { text: '32)', chars: 3, rect: { left: 0.517, top: 0.2005, right: 0.544, bottom: 0.2148 } },
+        { text: 'a - b', chars: 4, rect: { left: 0.56, top: 0.2098, right: 0.613, bottom: 0.2367 } },
+      ],
+      '32) a - b',
+      { left: 0.517, top: 0.2005, right: 0.613, bottom: 0.2367 },
+    );
+    expect(detachFragments([denominator])).toHaveLength(1);
     // Two items of two columns are the business of explodeMergedRows, not of this.
     const items = joined(
       [
@@ -304,6 +314,26 @@ describe('edges that run through the ink of the next line', () => {
     const plain = run([base]).set.proposals.find((entry) => entry.label === '1');
     const held = run([blocked]).set.proposals.find((entry) => entry.label === '1');
     expect(held?.rect.bottom).toBe(plain?.rect.bottom);
+  });
+});
+
+describe('a heading below an item', () => {
+  it('ends the frame of a figure that reaches down over ink: the next chapter is not part of it', () => {
+    const specs: Spec[] = [heading];
+    for (const [n, top] of [[1, 0.15], [2, 0.18], [3, 0.21], [4, 0.24]] as const) specs.push({ text: `${n}) item ${n} of the set`, left: 0.143, top });
+    specs.push({ text: '5)', left: 0.143, top: 0.3 });
+    // A heading set larger than the body text, 0.2 below the label, and drawings between the two.
+    specs.push({ text: 'Chapter 2', left: 0.143, top: 0.5, size: 20, bold: true });
+    const base = page(0, specs);
+    const ink = new Array<number>(INK_BANDS).fill(0);
+    for (let band = Math.floor(0.32 * INK_BANDS); band < Math.ceil(0.46 * INK_BANDS); band += 1) ink[band] = 0.2;
+    for (let band = Math.floor(0.5 * INK_BANDS); band < Math.ceil(0.52 * INK_BANDS); band += 1) ink[band] = 0.3;
+    const { set } = run([{ ...base, ink }]);
+    const figure = set.proposals.find((entry) => entry.label === '5');
+    expect(figure?.layout).toBe('figure');
+    // The drawing is inside, the heading is not.
+    expect(figure?.rect.bottom).toBeGreaterThan(0.45);
+    expect(figure?.rect.bottom).toBeLessThanOrEqual(0.5);
   });
 });
 

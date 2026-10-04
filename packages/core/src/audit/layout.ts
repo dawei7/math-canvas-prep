@@ -109,7 +109,7 @@ export function lowestInk(ink: readonly number[], from: number, to: number): num
 }
 
 /**
- * The sign of a root, an exponent or another small fragment that the extraction joined to the line of an item it only stands
+ * The sign of a root, an exponent or another glyph or two that the extraction joined to the line of an item it only stands
  * near: it lies beside the text that starts with the number and not on its row (the sign of a root that belongs to the row
  * below stands higher than the text next to it). The rows of a fraction stack and the denominators of two fractions share a
  * row, so they stay. The fragment becomes a line of its own, and the rules that give a fragment to an item decide whose
@@ -133,7 +133,7 @@ export function detachFragments(lines: readonly PLine[]): PLine[] {
     const gap = Math.max(fragment.rect.left - main.rect.right, main.rect.left - fragment.rect.right);
     const centre = (fragment.rect.top + fragment.rect.bottom) / 2;
     const onTheRow = centre >= main.rect.top && centre <= main.rect.bottom;
-    if (fragment.chars > 8 || gap < 0.012 || onTheRow) {
+    if (fragment.chars > 2 || fragment.rect.right - fragment.rect.left > 0.03 || gap < 0.012 || onTheRow) {
       result.push(entry);
       continue;
     }
@@ -670,6 +670,8 @@ export interface FrameContext {
   items: readonly ItemAcc[];
   byColumn: ReadonlyMap<string, readonly ItemAcc[]>;
   layout: Layout;
+  /** Lines set at least this large are headings: nothing is framed beyond the top of one. */
+  headingSize?: number;
 }
 
 export interface ItemFrame {
@@ -681,7 +683,7 @@ export interface ItemFrame {
 
 /** The frame of an item on its page, and the regions on the following pages where it goes on. */
 export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
-  const { pages, items, byColumn, layout } = context;
+  const { pages, items, byColumn, layout, headingSize } = context;
   const page = pages[item.page] as PageText;
   const all = page.lines;
   const extent = (page: number, band: number, column: number): { left: number; right: number } | undefined => {
@@ -746,6 +748,12 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
       .filter((other) => other.page === item.page && other.band === item.band && other.column === item.column && other.start.line.rect.top > item.start.line.rect.top)
       .map((other) => lineStart(([...other.own].sort((x, y) => x.line.rect.top - y.line.rect.top)[0] as PLine).line, AUTHORING.startPadding, all)),
     ...(layout.boundaries.get(item.page) ?? []).filter((boundary) => boundary.top > lastText).map((boundary) => boundary.top - AUTHORING.startPadding),
+    // A heading below (the next chapter of an answer key) ends the frame, also of a figure that reaches down over ink.
+    ...(headingSize !== undefined && headingSize > 0
+      ? all
+          .filter((entryLine) => !isRunningLine(entryLine) && entryLine.fontSize >= headingSize && entryLine.rect.top > lastText - 0.002 && Math.min(entryLine.rect.right, right) > Math.max(entryLine.rect.left, left))
+          .map((entryLine) => entryLine.rect.top - 0.004)
+      : []),
   ];
   const limit = Math.min(contentLimit(page), ...below);
   if (page.ink) {
