@@ -99,6 +99,7 @@ export const COVERAGE_CODES = [
   'solution-section-mismatch',
   'solution-order',
   'edge-on-ink',
+  'edge-interlocked',
   'region-open-end',
   'region-holds-item',
   'inline-section',

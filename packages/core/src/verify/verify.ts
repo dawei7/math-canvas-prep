@@ -145,7 +145,7 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
     ...checkCoverage(run),
     ...checkContexts(run),
     ...checkKeys(run),
-    ...(options.ink !== undefined ? checkInk(state.exercises, options.ink) : []),
+    ...(options.ink !== undefined ? checkInk(state.exercises, options.ink, index) : []),
     ...(chosenSections(project, options) === undefined ? checkStrays(project, state) : []),
   ];
   drafts.sort(compareDrafts);

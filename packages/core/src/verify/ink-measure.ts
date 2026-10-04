@@ -1,6 +1,7 @@
 import type { Rect } from '../model/types.js';
 import type { PdfDocument } from '../pdf/document.js';
 import { renderDark } from '../pdf/render.js';
+import { explainEdges } from './edge-detail.js';
 import type { EdgeInk, InkLookup } from './types.js';
 
 /**
@@ -15,6 +16,10 @@ import type { EdgeInk, InkLookup } from './types.js';
  *   below it; the columns of the left and right edges likewise. An edge in white paper has 0, an edge that lies on the border of a box
  *   or on a rule has the whole length, an edge that cuts a glyph by a hair has the pixels of its strokes at that place. An edge at the
  *   border of the page has nothing outside and so 0.
+ *
+ * For every edge that fails the rule (`edge-on-ink`) `explainEdges` then looks at what can be changed about it (`detail`): the positions of
+ * the edge within 6 pixels at which the rule is passed, how deep the ink that goes across it pokes across, and the nearest clear position
+ * outwards within 40 pixels. It sees the picture of the page, which is gone when the measuring of the page is done.
  */
 
 export interface InkRegion {
@@ -43,6 +48,7 @@ export async function measureInk(pdf: PdfDocument, regions: readonly InkRegion[]
   for (const page of [...byPage.keys()].sort((a, b) => a - b)) {
     const picture = await renderDark(pdf, page, options.scale === undefined ? {} : { scale: options.scale });
     const { width, height, dark } = picture;
+    const pointsPerPixel = (await pdf.pageSize(page)).width / width;
     const rowShare = (y: number, x0: number, x1: number): number => {
       if (y < 0 || y >= height || x1 < x0) return 0;
       let count = 0;
@@ -77,14 +83,16 @@ export async function measureInk(pdf: PdfDocument, regions: readonly InkRegion[]
         for (let y = y0; y <= y1; y += 1) count += (dark[y * width + inside] as number) & (dark[y * width + outside] as number);
         return count;
       };
-      results.set(keyOf(page, rect), {
+      const ink: EdgeInk = {
         top: row(y0),
         bottom: row(y1),
         left: column(x0),
         right: column(x1),
         cross: { top: rowsCross(y0, y0 - 1), bottom: rowsCross(y1, y1 + 1), left: columnsCross(x0, x0 - 1), right: columnsCross(x1, x1 + 1) },
         length: { horizontal: Math.max(0, x1 - x0 + 1), vertical: Math.max(0, y1 - y0 + 1) },
-      });
+      };
+      // What can be done about the edges that fail the rule: the nearest position that passes it, how much of the ink is only tips.
+      results.set(keyOf(page, rect), explainEdges(picture, rect, ink, pointsPerPixel));
     }
     done += 1;
     options.onPage?.(done, byPage.size);

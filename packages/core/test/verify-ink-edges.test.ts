@@ -3,7 +3,9 @@ import type { Rect } from '../src/model/types.js';
 import { PdfDocument } from '../src/pdf/document.js';
 import { buildPdf } from '../src/testing/pdf-writer.js';
 import { measureInk } from '../src/verify/ink-measure.js';
-import { VERIFY_LIMITS } from '../src/verify/types.js';
+import { VERIFY_LIMITS, type VerifyFinding } from '../src/verify/types.js';
+import { verifyProject } from '../src/verify/verify.js';
+import { Workbook, pagesOf, sectionEntries } from './verify-helpers.js';
 
 /**
  * Where the ink goes across an edge: the pixels along it at which the row (or column) just inside the region and the one just outside it are
@@ -77,5 +79,60 @@ describe('measureInk: the ink that goes across an edge', () => {
     expect(VERIFY_LIMITS.inkCrossPixels).toBeGreaterThanOrEqual(2);
     const found = await measured({ cut: pixels(300, 620, 499, 700) });
     expect(found['cut']?.cross?.top).toBeGreaterThanOrEqual(VERIFY_LIMITS.inkCrossPixels);
+  });
+});
+
+describe('measureInk and the check: what can be changed about an edge, on rendered pages', () => {
+  it('names the position where the edge passes the rule, and the edge passes it there', async () => {
+    // The bar of the page (rows 600 to 639): an edge three rows inside it cuts it along its whole length; five rows up the three rows around it are white.
+    const rect = pixels(300, 603, 499, 700);
+    const found = await measured({ cut: rect });
+    const detail = found['cut']?.detail?.top;
+    expect(found['cut']?.pointsPerPixel).toBe(0.5);
+    expect(detail?.run).toBe(200);
+    expect(detail?.fixes.map((fix) => fix.move)).toEqual([-5, -6]);
+    const moved = await measured({ moved: { ...rect, top: (detail?.fixes[0] as { position: number }).position } });
+    expect(moved['moved']?.detail?.top).toBeUndefined();
+    expect(moved['moved']?.cross?.top).toBe(0);
+  });
+});
+
+describe('edge-interlocked: two lines whose descenders and ascenders overlap in height, rendered', () => {
+  /** Line A has descenders (g, 12 point Courier, baseline 100 points), line B ascenders (l, baseline 109.5 points) between them: they overlap in height and do not touch. */
+  async function lines(boundary: number): Promise<VerifyFinding[]> {
+    const book = new Workbook(1);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Interlock' }]);
+    for (let k = 0; k < 12; k += 1) {
+      book.text(0, 72 + 16 * k, 100, 'g', 12, 'Courier');
+      book.text(0, 80 + 16 * k, 109.5, 'l', 12, 'Courier');
+    }
+    const at = (top: number, bottom: number): Rect => ({ left: 60 / 595, top: top / 842, right: 280 / 595, bottom: bottom / 842 });
+    book.frames.push({ id: 'f1', kind: 'exercise', page: 0, rect: at(90, boundary), authority: 'book', label: '1', section: 'a' });
+    book.frames.push({ id: 'f2', kind: 'exercise', page: 0, rect: at(boundary, 118), authority: 'book', label: '2', section: 'a' });
+    const bytes = book.pdf();
+    const doc = await PdfDocument.fromBytes(bytes);
+    try {
+      const ink = await measureInk(doc, book.frames.map((frame) => ({ page: 0, rect: frame.rect })));
+      return verifyProject(book.project(), await pagesOf(bytes), { ink: ink.lookup }).findings.filter((finding) => finding.code === 'edge-on-ink' || finding.code === 'edge-interlocked');
+    } finally {
+      await doc.close();
+    }
+  }
+
+  it('is information when only tips go across the edge between them, for each of the two regions; nothing is a warning', async () => {
+    const found = await lines(101);
+    expect(found.map((finding) => finding.code)).toEqual(['edge-interlocked', 'edge-interlocked']);
+    expect(found.map((finding) => `${finding.ref} ${finding.severity}`)).toEqual(['a:1 info', 'a:2 info']);
+    expect(found[0]?.message).toContain('The bottom edge of the region of a:1');
+    expect(found[1]?.message).toContain('The top edge of the region of a:2');
+    expect(found[0]?.message).toContain('only tips poke across it, at most 2 pixels deep');
+    expect(found[0]?.evidence).toMatch(/ink goes across it at \d+ px, at most 2 px deep; no clear position within 6 px/);
+  });
+
+  it('is a warning when the edge cuts deeper than tips', async () => {
+    const found = await lines(104);
+    expect(found.every((finding) => finding.code === 'edge-on-ink' && finding.severity === 'warning')).toBe(true);
+    expect(found.map((finding) => finding.ref).sort()).toEqual(['a:1', 'a:2']);
+    expect(found[0]?.message).toContain('the ink reaches more than 3 pixels to each side of it');
   });
 });

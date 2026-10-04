@@ -50,6 +50,7 @@ export const VERIFY_CODES = [
   { code: 'solution-section-mismatch', severities: ['error'] },
   { code: 'solution-order', severities: ['warning'] },
   { code: 'edge-on-ink', severities: ['warning'] },
+  { code: 'edge-interlocked', severities: ['info'] },
   { code: 'region-open-end', severities: ['warning'] },
   { code: 'region-holds-item', severities: ['error'] },
   { code: 'inline-section', severities: ['info'] },
@@ -99,6 +100,25 @@ export const VERIFY_LIMITS = {
    * does not report those; a hairline of a figure that the edge cuts is 2 pixels wide at this resolution.
    */
   inkCrossPixels: 2,
+  /**
+   * What an edge that fails the rule can be repaired by: a position of the same edge within this many pixels either way (3 points) at
+   * which the rule is passed (the ink goes across it at fewer than `inkCrossPixels` pixels and no more than `inkEdgeShare` of the pixels around it
+   * is dark). The finding names the nearest one (the least crossing first, then the nearest, then outwards) and stays a warning.
+   */
+  inkFixWindow: 6,
+  /**
+   * Where no position within `inkFixWindow` is clear and the edge cuts more than tips: the nearest position that is clear within this many
+   * pixels (20 points) OUTWARDS (the region grows, nothing of it is lost) is named as a hint, with its distance.
+   */
+  inkFarWindow: 40,
+  /**
+   * An edge with no clear position within `inkFixWindow` that the ink goes across only by TIPS is `edge-interlocked`, information that needs
+   * nothing: every piece of ink (a connected component of dark pixels) that goes across it pokes at most this many pixels (1.5 points)
+   * across it on its shorter side (a descender of the line above into the region, an ascender of the line below) ...
+   */
+  inkTipPixels: 3,
+  /** ... and no run of this many crossing pixels in a row lies along it (a rule, the border of a box, a thick or a shallow stroke): that is a cut. */
+  inkThickRun: 4,
 } as const;
 
 export interface VerifyFinding {
@@ -175,6 +195,39 @@ export interface EdgeInk {
   cross?: EdgeCount;
   /** How many pixels the horizontal edges (top, bottom) and the vertical edges (left, right) are long. */
   length?: { horizontal: number; vertical: number };
+  /** How many points one pixel is (0.5 at 2 pixels per point), to say a distance in points. */
+  pointsPerPixel?: number;
+  /**
+   * For each edge that fails the rule (and only for those): what a person or an agent can change about it, and how much ink is cut. Absent for
+   * a measure that did not look (the finding is then a warning without a position).
+   */
+  detail?: Partial<Record<EdgeSide, EdgeDetail>>;
+}
+
+export type EdgeSide = 'top' | 'bottom' | 'left' | 'right';
+
+/** A position of an edge at which the rule is passed. */
+export interface EdgeFix {
+  /** The new value of the edge as a page fraction: `top` or `bottom` (y) for a horizontal edge, `left` or `right` (x) for a vertical one. Measuring a region with it gives the same pixel. */
+  position: number;
+  /** How many pixels the edge moves: negative upwards or to the left, positive downwards or to the right. */
+  move: number;
+  /** The pixels at which the ink goes across the edge there (0 or 1). */
+  crossing: number;
+}
+
+export interface EdgeDetail {
+  /** The longest run of crossing pixels in a row along the edge. */
+  run: number;
+  /** The largest depth by which a piece of ink that goes across the edge pokes across it on its shorter side, in pixels (it stops counting above `inkTipPixels` and then says `inkTipPixels + 1`). */
+  poke: number;
+  /**
+   * Every position of the edge within `inkFixWindow` at which the rule is passed, the best first (the least crossing, the nearest, down or to the
+   * right). Which of them leaves the text that the region holds as it is is for the check to say: it knows the text layer.
+   */
+  fixes: EdgeFix[];
+  /** For an edge that cuts more than tips: the nearest position OUTWARDS within `inkFarWindow` at which the rule is passed. */
+  far?: EdgeFix;
 }
 
 /** The ink of the edges of a region, or undefined for a region that was not measured. */

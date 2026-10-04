@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Frame, Region } from '../src/model/types.js';
+import type { Frame, Rect, Region } from '../src/model/types.js';
 import { newProject, type Project } from '../src/project/model.js';
 import { buildSpanBook } from '../src/testing/span.js';
-import { VERIFY_CODES, type VerifyCode, type VerifyFinding, type VerifyOptions, type VerifyReport } from '../src/verify/types.js';
+import { VERIFY_CODES, type EdgeCount, type EdgeDetail, type EdgeInk, type VerifyCode, type VerifyFinding, type VerifyOptions, type VerifyReport } from '../src/verify/types.js';
 import { verifyProject, type PageSource } from '../src/verify/verify.js';
 import { COVERAGE_CODES, Workbook, around, pagesOf, sectionEntries } from './verify-helpers.js';
 
@@ -434,7 +434,7 @@ describe('edge-on-ink: an edge that runs through printed glyphs', () => {
     expect(found[0]?.message).toContain('The top edge of the region of a:1');
     expect(found[0]?.message).toContain('cuts printed ink: the ink goes on across it at 6 pixels of its 400 (1.5%)');
     expect(found[0]?.evidence).toContain('top edge 1% dark; ink goes across it at 6 px');
-    expect(found[1]?.message).toContain('solution region of a:1');
+    expect(found[1]?.message).toContain('solution region (solution:0) of a:1');
   });
 
   it('reports two pixels and not one, and a share above two percent without any crossing as before', async () => {
@@ -456,6 +456,97 @@ describe('edge-on-ink: an edge that runs through printed glyphs', () => {
     const { book } = small();
     const found = all(await check(book, { ink: () => ({ top: 0.5, bottom: 0, left: 0, right: 0, cross: { top: 3, bottom: 0, left: 0, right: 0 } }) }), 'edge-on-ink');
     expect(found[0]?.message).toContain('cuts printed ink: the ink goes on across it at 3 pixels, so a glyph or a line is cut.');
+  });
+});
+
+describe('edge-on-ink: what a person or an agent can change about an edge', () => {
+  const clean: EdgeInk = { top: 0, bottom: 0, left: 0, right: 0, cross: { top: 0, bottom: 0, left: 0, right: 0 }, length: { horizontal: 400, vertical: 40 }, pointsPerPixel: 0.5 };
+  const sameRect = (a: Rect, b: Rect): boolean => Math.abs(a.left - b.left) + Math.abs(a.top - b.top) + Math.abs(a.right - b.right) + Math.abs(a.bottom - b.bottom) < 1e-9;
+  const round4 = (value: number): number => Math.round(value * 10000) / 10000;
+  /** An ink measure in which one edge of one region fails the rule, with what `explainEdges` found about it. */
+  const failing = (target: Rect, side: 'top' | 'bottom' | 'left' | 'right', cross: number, share: number, detail: EdgeDetail): NonNullable<VerifyOptions['ink']> => (region) =>
+    sameRect(region.rect, target) ? { ...clean, [side]: share, cross: { ...clean.cross, [side]: cross } as EdgeCount, detail: { [side]: detail } } : clean;
+  const infosOf = (report: VerifyReport, code: VerifyCode): VerifyFinding[] => report.findings.filter((finding) => finding.code === code);
+
+  it('names the position where the rule is passed, and says how far it is', async () => {
+    const { book, frames } = small();
+    const target = (frames[1] as Frame).rect;
+    const fix = { position: round4(target.top - 0.003), move: -4, crossing: 0 };
+    const found = all(await check(book, { ink: failing(target, 'top', 6, 0.03, { run: 2, poke: 5, fixes: [fix] }) }), 'edge-on-ink');
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: 'warning', ref: 'a:2' });
+    expect(found[0]?.message).toContain('The top edge of the region of a:2');
+    expect(found[0]?.message).toContain(`Move it to y=${fix.position} (4 pixels, 2 points up): there no ink goes across it.`);
+    expect(found[0]?.evidence).toContain(`move top to y=${fix.position} (-4 px)`);
+    // The other sides say x and left or right.
+    const side = all(await check(book, { ink: failing(target, 'right', 3, 0.01, { run: 2, poke: 2, fixes: [{ position: round4(target.right + 0.0015), move: 3, crossing: 1 }] }) }), 'edge-on-ink');
+    expect(side[0]?.message).toContain(`Move it to x=${round4(target.right + 0.0015)} (3 pixels, 1.5 points to the right): there only a tip of ink goes across it.`);
+  });
+
+  it('only names a position that leaves the text of the region as it is, and one that does not run into another exercise', async () => {
+    const { book, frames } = small();
+    const target = (frames[1] as Frame).rect;
+    // The first position takes the line of the exercise above into the region; the second moves 3 pixels.
+    const takesALine = { position: (frames[0] as Frame).rect.top, move: -40, crossing: 0 };
+    const small3 = { position: round4(target.top - 0.0018), move: -3, crossing: 0 };
+    const named = all(await check(book, { ink: failing(target, 'top', 6, 0.03, { run: 2, poke: 5, fixes: [takesALine, small3] }) }), 'edge-on-ink');
+    expect(named[0]?.message).toContain(`Move it to y=${small3.position}`);
+    // Only that position: the edge is then only a tip that cannot be separated.
+    const only = await check(book, { ink: failing(target, 'top', 6, 0.03, { run: 2, poke: 2, fixes: [takesALine] }) });
+    expect(all(only, 'edge-on-ink')).toHaveLength(0);
+    expect(infosOf(only, 'edge-interlocked')).toHaveLength(1);
+    // The exercise above lies on this one: three pixels up run into it (more than the overlap rule would let two regions take), one pixel does not.
+    (frames[0] as Frame).rect = { ...(frames[0] as Frame).rect, bottom: target.top };
+    const run3 = { position: round4(target.top - 0.003), move: -5, crossing: 0 };
+    const run1 = { position: round4(target.top - 0.0008), move: -1, crossing: 0 };
+    const runs = all(await check(book, { ink: failing(target, 'top', 6, 0.03, { run: 2, poke: 5, fixes: [run3, run1] }) }), 'edge-on-ink');
+    expect(runs[0]?.message).toContain(`Move it to y=${run1.position}`);
+    const none = all(await check(book, { ink: failing(target, 'top', 6, 0.03, { run: 2, poke: 5, fixes: [run3] }) }), 'edge-on-ink');
+    expect(none[0]?.message).toContain('No position within 20 points outwards clears it');
+  });
+
+  it('is information, edge-interlocked, when no position is clear and the ink that goes across is only tips; counted, not a warning', async () => {
+    const { book, frames } = small();
+    const target = (frames[1] as Frame).rect;
+    const report = await check(book, { ink: failing(target, 'bottom', 8, 0.05, { run: 2, poke: 2, fixes: [] }) });
+    expect(all(report, 'edge-on-ink')).toHaveLength(0);
+    const info = infosOf(report, 'edge-interlocked');
+    expect(info).toHaveLength(1);
+    expect(info[0]).toMatchObject({ severity: 'info', ref: 'a:2' });
+    expect(info[0]?.message).toContain('The bottom edge of the region of a:2');
+    expect(info[0]?.message).toContain('only tips poke across it, at most 2 pixels deep');
+    expect(info[0]?.message).toContain('Nothing to repair');
+    expect(info[0]?.evidence).toContain('ink goes across it at 8 px, at most 2 px deep');
+    expect(report.summary.infos).toBeGreaterThanOrEqual(1);
+    // An edge that lies on ink and cuts nothing is the same, said so.
+    const touch = infosOf(await check(book, { ink: failing(target, 'top', 0, 0.06, { run: 0, poke: 0, fixes: [] }) }), 'edge-interlocked');
+    expect(touch[0]?.message).toContain('it lies on ink and cuts nothing');
+  });
+
+  it('stays a warning when more is cut: a piece of ink that goes deeper than tips, or a run along the edge', async () => {
+    const { book, frames } = small();
+    const target = (frames[1] as Frame).rect;
+    // Deeper than a tip (a numerator, a figure): a warning with the nearest clear position outwards as a hint.
+    const far = { position: round4(target.top - 0.0105), move: -22, crossing: 0 };
+    const hint = all(await check(book, { ink: failing(target, 'top', 6, 0.02, { run: 2, poke: 4, fixes: [], far }) }), 'edge-on-ink');
+    expect(hint).toHaveLength(1);
+    expect(hint[0]?.severity).toBe('warning');
+    expect(hint[0]?.message).toContain('the ink reaches more than 3 pixels to each side of it');
+    expect(hint[0]?.message).toContain(`No position within 3 points clears it; the nearest clear position outwards is y=${far.position} (22 pixels, 11 points up)`);
+    expect(hint[0]?.message).toContain('mcprep crop a:2');
+    expect(hint[0]?.evidence).toContain(`nearest outwards y=${far.position} (-22 px)`);
+    // Nothing clear within 20 points: the edge cuts what a rectangle cannot keep whole.
+    const none = all(await check(book, { ink: failing(target, 'top', 6, 0.02, { run: 2, poke: 4, fixes: [] }) }), 'edge-on-ink');
+    expect(none[0]?.message).toContain('No position within 20 points outwards clears it');
+    expect(none[0]?.message).toContain('acknowledge the finding when the book prints it so');
+    // A rule, a border or a thick stroke along the edge is a cut even when the pieces are not deep.
+    const thick = await check(book, { ink: failing(target, 'top', 9, 0.02, { run: 4, poke: 1, fixes: [] }) });
+    expect(all(thick, 'edge-on-ink')).toHaveLength(1);
+    expect(infosOf(thick, 'edge-interlocked')).toHaveLength(0);
+    // The regions that are not the exercise's own are named the way crop names them.
+    const solution = (frames[1] as Frame).solution?.[0] as Region;
+    const own = all(await check(book, { ink: failing(solution.rect, 'bottom', 9, 0.02, { run: 4, poke: 1, fixes: [] }) }), 'edge-on-ink');
+    expect(own[0]?.message).toContain('The bottom edge of the solution region (solution:0) of a:2 on page 1');
   });
 });
 
