@@ -89,6 +89,40 @@ describe('the defects of the audit cannot be acknowledged', () => {
   });
 });
 
+describe('audit ack tells everything that is wrong at once', () => {
+  it('lists the problems together with the call that would do, keeps what is right in it, and accepts the call as corrected', async () => {
+    const cli = await auditedBook();
+    await cli(['frames', 'delete', '0.1:12']);
+    const bare = await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--reason', 'no']);
+    expect(bare.code).toBe(2);
+    const message = bare.json.error?.message ?? '';
+    expect(message).toMatch(/^4 things are wrong with this acknowledgement:/);
+    for (const part of ['1. --page is missing', '2. --quote is missing', '3. "0.1" is a section', 'so give --count 1', '4. The reason has 2 characters']) expect(message).toContain(part);
+    const hint = bare.json.error?.hint ?? '';
+    expect(hint).toContain('mcprep audit ack --code numbered-text-left-behind --ref 0.1 --page 5 --quote "<');
+    expect(hint).toContain('--count 1');
+    // A quote that is not on the page and a count that is wrong are two things; the call keeps the reason, which is right.
+    const two = await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--page', '5', '--quote', 'not on this page', '--reason', REASON, '--count', '3']);
+    expect(two.code).toBe(2);
+    expect(two.json.error?.message).toMatch(/^2 things are wrong/);
+    expect(two.json.error?.message).toContain('is not in the text of page 5');
+    expect(two.json.error?.message).toContain('1 finding matches');
+    expect(two.json.error?.hint).toContain(JSON.stringify(REASON));
+    expect(two.json.error?.hint).toContain('--count 1');
+    // One thing wrong is told alone, as before, and the call as it was told works.
+    const one = await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--page', '5', '--quote', QUOTE, '--reason', REASON]);
+    expect(one.code).toBe(2);
+    expect(one.json.error?.message).toMatch(/^"0\.1" is a section/);
+    expect((await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--page', '5', '--quote', QUOTE, '--reason', REASON, '--count', '1'])).code).toBe(0);
+    // Without a finding, the form is still told together with it.
+    const none = await cli(['audit', 'ack', '--code', 'duplicate', '--ref', '0.1:3', '--reason', 'no']);
+    expect(none.code).toBe(2);
+    expect(none.json.error?.message).toMatch(/^2 things are wrong/);
+    expect(none.json.error?.message).toContain('There is no finding duplicate for 0.1:3 now');
+    expect(none.json.error?.message).toContain('The reason has 2 characters');
+  });
+});
+
 describe('the seven defects of the cold-start test', () => {
   it('are all found, with the pixel check, and each by a finding that names its exercise', async () => {
     const cli = await auditedBook();

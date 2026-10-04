@@ -373,7 +373,7 @@ of ours: the findings `label-not-first`, `solution-label-missing`, `overlap`, `d
 `solution-section-mismatch` and `region-holds-item` can **not be acknowledged at all**: `audit ack` refuses them with the command that
 repairs each, and the gate takes no note for them from the file either (it lists the note under `refusedAcknowledgements`; the finding
 stays open). `mcprep audit ack --code C --ref R --page N --quote "..." --reason "..." [--count N] [--by NAME]` appends one to
-`<project>.audit-notes.json` after checking everything that can be checked, and every refusal says what is wrong and what to give instead:
+`<project>.audit-notes.json` after checking everything that can be checked. Every refusal says what is wrong and what to give instead, **everything that is wrong at once** (a numbered list, then one call that would do, with what is right kept in it), so that one more call is enough:
 
 - `--code` must be the code of a finding that exists now for `--ref` (an exercise as `SECTION:LABEL`, a section as its id, exactly as the
   finding names it), and not one of the codes above;

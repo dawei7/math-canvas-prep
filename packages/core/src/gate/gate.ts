@@ -97,38 +97,67 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 const folded = (text: string): string => text.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** The part of an acknowledgement a problem is about; the order is the order in which a message lists them. */
+export type AcknowledgementField = 'code' | 'ref' | 'page' | 'quote' | 'count' | 'reason';
+
+export const ACKNOWLEDGEMENT_FIELDS: readonly AcknowledgementField[] = ['code', 'ref', 'page', 'quote', 'count', 'reason'];
+
+export interface AcknowledgementIssue {
+  field: AcknowledgementField;
+  /** What is wrong, and what to give instead. */
+  text: string;
+  /** More about what to give instead (the page the finding is on, the command that lists the text of the page). */
+  hint?: string;
+}
+
 /**
- * Why an acknowledgement is not allowed (whatever the findings are), or undefined when it is: the sentence says what is wrong and what
- * to give instead. What depends on the findings (the page, the quote, the reason against the message) is checked where they are known.
+ * Everything that is wrong with an acknowledgement whatever the findings are, each with what to give instead (one agent should not need
+ * one call for each). A code that is not allowed, or a reference that names nothing, makes the rest moot and is the only one reported.
+ * `covered` is how many findings the note would cover, when the findings are known: a note for a section is then told the number to give.
+ * What depends on the findings (the page, the quote on the page, the reason against the message) is checked where they are known.
  */
-export function acknowledgementProblem(entry: Acknowledgement): string | undefined {
+export function acknowledgementIssues(entry: Acknowledgement, covered?: number): AcknowledgementIssue[] {
   const code = entry.code.trim();
   if (code === '') {
-    return `No --code: name the code of the finding, as \`mcprep audit gate\` prints it in square brackets. The codes that can be acknowledged are ${ACKNOWLEDGEABLE_CODES.join(', ')}.`;
+    return [{ field: 'code', text: `No --code: name the code of the finding, as \`mcprep audit gate\` prints it in square brackets. The codes that can be acknowledged are ${ACKNOWLEDGEABLE_CODES.join(', ')}.` }];
   }
   const repair = NON_ACKNOWLEDGEABLE[code];
-  if (repair !== undefined) return `"${code}" can never be acknowledged: it is a defect of the audit, not something the book prints. Repair it: ${repair}`;
+  if (repair !== undefined) return [{ field: 'code', text: `"${code}" can never be acknowledged: it is a defect of the audit, not something the book prints. Repair it: ${repair}` }];
   if (!ACKNOWLEDGEABLE_CODES.includes(code)) {
-    return `"${code}" is not the code of a finding that can be acknowledged. The codes that can be are ${ACKNOWLEDGEABLE_CODES.join(', ')}; a code that is not among them (a blanket "everything" too) is refused.`;
+    return [{ field: 'code', text: `"${code}" is not the code of a finding that can be acknowledged. The codes that can be are ${ACKNOWLEDGEABLE_CODES.join(', ')}; a code that is not among them (a blanket "everything" too) is refused.` }];
   }
   if (entry.ref.trim() === '' || /[*?]/.test(entry.ref)) {
-    return 'No --ref, or one with a wildcard: name the one exercise (SECTION:LABEL, for example 3.2:7) or the one section (3.2) the finding is about, exactly as the finding names it. A blanket acknowledgement is refused.';
+    return [{ field: 'ref', text: 'No --ref, or one with a wildcard: name the one exercise (SECTION:LABEL, for example 3.2:7) or the one section (3.2) the finding is about, exactly as the finding names it. A blanket acknowledgement is refused.' }];
   }
-  if (entry.reason.trim().length < 10) {
-    return `The reason has ${entry.reason.trim().length} characters; give at least 10: one sentence that says what the BOOK prints and where, for example "the book prints the number 7 twice on page 120".`;
-  }
-  if (!entry.ref.includes(':') && entry.count === undefined) {
-    return `"${entry.ref}" is a section: say how many findings the note covers with --count N (the number of findings of that code in the section, as \`mcprep audit gate\` lists them), so that it cannot cover findings that appear later.`;
-  }
-  if (entry.count !== undefined && (!Number.isInteger(entry.count) || entry.count < 1)) return `--count must be a whole number from 1, not ${String(entry.count)}.`;
-  if (entry.evidence.page !== undefined && (!Number.isInteger(entry.evidence.page) || entry.evidence.page < 0)) {
-    return `--page must be a zero-based page number (0 is the first page), not ${String(entry.evidence.page)}.`;
+  const issues: AcknowledgementIssue[] = [];
+  const page = entry.evidence.page;
+  if (page !== undefined && (!Number.isInteger(page) || page < 0)) {
+    issues.push({ field: 'page', text: `--page must be a zero-based page number (0 is the first page), not ${String(page)}.` });
   }
   const quote = entry.evidence.quote;
   if (quote !== undefined && (quote.trim().length < 4 || quote.length > 60)) {
-    return `--quote has ${quote.trim().length} characters; give a piece of the text printed on the page, 4 to 60 characters, copied from \`mcprep lines PAGE\`.`;
+    issues.push({ field: 'quote', text: `--quote has ${quote.trim().length} characters; give a piece of the text printed on the page, 4 to 60 characters, copied from \`mcprep lines PAGE\`.` });
   }
-  return undefined;
+  if (!entry.ref.includes(':') && entry.count === undefined) {
+    issues.push({
+      field: 'count',
+      text:
+        covered === undefined
+          ? `"${entry.ref}" is a section: say how many findings the note covers with --count N (the number of findings of that code in the section, as \`mcprep audit gate\` lists them), so that it cannot cover findings that appear later.`
+          : `"${entry.ref}" is a section: say how many findings the note covers with --count N, so that it cannot cover findings that appear later; ${covered} ${covered === 1 ? 'finding matches' : 'findings match'} now, so give --count ${covered}.`,
+    });
+  } else if (entry.count !== undefined && (!Number.isInteger(entry.count) || entry.count < 1)) {
+    issues.push({ field: 'count', text: `--count must be a whole number from 1, not ${String(entry.count)}.` });
+  }
+  if (entry.reason.trim().length < 10) {
+    issues.push({ field: 'reason', text: `The reason has ${entry.reason.trim().length} characters; give at least 10: one sentence that says what the BOOK prints and where, for example "the book prints the number 7 twice on page 120".` });
+  }
+  return issues;
+}
+
+/** Why an acknowledgement is not allowed whatever the findings are (the first of its issues), or undefined when it is. */
+export function acknowledgementProblem(entry: Acknowledgement): string | undefined {
+  return acknowledgementIssues(entry)[0]?.text;
 }
 
 /** Whether a reason only repeats what a finding says: it equals the message or holds all of it. */

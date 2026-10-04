@@ -721,7 +721,7 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    cuts a line, an exercise or an answer that was missed, an instruction missing, an answer on the wrong exercise. These codes are
    refused (`label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`, `section-unknown`, `section-page`, `span-gap`,
    `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`, `solution-section-mismatch`,
-   `region-holds-item`): the message says how to repair each. Every refusal says what is wrong and what to give instead; read it.
+   `region-holds-item`): the message says how to repair each. A refusal says everything that is wrong at once, what to give instead and one call that would do; read it, correct that call (the quote and the reason are yours), and run it.
 7. A **different** reviewer runs `audit_review` (`audit review --out DIR`: a picture of what each note is about, its reason and quote, and
    an index) and then `audit_confirm` (`audit confirm --by NAME --ref R --code C`, or `--all`) with a name that is not the author's.
    Until then the gate says `unconfirmed: N`, `export` says "N acknowledgements are not yet confirmed by a second reviewer" and the book
