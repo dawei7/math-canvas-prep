@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PageText, TextLine } from '../src/model/types.js';
 import { exerciseToOperation, exercisesToOperations } from '../src/book/ops.js';
 import { proposeExercises, type ExerciseOptions } from '../src/book/exercises.js';
-import type { BookEntry } from '../src/book/sections.js';
+import { locateSections, type BookEntry } from '../src/book/sections.js';
 
 /**
  * Practice pages built by hand, line by line, for the layouts that a generated PDF cannot make on purpose: lines the
@@ -266,5 +266,34 @@ describe('operations', () => {
     const all = exercisesToOperations(set.proposals);
     expect(all.map((entry) => entry.id)).toEqual(set.proposals.map((entry) => entry.id));
     expect(all.every((entry) => entry.solution === undefined)).toBe(true);
+  });
+});
+
+describe('sections that the project already has', () => {
+  it('finds the practice set of a section without a numbered label by the heading "Exercises" inside it', () => {
+    const lesson = page(0, [{ text: 'Sets', left: 0.33, top: 0.1, size: 16.9, bold: true }, { text: 'A set is a collection of things that are different from each other.', left: 0.143, top: 0.2 }, { text: 'Example 1.', left: 0.143, top: 0.3, bold: true }, { text: 'Some more text in the lesson to make it a page of body text lines.', left: 0.143, top: 0.35 }]);
+    const exercises = page(1, [
+      { text: 'Exercises', left: 0.36, top: 0.1, size: 16.9, bold: true },
+      { text: 'Decide which are sets.', left: 0.143, top: 0.15, bold: true },
+      { text: '1) the numbers 1, 2, 3', left: 0.143, top: 0.2 },
+      { text: '2) the tall people', left: 0.143, top: 0.23 },
+      { text: '3) the letters of a word', left: 0.143, top: 0.26 },
+    ]);
+    const next = page(2, [{ text: 'Maps', left: 0.33, top: 0.1, size: 16.9, bold: true }, { text: 'A map sends each element of a set to one element of another set.', left: 0.143, top: 0.2 }]);
+    const pages = [lesson, exercises, next];
+    const located = locateSections(pages, [
+      { title: 'Sets', page: 0, depth: 1, id: 's1' },
+      { title: 'Maps', page: 2, depth: 1, id: 's2' },
+    ]);
+    const sets = located.entries.find((entry) => entry.id === 's1');
+    expect(sets?.kind).toBe('section');
+    expect(sets?.practice?.page).toBe(1);
+    expect(sets?.practice?.end.page).toBe(2);
+    expect(located.entries.find((entry) => entry.id === 's2')?.practice).toBeUndefined();
+    expect(located.notes.join(' ')).toContain('s2: no practice heading found');
+    const result = proposeExercises(pages, located.entries);
+    expect(result.sections.find((entry) => entry.section === 's1')?.proposals.map((entry) => entry.label)).toEqual(['1', '2', '3']);
+    expect(result.sections.find((entry) => entry.section === 's1')?.proposals[0]?.context.length).toBe(1);
+    expect(result.sections.find((entry) => entry.section === 's1')?.proposals[0]?.id).toBe('xs1-1');
   });
 });
