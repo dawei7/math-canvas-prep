@@ -105,8 +105,9 @@ Take them from the sidecar. Without a sidecar read the text of the first four pa
 
 ## 3. Phase B: the gate loop
 
-**B1.** `mcprep audit gate GATE --project "P"`. It lists what is **open** (neither repaired nor acknowledged), grouped by code, and exits 0 only when nothing
-is open.
+**B1.** `mcprep audit gate --ink PATTERNS [--reference "REF" [--chapter-offset N]] --project "P"` (this is `GATE` of section 1; **never leave out `--ink`**: it is the
+check of the edges, and without it a region that cuts a letter passes). It lists what is **open** (neither repaired nor acknowledged), grouped by code, and exits 0 only
+when nothing is open.
 
 **B2.** Work through the open findings **by code, in the order of the table in section 7**. For each finding: look at it (`mcprep crop SECTION:LABEL
 --out "WORK/look.png"` shows the exercise, `mcprep crop SECTION:LABEL --region solution:0` its answer, `mcprep lines PAGE --json` the text with
@@ -118,7 +119,7 @@ with more exercises than the reference lists, a remark printed between two exerc
 findings cannot be acknowledged at all and `audit ack` refuses them: `label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`,
 `section-unknown`, `section-page`, `span-gap`, `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`,
 `solution-section-mismatch`, `region-holds-item`; repair them. For the others:
-`mcprep audit ack --code CODE --ref REF --page N --quote "TEXT" --reason "SENTENCE" --by "ME" GATE --project "P"`, where `--page` is the zero-based page of the finding,
+`mcprep audit ack --code CODE --ref REF --page N --quote "TEXT" --reason "SENTENCE" --by "ME" --ink PATTERNS [--reference "REF" ...] --project "P"`, where `--page` is the zero-based page of the finding,
 `--quote` (4 to 60 characters) is a piece of the text printed on that page (copy it from `mcprep lines N`; a piece of the finding's own message is refused), and
 `--reason` says in your own words what the book prints and where (at least ten characters, not the text of the finding). A note for a whole section needs
 `--count N`. You cannot confirm your own notes: they stay `confirmed: false` until somebody with another name runs `audit confirm` (Phase D).
@@ -128,7 +129,9 @@ STOP `STUCK` and report the findings and what you tried.
 
 ## 4. Phase C: the exhaustive look, written down
 
-The text checks cannot see everything; you do, and what you saw is recorded exercise by exercise so that it can be checked. Nothing may be skipped.
+The text checks cannot see everything; you do, and what you saw is recorded exercise by exercise so that it can be checked. **This phase is not optional and nothing may be
+skipped, however many exercises there are**: the work is long on purpose, one sheet after the other. A run that stops before the visual record is complete is NOT FINISHED
+(section 10), never "passed". If you cannot look at images, say so and stop here (below).
 
 **C1. Draw.** `mcprep exercises sheets --out "WORK/sheets" --solutions --per-sheet 6 --project "P"` writes contact sheets of **every** exercise in book order,
 each cell with its instruction (blue), its own region (red), its continuation (orange) and its answer (green), and `sheets.json`; a sheet is closed before it
@@ -147,7 +150,7 @@ MISSING-INSTRUCTION, LABEL, ANSWER-CUT, ANSWER-WRONG, ANSWER-MISSING, ANSWER-EXT
 --project "P"`), look at it, and change its entry to what the cell shows now.
 
 **C4. The gate with the record.** List the sheets you looked at in `WORK/sheets/seen.txt` (for example `1-36`), then
-`mcprep audit gate GATE --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual.json" --project "P"`. An entry that does not fit the project is
+`mcprep audit gate --ink PATTERNS [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual.json" --project "P"`. An entry that does not fit the project is
 `visual-mismatch` (the cell was not looked at, or the exercise changed): look again. A record with `ok: false` is `visual-defect`. Neither can be acknowledged.
 
 An agent that cannot look at images does Phase B only, says so in the report ("no visual pass: the model cannot see images"), and the certificate shows that the
@@ -155,9 +158,9 @@ visual record is missing; a person or another agent then finishes Phase C with t
 
 ## 5. Phase D: certificate, review, export, report
 
-1. `mcprep audit gate GATE --visual "WORK/visual.json" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only `unconfirmed` left: go on at 2.
-   Anything else open: back to Phase B or C.
-2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" GATE --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
+1. `mcprep audit gate --ink PATTERNS [--reference "REF" ...] --visual "WORK/visual.json" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
+   `unconfirmed` left: go on at 2. Anything else open (a missing visual record included): back to Phase B or C. Without Phase C the book is not finished: do not report it as passed.
+2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" --ink PATTERNS [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
    here for them: **somebody with another name** looks at each and runs `mcprep audit confirm --by NAME --all` (or `--ref REF --code CODE`), then `--final` is run again.
 3. `mcprep export --out "BUNDLE" --project "P"`; it says whether the certificate is current and how many acknowledgements are not yet confirmed. A later change makes the
    certificate stale: run the gate again.
@@ -171,7 +174,7 @@ Coordinates are fractions of the page as displayed, origin top-left, `left,top,r
 --project "P"`: every line has its box. For the region of one exercise use exactly these formulas, then `--snap`:
 
 - `left` = the smallest left of the lines of its column minus 0.01; `right` = the largest right plus 0.01;
-- `top` = the top of its first line minus 0.002;
+- `top` = the top of its first line minus 0.004 (a tall letter, a box border or a bracket reaches above the box of the text line; the edge must lie in white, `--ink` says whether it does);
 - `bottom` = the smaller of (the top of the next label, instruction or heading in the same column minus 0.004) and (the bottom of its own last line plus
   0.006); never below its own last line;
 - a figure or a tall formula (a matrix, a fraction) that stands above or below the line: take the whole figure, then check the edge with `mcprep audit
@@ -188,7 +191,7 @@ Order: errors first, in this order. `REF` is `SECTION:LABEL`. After each repair:
 
 | Code | Severity | What it means | What to do |
 | --- | --- | --- | --- |
-| `label-not-first` | error | the region does not start with its number (the left edge may cut it) | Look at the crop. The region starts at the wrong line or its left edge cuts the number: `mcprep frames update REF --rect l,t,r,b --snap` with `top` = the top of the label line minus 0.002 and `left` as in section 6. |
+| `label-not-first` | error | the region does not start with its number (the left edge may cut it) | Look at the crop. The region starts at the wrong line or its left edge cuts the number: `mcprep frames update REF --rect l,t,r,b --snap` with `top` = the top of the label line minus 0.004 and `left` as in section 6. |
 | `solution-label-missing` | error | the answer region does not start with the label of its exercise | Look at `crop REF --region solution:0`. Wrong answer: `mcprep solution clear REF` then `mcprep solution add REF --page N --rect l,t,r,b --snap` for the answer that starts with the label (several regions for an answer over a break). A heading that stands before the label ("Solution 5") needs `--item-pattern` (section 8), not a repair. |
 | `overlap`, `duplicate-region` | error | two exercises lie on each other, or are the same region | Shrink the one that swallows the other: `frames update` with `bottom` = the top of the next label minus 0.004. The same region twice: one of them is the wrong exercise: `frames delete` it and add the missing one with `exercises add`. |
 | `section-unknown`, `section-page` | error | the section id does not exist, or the page lies outside the section | `mcprep exercises section REF NEWSECTION` (an outline id; `mcprep outline` lists them), or fix the outline entry (`outline update ID --page N`). |
@@ -249,8 +252,9 @@ the formulas of section 6 (a figure or a table has no text lines: the region run
 ## 10. The report (always these headings, in this order)
 
 1. **Book**: title, PDF path, SHA-256 (from `import-check`), pages, text layer (pages without), licence/author/notice stated or not.
-2. **Result**: `PERFECT` (`audit gate --final` exit 0), `PASSED, awaiting confirmation of N acknowledgements`, or the STOP code; chapters, sections, exercises, exercises with
-   an answer; the gate certificate path.
+2. **Result**, exactly one of: `PERFECT` (`audit gate --final` exit 0); `PASSED, awaiting confirmation of N acknowledgements` (everything else done, only `unconfirmed` is left);
+   `NOT FINISHED` followed by what is missing (for example the visual pass: say how many of the exercises have an entry); the STOP code. No other wording. Then: chapters,
+   sections, exercises, exercises with an answer; the gate certificate path.
 3. **Layout**: how the book prints exercises and answers in one or two sentences; the options used (section 8) or `defaults`; whether manual mode was used, for which sections.
 4. **Findings**: a table: code, number found, number repaired, number acknowledged; then each acknowledgement (ref, page, quote, reason) and the path of `WORK/review/index.md`.
 5. **Visual pass**: the entries of the record (`N of N exercises`), how many were `ok: false` and repaired, or `not done` with the reason; the model that looked.
