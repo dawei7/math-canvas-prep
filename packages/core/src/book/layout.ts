@@ -111,7 +111,7 @@ export function lowestInk(ink: readonly number[], from: number, to: number): num
  * The text extraction sometimes joins the two items of one row of a two-column list into one line ("5) first 6)
  * second"), when the gap between the columns is not wide enough to be seen as a gutter. Such a line is cut again where
  * the next number begins; the cut sits on the left edge of the column that other items start at, else where the text
- * says. Only a line that starts with a number and holds the next numbers (1 to 3 more) is cut.
+ * says. Only a line that starts with a number and holds larger numbers at the position of a column is cut.
  */
 export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
   const numbered = lines.filter((entry) => /^\s*\d{1,3}[).]/.test(entry.line.text));
@@ -138,7 +138,8 @@ export function explodeMergedRows(lines: readonly PLine[]): PLine[] {
     let found: RegExpExecArray | null;
     while ((found = embedded.exec(text)) !== null) {
       const n = Number(found[1]);
-      if (n <= expected || n - expected > 3 || found.index <= 3) continue;
+      // Along the rows the next number is 1 to 3 further; down flowing columns it is a whole column further.
+      if (n <= expected || n - expected > 80 || found.index <= 3) continue;
       // The cut has to fall on a column where other items start; a number inside a sentence does not.
       const estimate = left + ((right - left) * found.index) / Math.max(1, text.length);
       const column = columns
@@ -240,15 +241,17 @@ export function selectSequence(candidates: readonly Candidate[], lines: readonly
     else chains.push([candidate]);
   }
   const main = [...chains].sort((a, b) => b.length - a.length)[0] ?? [];
+  // Chains of two or more numbers are kept (a few items lost to a garbled line leave short runs); a single number far
+  // from the others is put aside.
   for (const chain of chains) {
-    if (chain === main) continue;
+    if (chain === main || chain.length >= 2) continue;
     for (const candidate of chain) {
       chosen.delete(candidate.label);
       reject(candidate, `its number ${candidate.label} does not belong to the run ${(main[0] as Candidate | undefined)?.label ?? '?'}..${(main[main.length - 1] as Candidate | undefined)?.label ?? '?'}`);
     }
   }
   // Gaps in the run, and a second look for the missing numbers.
-  const numeric = main.filter((candidate) => candidate.suffix === '');
+  const numeric = [...chosen.values()].filter((candidate) => candidate.suffix === '').sort((a, b) => a.n - b.n);
   const gaps: string[] = [];
   const weak: Candidate[] = [];
   if (numeric.length >= 2) {
@@ -349,6 +352,8 @@ export function blockRegions(block: Block, pages: readonly PageText[]): Region[]
 
 export interface Layout {
   items: ItemAcc[];
+  /** The right edge of the text of the whole set (a figure may reach as far as the text of other pages does). */
+  bodyRight: number;
   boundaries: Map<number, { top: number; block: Block }[]>;
   orphans: string[];
 }
@@ -404,14 +409,36 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
     const inColumn = (band: number, column: number): ItemAcc[] => mine.filter((item) => item.band === band && item.column === column).sort((a, b) => a.start.line.rect.top - b.start.line.rect.top);
     for (const entry of [...others].sort((a, b) => a.line.rect.top - b.line.rect.top)) {
       const band = bandOf(entry.line.rect.top);
-      const column = columnIndex(band, entry.line.rect.left);
-      const column_ = inColumn(band, column);
       const height = entry.line.rect.bottom - entry.line.rect.top;
-      // A line that shares its row with the first line of an item (the sign of a root, the rows of a fraction) belongs to it.
-      let owner = column_.find(
-        (item) => Math.min(item.start.line.rect.bottom, entry.line.rect.bottom) - Math.max(item.start.line.rect.top, entry.line.rect.top) > 0.3 * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top),
+      // A text that the extraction cut at a gutter goes on right after the first line of its item, in the next column.
+      const sameRow = mine
+        .filter(
+          (item) =>
+            item.band === band &&
+            Math.min(item.start.line.rect.bottom, entry.line.rect.bottom) - Math.max(item.start.line.rect.top, entry.line.rect.top) > 0.5 * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top) &&
+            entry.line.rect.left - item.start.line.rect.right >= -0.01 &&
+            entry.line.rect.left - item.start.line.rect.right <= 0.045,
+        )
+        .sort((a, b) => Math.abs(entry.line.rect.left - a.start.line.rect.right) - Math.abs(entry.line.rect.left - b.start.line.rect.right))[0];
+      // ... unless it stands at the left edge of a column next to an item of that column (then it is that item's).
+      const inSlot = mine.some(
+        (other) =>
+          other !== sameRow &&
+          other.band === band &&
+          Math.abs(other.start.line.rect.left - entry.line.rect.left) <= 0.03 &&
+          other.start.line.rect.top - entry.line.rect.bottom <= 0.03 &&
+          entry.line.rect.top - other.start.line.rect.bottom <= 0.03,
       );
-      if (!owner) {
+      if (sameRow && !inSlot) {
+        sameRow.own.push(entry);
+        continue;
+      }
+      const ownerIn = (column_: ItemAcc[], strict: boolean): ItemAcc | undefined => {
+        // A line that shares its row with the first line of an item (the sign of a root, the rows of a fraction) belongs to it.
+        const byOverlap = column_.find(
+          (item) => Math.min(item.start.line.rect.bottom, entry.line.rect.bottom) - Math.max(item.start.line.rect.top, entry.line.rect.top) > 0.3 * Math.min(height, item.start.line.rect.bottom - item.start.line.rect.top),
+        );
+        if (byOverlap) return byOverlap;
         const above = [...column_].reverse().find((item) => item.start.line.rect.top <= entry.line.rect.top + 0.004);
         const below = column_.find((item) => item.start.line.rect.top > entry.line.rect.top + 0.004);
         const aboveGap = above ? entry.line.rect.top - Math.max(...above.own.map((own) => own.line.rect.bottom)) : Infinity;
@@ -420,10 +447,24 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
         const overlapsBelow =
           below !== undefined &&
           Math.min(below.start.line.rect.right, entry.line.rect.right) - Math.max(below.start.line.rect.left, entry.line.rect.left) > 0.5 * (entry.line.rect.right - entry.line.rect.left);
-        if (below && overlapsBelow && !below.figure && belowGap >= -0.004 && belowGap <= 0.012 && belowGap + 0.004 < aboveGap) owner = below;
-        else if (above && aboveGap <= Math.max(0.15, 8 * pitch)) owner = above;
-        else if (above?.figure) owner = above;
+        if (below && overlapsBelow && !below.figure && belowGap >= -0.004 && belowGap <= 0.012 && belowGap + 0.004 < aboveGap) return below;
+        if (strict) return undefined;
+        if (above && aboveGap <= Math.max(0.15, 8 * pitch)) return above;
+        if (above?.figure) return above;
+        return undefined;
+      };
+      // First the column the line stands in; when no item of it claims the line, the nearest column to its left that has
+      // an item above it (the labels of a figure may reach into columns to the right, where other items start further down).
+      let column = columnIndex(band, entry.line.rect.left);
+      let owner = ownerIn(inColumn(band, column), true);
+      if (!owner) {
+        const above_ = (item: ItemAcc): boolean => item.start.line.rect.top <= entry.line.rect.top + 0.004;
+        (columnsOf.get(band) ?? []).forEach((candidate, i) => {
+          if (candidate.center <= entry.line.rect.left + 0.03 && mine.some((item) => item.band === band && item.column === i && above_(item))) column = i;
+        });
+        owner = ownerIn(inColumn(band, column), false);
       }
+      const column_ = inColumn(band, column);
       if (owner) {
         owner.own.push(entry);
         continue;
@@ -457,7 +498,8 @@ export function layoutPages(lines: readonly PLine[], pages: readonly PageText[],
     previous = [...lowest.values()];
     if (boundaries.length > 0) carried = (boundaries[boundaries.length - 1] as { block: Block }).block;
   }
-  return { items, boundaries: boundariesByPage, orphans };
+  const rights = lines.map((entry) => entry.line.rect.right);
+  return { items, bodyRight: rights.length > 0 ? Math.min(1, Math.max(...rights) + PAD) : 0.95, boundaries: boundariesByPage, orphans };
 }
 
 
@@ -524,8 +566,10 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
   const figure = item.figure || (item.own.length >= 3 && short >= 0.5 * item.own.length);
   if (figure) {
     const body = all.filter((entryLine) => !isRunningLine(entryLine));
-    const bodyRight = body.length > 0 ? Math.max(...body.map((entryLine) => entryLine.rect.right)) + PAD : 0.95;
-    const rightNeighbours = items.filter((other) => other.page === item.page && other.band === item.band && other.column > item.column).map((other) => other.start.line.rect.left - PAD);
+    const bodyRight = Math.max(layout.bodyRight, body.length > 0 ? Math.max(...body.map((entryLine) => entryLine.rect.right)) + PAD : 0);
+    const rightNeighbours = items
+      .filter((other) => other.page === item.page && other.band === item.band && other.start.line.rect.left > item.start.line.rect.left + 0.1 && Math.abs(other.start.line.rect.top - item.start.line.rect.top) <= 0.03)
+      .map((other) => other.start.line.rect.left - PAD);
     right = Math.max(right, Math.min(rightNeighbours.length > 0 ? Math.min(...rightNeighbours) : bodyRight, bodyRight));
   }
   left = clamp01(left);
@@ -543,10 +587,16 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
   ];
   const limit = Math.min(contentLimit(page), ...below);
   if (page.ink) {
-    // Ink under the last line (a figure) counts, but not ink that belongs to a neighbouring column.
-    const foreign = all
-      .filter((entryLine) => !isRunningLine(entryLine) && entryLine.rect.top > lastText + 0.002 && (entryLine.rect.left >= right - 0.02 || entryLine.rect.right <= left + 0.02))
-      .map((entryLine) => entryLine.rect.top - 0.003);
+    // Ink under the last line (a figure) counts, but not ink that belongs to a neighbouring column. A figure may reach
+    // down beside the labels of its neighbours, so it stops at the first item below it; any other item stops at the
+    // first line beside it.
+    const foreign = figure
+      ? items
+          .filter((other) => other !== item && other.page === item.page && other.start.line.rect.top > lastText + 0.002)
+          .flatMap((other) => other.own.map((entryLine) => entryLine.line.rect.top - 0.003))
+      : all
+          .filter((entryLine) => !isRunningLine(entryLine) && entryLine.rect.top > lastText + 0.002 && (entryLine.rect.left >= right - 0.02 || entryLine.rect.right <= left + 0.02))
+          .map((entryLine) => entryLine.rect.top - 0.003);
     const ceiling = Math.min(limit, ...foreign);
     if (ceiling > lastText) {
       const lowest = lowestInk(page.ink, lastText, ceiling);
