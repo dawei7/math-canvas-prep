@@ -79,6 +79,7 @@ export const TOOLS = {
   solutions_propose: { command: 'solutions propose' },
   exercises_verify: { command: 'exercises verify' },
   exercises_sample: { command: 'exercises sample' },
+  book_compare: { command: 'book compare', positional: ['reference'] },
 };
 
 /** The commands that take the contents of a batch from a file or standard input: their positional argument says nothing. */

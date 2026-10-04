@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { AUDIT_INSTRUCTIONS, registerAuditTools } from './audit-tools.js';
 import { capLists, dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
 import { BOOK_INSTRUCTIONS, registerBookTools } from './book-tools.js';
+import { GATE_INSTRUCTIONS, registerGateTools } from './gate-tools.js';
 import { VERIFY_INSTRUCTIONS, registerVerifyTools } from './verify-tools.js';
 
 /**
@@ -44,7 +45,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const callLog = options.callLog !== undefined && options.callLog !== '' ? options.callLog : env[CALL_LOG_ENV];
   // The command line the tools run in process would log the same call a second time: it is not given the log.
   const { [CALL_LOG_ENV]: _logged, ...cliEnv } = env;
-  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}${VERIFY_INSTRUCTIONS}` });
+  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}${VERIFY_INSTRUCTIONS}${GATE_INSTRUCTIONS}` });
 
   async function cli(argv: string[], extra: { stdin?: string; project?: string | undefined } = {}): Promise<CliResult> {
     let out = '';
@@ -658,6 +659,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
   registerBookTools({ tool, cli, toResult, projectOf });
   registerAuditTools({ tool, cli, toResult, projectOf });
   registerVerifyTools({ tool, cli, toResult, projectOf });
+  registerGateTools({ tool, cli, toResult, projectOf });
 
   server.registerResource(
     'agent-guide',

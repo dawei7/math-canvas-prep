@@ -109,6 +109,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`book show`](#book-show): Show the book: its information, its sections with the number of authoritative exercises in each, and the totals.
 - [`book meta`](#book-meta): Show or change what the bundle says about the book: title, library folder, author, series, description, licence, source address and notice.
 - [`book export`](#book-export): Write the book summary (sections with exercise counts, totals, document information) as a plain JSON file.
+- [`book compare`](#book-compare): Compare the audited sections and their exercise counts with a reference list of the book; exit code 4 when anything differs.
 - [`meta`](#meta): Show or change the title and library folder of the project (author, licence and notice: `book meta`).
 - [`relink`](#relink): Point the project at the PDF where it now is.
 - [`validate`](#validate): Check the project against every rule of the bundle format; errors name the frame and the fix.
@@ -1645,6 +1646,39 @@ $ mcprep book export --exercises
 ```
 
 With `--json`, `result` is: `{ path, bytes, summary: the summary of `book show` }`
+
+## book compare
+
+Compare the audited sections and their exercise counts with a reference list of the book; exit code 4 when anything differs.
+
+```
+mcprep book compare <reference> [options]
+```
+
+Reads a reference (JSON: the owner's own count of the exercises of each section, in one of two forms: { "chapters": [{ "number", "title", "sections": [{ "number", "title", "exercise_count" }] }] }, where section 2 of chapter 3 is "3.2" (--chapter-offset N adds N to the chapter numbers), or { "sections": [{ "label", "title", "exercise_count" }] }) and compares it with the project, section by section, matching sections by the label the book prints: per section the reference count against the audited count, the first and last label, the pages of the first and the last exercise, the difference and whether the titles differ after normalising; the sections on one side only; the totals and a table per chapter. Everything that differs is listed under `differences`; the exit code is 4 when there is any (a count, a section on one side only, a title), so that the one who audits must look at the pages and decide: what the book prints (a practice set with more exercises than the contents list) is acknowledged with `mcprep audit ack`, anything else is a defect to repair. No network, nothing is changed. `--details FILE` writes the whole report (format math-canvas-compare).
+
+Arguments:
+
+- `reference`: The reference JSON file.
+
+Options:
+
+- `--chapter-offset <n>`: Added to the chapter numbers of a reference with chapters (when the reference counts the first chapter as 1 and the book prints 0, use -1).
+- `--details <file>`: Write the whole report as JSON (format math-canvas-compare).
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep book compare reference.json
+$ mcprep book compare reference.json --chapter-offset -1 --details compare.json
+$ mcprep book compare reference.json --json
+```
+
+With `--json`, `result` is: `{ format: "math-canvas-compare", version: 1, reference: { sections, exercises }, audited: { sections, exercises }, totals: { referenceExercises, exercises, difference }, sections: [{ label, id, title, referenceTitle, count, referenceCount, difference, firstLabel, lastLabel, firstPage, lastPage, titleDiffers, status: "equal"|"count"|"missing"|"extra" }], chapters: [{ label, title, sections, referenceExercises, exercises, equal }], differences: [{ kind: "count"|"missing"|"extra"|"title", label, message }] }; the exit code is 4 when there is a difference`
 
 ## meta
 

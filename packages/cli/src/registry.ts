@@ -1,6 +1,7 @@
 import { bookExport, bookMeta, bookShow } from './commands/book.js';
 import { exportBundle, importCheck, inspectBundle } from './commands/bundle.js';
 import { exercisesPropose, solutionsPropose } from './commands/audit.js';
+import { bookCompare } from './commands/compare.js';
 import { contextAdd, contextRemove, continuesAdd, continuesRemove } from './commands/context.js';
 import { guide, schema } from './commands/docs.js';
 import { exercisesAdd, exercisesLabel, exercisesList, exercisesMark, exercisesSection, exercisesUnmark } from './commands/exercises.js';
@@ -64,6 +65,7 @@ export const COMMANDS: CommandSpec[] = [
   bookShow,
   bookMeta,
   bookExport,
+  bookCompare,
   meta,
   relink,
   validate,
