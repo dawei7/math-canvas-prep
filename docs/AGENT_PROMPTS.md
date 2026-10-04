@@ -30,7 +30,8 @@ Rules that never bend:
    another way to make the gate pass.
 6. You cannot confirm your own acknowledgements. Somebody with another name confirms them after looking at the pictures (`audit review`); until then
    the result is "PASSED, awaiting confirmation", never "PERFECT".
-7. The visual record is what you SAW in each cell, not what you expect. If you cannot look at images, do not write one; say so.
+7. The visual record is what you SAW in each cell, not what you expect. If you cannot look at images, do not write one; say so. The visual pass is part of
+   the audit, however many exercises there are: a run that stops before the record covers every exercise reports NOT FINISHED, never "passed".
 8. The gate (`audit gate`, in the end with `--final`) is the definition of done; do not stop before it passes, unless the runbook gives you a STOP code.
    Say plainly what you did not do.
 9. Keep WORK/progress.md up to date so that anybody can continue where you stopped.
