@@ -16,7 +16,7 @@ export async function readReference(context: CommandContext, file: string, chapt
   const path = resolve(context.io.cwd, file);
   let raw: unknown;
   try {
-    raw = JSON.parse((await readFile(path, 'utf8')).replace(/^﻿/, ''));
+    raw = JSON.parse((await readFile(path, 'utf8')).replace(/^\uFEFF/, ''));
   } catch (error) {
     throw new McPrepError('E_FILE', `Cannot read the reference "${file}": ${(error as Error).message}`, { hint: 'The reference is a JSON file; see `mcprep book compare --help` for its two forms.' });
   }

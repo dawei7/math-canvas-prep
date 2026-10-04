@@ -80,13 +80,16 @@ export const TOOLS = {
   exercises_verify: { command: 'exercises verify' },
   exercises_sample: { command: 'exercises sample' },
   book_compare: { command: 'book compare', positional: ['reference'] },
+  exercises_sheets: { command: 'exercises sheets' },
+  audit_gate: { command: 'audit gate' },
+  audit_ack: { command: 'audit ack' },
 };
 
 /** The commands that take the contents of a batch from a file or standard input: their positional argument says nothing. */
 const CONTENT_COMMANDS = new Set(Object.values(TOOLS).filter((entry) => entry.content).map((entry) => entry.command));
 
 /** Argument names that are not the option's name once `_` is `-`. */
-const ALIASES = { sections: 'section', 'item-patterns': 'item-pattern', 'ops-file': 'ops', 'details-file': 'details', 'out-file': 'out', 'crops-dir': 'crops' };
+const ALIASES = { sections: 'section', 'item-patterns': 'item-pattern', 'ops-file': 'ops', 'details-file': 'details', 'out-file': 'out', 'crops-dir': 'crops', 'out-dir': 'out' };
 /** Options that hold a number: `3` and `"3"` and `3.0` are one value. */
 const NUMBERS = new Set(['page', 'pages', 'index', 'depth', 'dx', 'dy', 'top', 'first', 'at', 'max-side', 'scale', 'padding', 'grid', 'min-confidence', 'max-items', 'exercises', 'solutions', '$page']);
 /** Options that hold a list written with commas on the command line. */

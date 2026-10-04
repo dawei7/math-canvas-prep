@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/sheets.schema.json",
+  "title": "The list of the contact sheets of an audit (sheets.json, written by mcprep exercises sheets)",
+  "description": "Which exercises are on which sheet, in the order of the book, and a hash of what each sheet shows: a repair that changes an exercise changes the hash of its sheet, which `audit gate --sheets-seen` finds. Pages are zero-based. Plain JSON, camelCase.",
+  "type": "object",
+  "required": ["format", "version", "scope", "perSheet", "solutions", "cellWidth", "exercises", "sheets"],
+  "properties": {
+    "format": { "const": "math-canvas-sheets" },
+    "version": { "const": 1 },
+    "scope": { "enum": ["all", "sample", "section"], "description": "Only `all` is the exhaustive pass that the gate asks for." },
+    "sections": { "type": "array", "items": { "type": "string" }, "description": "The sections of a scope `section`." },
+    "perSheet": { "type": "integer", "minimum": 1 },
+    "solutions": { "type": "boolean", "description": "Whether the answers are drawn." },
+    "cellWidth": { "type": "integer", "minimum": 1, "description": "The width of a cell in pixels." },
+    "exercises": { "type": "integer", "minimum": 0 },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["number", "file", "refs", "pages", "hash"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1 },
+          "file": { "type": "string", "description": "sheet-0001.png, in the folder of sheets.json." },
+          "refs": { "type": "array", "items": { "type": "string" }, "description": "SECTION:LABEL of the exercises on the sheet, in the order of the cells." },
+          "pages": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "description": "The pages that the regions of its cells are on." },
+          "hash": { "type": "string", "description": "SHA-256 of the regions the sheet shows." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

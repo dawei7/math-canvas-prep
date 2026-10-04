@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/compare.schema.json",
+  "title": "The comparison of an audited book with a reference list of its sections (mcprep book compare --json and --details)",
+  "description": "Per section the reference count against the audited count, the pages, the difference and whether the titles differ; the sections on one side only; the totals; a table per chapter; and every difference. Pages are zero-based. Plain JSON, camelCase.",
+  "type": "object",
+  "required": ["format", "version", "reference", "audited", "totals", "sections", "chapters", "differences"],
+  "properties": {
+    "format": { "const": "math-canvas-compare" },
+    "version": { "const": 1 },
+    "reference": { "type": "object", "required": ["sections", "exercises"], "properties": { "sections": { "type": "integer", "minimum": 0 }, "exercises": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+    "audited": { "type": "object", "required": ["sections", "exercises"], "properties": { "sections": { "type": "integer", "minimum": 0, "description": "Sections that hold exercises." }, "exercises": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+    "totals": { "type": "object", "required": ["referenceExercises", "exercises", "difference"], "properties": { "referenceExercises": { "type": "integer", "minimum": 0 }, "exercises": { "type": "integer", "minimum": 0 }, "difference": { "type": "integer" } }, "additionalProperties": false },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "id", "title", "referenceTitle", "count", "referenceCount", "difference", "firstLabel", "lastLabel", "firstPage", "lastPage", "titleDiffers", "status"],
+        "properties": {
+          "label": { "type": "string" },
+          "id": { "type": ["string", "null"], "description": "The id exercises name; null for a section the outline does not have." },
+          "title": { "type": ["string", "null"] },
+          "referenceTitle": { "type": ["string", "null"] },
+          "count": { "type": ["integer", "null"], "minimum": 0 },
+          "referenceCount": { "type": ["integer", "null"], "minimum": 0 },
+          "difference": { "type": ["integer", "null"], "description": "The audited count minus the reference count." },
+          "firstLabel": { "type": ["string", "null"] },
+          "lastLabel": { "type": ["string", "null"] },
+          "firstPage": { "type": ["integer", "null"], "minimum": 0 },
+          "lastPage": { "type": ["integer", "null"], "minimum": 0 },
+          "titleDiffers": { "type": "boolean" },
+          "status": { "enum": ["equal", "count", "missing", "extra"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["label", "title", "sections", "referenceExercises", "exercises", "equal"],
+        "properties": {
+          "label": { "type": "string" },
+          "title": { "type": ["string", "null"] },
+          "sections": { "type": "integer", "minimum": 0 },
+          "referenceExercises": { "type": "integer", "minimum": 0 },
+          "exercises": { "type": "integer", "minimum": 0 },
+          "equal": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "differences": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "label", "message"],
+        "properties": { "kind": { "enum": ["count", "missing", "extra", "title"] }, "label": { "type": "string" }, "message": { "type": "string" } },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

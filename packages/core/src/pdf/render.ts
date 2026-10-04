@@ -1,4 +1,4 @@
-import type { SKRSContext2D } from '@napi-rs/canvas';
+import type { Canvas, SKRSContext2D } from '@napi-rs/canvas';
 import { KIND_COLORS, type OverlayBox } from '../model/overlay.js';
 import { clampRect, rectHeight, rectWidth } from '../model/rect.js';
 import type { Rect } from '../model/types.js';
@@ -46,7 +46,18 @@ async function registerFonts(): Promise<string> {
   return GlobalFonts.has('McPrep Sans') ? 'McPrep Sans' : 'sans-serif';
 }
 
-async function renderView(doc: PdfDocument, index: number, view: Rect, options: RenderOptions, defaultSide: number): Promise<RenderedImage> {
+/** What drawing a view of a page leaves: the canvas itself, before it is made a PNG. */
+export interface DrawnView {
+  canvas: Canvas;
+  width: number;
+  height: number;
+  /** Pixels per point. */
+  scale: number;
+  /** The part of the page shown, in page fractions. */
+  view: Rect;
+}
+
+async function drawView(doc: PdfDocument, index: number, view: Rect, options: RenderOptions, defaultSide: number): Promise<DrawnView> {
   const { createCanvas } = await loadCanvas().catch((error: unknown) => {
     throw new McPrepError('E_RENDER_UNAVAILABLE', `Rendering needs the @napi-rs/canvas package, which could not be loaded: ${(error as Error).message}`, {
       hint: 'Reinstall the dependencies (npm install). Text analysis, validation and export work without rendering.',
@@ -86,8 +97,26 @@ async function renderView(doc: PdfDocument, index: number, view: Rect, options: 
   };
   if (options.boxes && options.boxes.length > 0) drawBoxes(context, width, height, exact, options.boxes, family);
   if (options.grid) drawGrid(context, width, height, exact, options.grid, family);
-  const png = await canvas.encode('png');
-  return { png: new Uint8Array(png), width, height, scale, view: clampRect(exact) };
+  return { canvas, width, height, scale, view: clampRect(exact) };
+}
+
+async function renderView(doc: PdfDocument, index: number, view: Rect, options: RenderOptions, defaultSide: number): Promise<RenderedImage> {
+  const drawn = await drawView(doc, index, view, options, defaultSide);
+  const png = await drawn.canvas.encode('png');
+  return { png: new Uint8Array(png), width: drawn.width, height: drawn.height, scale: drawn.scale, view: drawn.view };
+}
+
+/** The sans-serif family the overlays and the captions of contact sheets are written in (Liberation Sans when it can be loaded). */
+export async function overlayFont(): Promise<string> {
+  return registerFonts();
+}
+
+/** A region of a page drawn on a canvas (not encoded): the pieces of a contact sheet are put together from these. */
+export async function renderRegionCanvas(doc: PdfDocument, index: number, rect: Rect, options: RenderOptions = {}): Promise<DrawnView> {
+  doc.assertPage(index);
+  const pad = options.padding ?? 0.01;
+  const view = clampRect({ left: rect.left - pad, top: rect.top - pad, right: rect.right + pad, bottom: rect.bottom + pad });
+  return drawView(doc, index, view, options, 1400);
 }
 
 /** A whole page as a PNG. */

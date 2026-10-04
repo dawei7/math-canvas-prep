@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/gate.schema.json",
+  "title": "The certificate of the gate of an audit (mcprep audit gate --json and <name>.audit-gate.json)",
+  "description": "What the gate found when it ran: every check that needs no looking, what is open (neither repaired nor acknowledged), what is acknowledged with its reason, and whether it passed. It is for the frames and the outline whose SHA-256 it records: any later change makes it stale. Pages are zero-based. Plain JSON, camelCase.",
+  "type": "object",
+  "required": ["format", "version", "createdAt", "passed", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements"],
+  "properties": {
+    "format": { "const": "math-canvas-audit-gate" },
+    "version": { "const": 1 },
+    "createdAt": { "type": "string", "description": "When the gate ran (ISO 8601)." },
+    "passed": { "type": "boolean", "description": "True only when `open` is empty." },
+    "project": {
+      "type": "object",
+      "required": ["name", "frames", "outline", "hash"],
+      "properties": {
+        "name": { "type": "string", "description": "The name of the project file without .mcprep.json." },
+        "frames": { "type": "string", "description": "SHA-256 of the frames (in the order of their ids, canonical JSON)." },
+        "outline": { "type": "string", "description": "SHA-256 of the outline entries (in their order, canonical JSON)." },
+        "hash": { "type": "string", "description": "SHA-256 of the two together: the certificate is current while this is the hash of the project." }
+      },
+      "additionalProperties": false
+    },
+    "counts": {
+      "type": "object",
+      "required": ["sections", "exercises", "solutions", "errors", "warnings", "infos", "open", "acknowledged"],
+      "properties": {
+        "sections": { "type": "integer", "minimum": 0 },
+        "exercises": { "type": "integer", "minimum": 0 },
+        "solutions": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0, "description": "Errors of exercises verify (before acknowledgements)." },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "infos": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 },
+        "acknowledged": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "checks": {
+      "type": "object",
+      "required": ["validate", "verify", "reference", "bundle", "sheets"],
+      "properties": {
+        "validate": { "type": "object", "required": ["errors", "warnings"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+        "verify": { "type": "object", "required": ["errors", "warnings", "infos", "ink"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 }, "infos": { "type": "integer", "minimum": 0 }, "ink": { "type": "boolean", "description": "Whether the pixel check of the edges ran." } }, "additionalProperties": false },
+        "reference": { "type": ["object", "null"], "required": ["file", "differences"], "properties": { "file": { "type": "string" }, "differences": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
+        "bundle": { "type": ["object", "null"], "required": ["path", "ok", "frames"], "properties": { "path": { "type": "string" }, "ok": { "type": "boolean" }, "frames": { "type": ["integer", "null"], "minimum": 0 } }, "additionalProperties": false },
+        "sheets": {
+          "type": ["object", "null"],
+          "required": ["file", "sheets", "seen", "missing", "exhaustive", "current"],
+          "properties": {
+            "file": { "type": "string" },
+            "sheets": { "type": "integer", "minimum": 0 },
+            "seen": { "type": "integer", "minimum": 0 },
+            "missing": { "type": "array", "items": { "type": "integer" }, "description": "The sheets not listed as looked at." },
+            "exhaustive": { "type": "boolean", "description": "The sheets cover every exercise of the book." },
+            "current": { "type": "boolean", "description": "Every sheet shows its exercises as they are now." }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "itemPatterns": { "type": "array", "items": { "type": "string" }, "description": "The patterns that read the numbers of exercises and answers, as the audit gave them." },
+    "open": { "type": "array", "items": { "$ref": "#/$defs/finding" }, "description": "Neither repaired nor acknowledged." },
+    "acknowledged": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["finding", "acknowledgement"],
+        "properties": { "finding": { "$ref": "#/$defs/finding" }, "acknowledgement": { "$ref": "#/$defs/acknowledgement" } },
+        "additionalProperties": false
+      }
+    },
+    "staleAcknowledgements": {
+      "type": "array",
+      "items": { "type": "object", "required": ["acknowledgement", "why"], "properties": { "acknowledgement": { "$ref": "#/$defs/acknowledgement" }, "why": { "type": "string" } }, "additionalProperties": false },
+      "description": "Notes whose findings changed: they do not apply and the findings are open again."
+    },
+    "unusedAcknowledgements": { "type": "array", "items": { "$ref": "#/$defs/acknowledgement" }, "description": "Notes for findings that are gone (the problem was repaired)." },
+    "openOmitted": { "type": "integer", "minimum": 0, "description": "Only in the printed result of the command: how many open findings were left out after the first 300." },
+    "acknowledgedOmitted": { "type": "integer", "minimum": 0 },
+    "certificate": { "type": "string", "description": "Only in the printed result of the command: where the certificate was written." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["source", "code", "severity", "ref", "page", "message", "evidence", "acknowledgeable"],
+      "properties": {
+        "source": { "enum": ["validate", "verify", "reference", "bundle", "sheets"] },
+        "code": { "type": "string" },
+        "severity": { "enum": ["error", "warning"] },
+        "ref": { "type": "string" },
+        "page": { "type": ["integer", "null"], "minimum": 0 },
+        "message": { "type": "string" },
+        "evidence": { "type": "string" },
+        "acknowledgeable": { "type": "boolean", "description": "False for what can never be what the book prints: a project that fails validation, a bundle the importer rejects, sheets that were not looked at." }
+      },
+      "additionalProperties": false
+    },
+    "acknowledgement": {
+      "type": "object",
+      "required": ["code", "ref", "reason", "evidence", "by"],
+      "properties": {
+        "code": { "type": "string" },
+        "ref": { "type": "string" },
+        "reason": { "type": "string" },
+        "evidence": { "type": "object", "properties": { "page": { "type": "integer", "minimum": 0 }, "quote": { "type": "string", "maxLength": 60 } }, "additionalProperties": false },
+        "by": { "type": "string" },
+        "count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

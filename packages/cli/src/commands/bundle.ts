@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { buildBookSummary, checkBundle, hashFile, type BundleReport } from '@mcprep/core';
+import { buildBookSummary, checkBundle, gateStatus, hashFile, type BundleReport } from '@mcprep/core';
 import { flag, stringOption, usage } from '../args.js';
 import { FRAME_HEADERS, byPosition, frameRows, issueLines, plural, summarizeFrame, table, tableLimited } from '../format.js';
 import type { CommandSpec } from '../types.js';
@@ -21,7 +21,7 @@ export const exportBundle: CommandSpec = {
     ...GLOBAL_OPTIONS,
   ],
   examples: ['mcprep export', 'mcprep export --out out/analysis1.mcbundle --folder "University/Analysis"'],
-  output: '{ path, bytes, sha256, manifest (with features and the document info when there are any), counts: { frames, outlineEntries }, book: { exercises, withSolution }, issues: Issue[] (repairs and warnings), validation: { errors, warnings, repairs }, importCheck?: { ok, steps } }',
+  output: '{ path, bytes, sha256, manifest (with features and the document info when there are any), counts: { frames, outlineEntries }, book: { exercises, withSolution }, issues: Issue[] (repairs and warnings), validation: { errors, warnings, repairs }, importCheck?: { ok, steps }, gate?: { status: "none"|"stale"|"failed"|"passed", ... } (for a book: whether the certificate of `audit gate` is for these frames and passed) }',
   async run(context) {
     const session = await context.session();
     const outline = stringOption(context.options, 'outline') ?? 'project';
@@ -44,6 +44,7 @@ export const exportBundle: CommandSpec = {
       verify: !flag(context.options, 'no-verify'),
     });
     const hashed = await hashFile(done.write.path);
+    const gate = done.write.book.exercises > 0 ? await gateStatus(session) : undefined;
     const result = {
       path: done.write.path,
       bytes: done.write.bytes,
@@ -54,6 +55,7 @@ export const exportBundle: CommandSpec = {
       issues: done.write.issues,
       validation: { errors: done.validation.errors, warnings: done.validation.warnings, repairs: done.validation.repairs },
       ...(done.check ? { importCheck: { ok: done.check.ok, steps: done.check.steps } } : {}),
+      ...(gate !== undefined ? { gate } : {}),
     };
     const manifest = done.write.manifest;
     const document = manifest.document;
@@ -64,6 +66,7 @@ export const exportBundle: CommandSpec = {
       `  ${plural(done.write.counts.frames, 'frame')}, ${plural(done.write.counts.outlineEntries, 'outline entry', 'outline entries')}, ${plural(document.pageCount, 'page')}`,
       ...(done.write.book.exercises > 0 ? [`  ${plural(done.write.book.exercises, 'authoritative exercise')}, ${done.write.book.withSolution} with a hidden solution (features: ${(manifest.features ?? []).join(', ')})`] : []),
       done.check ? '  The importer check passed: the app will accept it.' : '  (not verified)',
+      ...(gate !== undefined ? [{ none: '  Audit gate: not run (`mcprep audit gate`).', stale: '  Audit gate: STALE, the frames or the outline changed after it ran (`mcprep audit gate`).', failed: `  Audit gate: did NOT pass (${gate.open ?? '?'} open).`, passed: '  Audit gate: passed, and current for these frames and this outline.' }[gate.status]] : []),
       'Copy it to the tablet and open it in the Math Canvas library.',
       ...issueLines(done.write.issues.filter((entry) => entry.severity !== 'error'), '  ', 60),
     ];
