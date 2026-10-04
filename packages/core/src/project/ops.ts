@@ -1,6 +1,6 @@
 import { assignSectionIds, deriveSectionId } from '../book/sections.js';
 import { snapDivider, snapRectToLines } from '../geometry/snap.js';
-import { bookReference, isAuthoritative, normalizeLabel } from '../model/authority.js';
+import { bookKey, bookKeyOf, bookReference, isAuthoritative, normalizeLabel } from '../model/authority.js';
 import { compareReadingOrder } from '../model/numbering.js';
 import { enlargeToMinimum, isBelowMinimum, parseRect, rectsEqual, roundNumber, roundRect } from '../model/rect.js';
 import { FRAME_KINDS, type Authority, type DocumentInfo, type Frame, type FrameKind, type OutlineEntry, type Rect, type Region, type TextLine } from '../model/types.js';
@@ -148,18 +148,100 @@ function fail(code: string, message: string, hint?: string, details?: Record<str
 
 const fmt = (value: number): string => roundNumber(value, 4).toString();
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Finding frames
+
+/**
+ * Where the frames of one version of a project lie, by id and by (section, label), for the lookups of a batch. A batch of
+ * thousands of operations on thousands of frames that scanned all the frames to find one, and copied the whole list to change
+ * it, did tens of millions of steps: 5 000 `solution.set` took five seconds on Node 20, where a scan over frames that were
+ * copied with a property added is thirty times slower than on later versions of V8. The index belongs to the latest version of
+ * the frames of the batch. The operations that change one frame, or add one, keep it up to date; any other change drops it, and
+ * it is built again at the next lookup. Outside a batch there is none, and a lookup scans the frames.
+ */
+interface FrameIndex {
+  frames: readonly Frame[];
+  ids: Map<string, number>;
+  /** Where the authoritative exercise with a section and a label is: the first one, if the project has the number twice. */
+  books: Map<string, number>;
+  /** The numbers (section and label) that more than one frame has. */
+  repeated: Set<string>;
+  /** Two frames have one id (a broken project): a change by id then has to look at every frame. */
+  repeatedIds: boolean;
+}
+
+/**
+ * The state of the batch that is being applied. `owned` is the list of frames the batch made itself (a copy of the project's, the
+ * first time it changed a frame): while the latest version of the frames is that list, one more change to a single frame is made in
+ * it, instead of in a new copy of thousands of frames for each of thousands of operations. The project the batch was given, and
+ * every earlier version of it, are never touched: only the batch holds the list, and only until it returns it as its result.
+ */
+let activeBatch: { index: FrameIndex | undefined; owned: Frame[] | undefined } | undefined;
+
+function indexAdd(index: FrameIndex, frame: Frame, at: number): void {
+  if (index.ids.has(frame.id)) index.repeatedIds = true;
+  else index.ids.set(frame.id, at);
+  const key = bookKeyOf(frame);
+  if (key === undefined) return;
+  const holder = index.books.get(key);
+  if (holder === undefined) index.books.set(key, at);
+  else {
+    index.repeated.add(key);
+    index.books.set(key, Math.min(holder, at));
+  }
+}
+
+function indexFrames(frames: readonly Frame[]): FrameIndex {
+  const index: FrameIndex = { frames, ids: new Map(), books: new Map(), repeated: new Set(), repeatedIds: false };
+  for (let at = 0; at < frames.length; at += 1) indexAdd(index, frames[at] as Frame, at);
+  return index;
+}
+
+/** The index of these frames while a batch is applied (built when first needed); undefined outside a batch. */
+function indexOf(project: Project): FrameIndex | undefined {
+  const batch = activeBatch;
+  if (!batch) return undefined;
+  if (batch.index === undefined || batch.index.frames !== project.frames) batch.index = indexFrames(project.frames);
+  return batch.index;
+}
+
+const dropIndex = (): void => {
+  if (activeBatch) activeBatch.index = undefined;
+};
+
 /**
  * The frame a reference names: its id, or `SECTION:LABEL` for an authoritative exercise ("1.2:5a"; neither a frame id nor a
  * label can contain a colon). Undefined when there is none.
  */
 export function findFrame(project: Project, reference: string): Frame | undefined {
   const colon = reference.indexOf(':');
+  const index = indexOf(project);
   if (colon > 0) {
     const section = reference.slice(0, colon);
     const label = reference.slice(colon + 1);
-    return project.frames.find((frame) => isAuthoritative(frame) && frame.section === section && frame.label === label);
+    return index ? project.frames[index.books.get(bookKey(section, label)) ?? -1] : project.frames.find((frame) => isAuthoritative(frame) && frame.section === section && frame.label === label);
   }
-  return project.frames.find((frame) => frame.id === reference);
+  return index ? project.frames[index.ids.get(reference) ?? -1] : project.frames.find((frame) => frame.id === reference);
+}
+
+/**
+ * The same lookup for one version of a project that stays as it is: for a caller that asks about thousands of references (the
+ * pages an operation list mentions), the frames are indexed once instead of scanned for each.
+ */
+export function frameFinder(project: Project): (reference: string) => Frame | undefined {
+  const index = indexFrames(project.frames);
+  return (reference) => {
+    const colon = reference.indexOf(':');
+    const at = colon > 0 ? index.books.get(bookKey(reference.slice(0, colon), reference.slice(colon + 1))) : index.ids.get(reference);
+    return at === undefined ? undefined : project.frames[at];
+  };
+}
+
+/** The authoritative exercise with this section and label (the first, if there are several), or undefined. */
+function findBookFrame(project: Project, section: string, label: string): Frame | undefined {
+  const index = indexOf(project);
+  if (index) return project.frames[index.books.get(bookKey(section, label)) ?? -1];
+  return project.frames.find((frame) => isAuthoritative(frame) && frame.section === section && frame.label === label);
 }
 
 function frameById(project: Project, id: string): Frame {
@@ -219,6 +301,60 @@ function checkSectionId(raw: unknown, who: string): string {
 }
 
 function replaceFrames(project: Project, frames: Frame[]): Project {
+  if (activeBatch) {
+    activeBatch.index = undefined;
+    activeBatch.owned = undefined;
+  }
+  return { ...project, frames };
+}
+
+/**
+ * The project with the frame `frame` changed by `change` (it keeps its place; every other frame is the same object). One copy
+ * of the list of frames, whatever its length, and the index of the batch stays valid.
+ */
+function replaceFrame(project: Project, frame: Frame, change: (item: Frame) => Frame): Project {
+  const index = indexOf(project);
+  const at = index && !index.repeatedIds ? index.ids.get(frame.id) : undefined;
+  if (!index || at === undefined || project.frames[at] !== frame) return replaceFrames(project, project.frames.map((item) => (item.id === frame.id ? change(item) : item)));
+  const next = change(frame);
+  const frames = activeBatch?.owned === project.frames ? (project.frames as Frame[]) : project.frames.slice();
+  frames[at] = next;
+  if (activeBatch) activeBatch.owned = frames;
+  index.frames = frames;
+  if (next.id !== frame.id) dropIndex();
+  else {
+    const was = bookKeyOf(frame);
+    const now = bookKeyOf(next);
+    if (was !== now) {
+      if (was !== undefined) {
+        // Another frame has the number too: which of them a lookup finds is for a scan to say.
+        if (index.repeated.has(was)) dropIndex();
+        else index.books.delete(was);
+      }
+      if (now !== undefined && activeBatch?.index === index) {
+        const holder = index.books.get(now);
+        if (holder === undefined) index.books.set(now, at);
+        else {
+          index.repeated.add(now);
+          index.books.set(now, Math.min(holder, at));
+        }
+      }
+    }
+  }
+  return { ...project, frames };
+}
+
+/** The project with one more frame, at the end. */
+function appendFrame(project: Project, frame: Frame): Project {
+  const index = indexOf(project);
+  const frames = activeBatch?.owned === project.frames ? (project.frames as Frame[]) : [...project.frames];
+  const at = frames.length;
+  frames.push(frame);
+  if (activeBatch) activeBatch.owned = frames;
+  if (index) {
+    indexAdd(index, frame, at);
+    index.frames = frames;
+  }
   return { ...project, frames };
 }
 
@@ -394,7 +530,7 @@ function replaceExercise(project: Project, existing: Frame, op: Extract<Operatio
     else delete next.solution;
   }
   notes.push(`Replaced the exercise ${bookReference(existing.section as string, existing.label as string)} in place (${id}).`);
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === id ? next : item))), created: [], removed: [], notes, replaced: [id], target: id };
+  return { project: replaceFrame(project, existing, () => next), created: [], removed: [], notes, replaced: [id], target: id };
 }
 
 function opAdd(project: Project, op: Extract<Operation, { op: 'add' }>, ctx: OpContext): OpResult {
@@ -418,7 +554,7 @@ function opAdd(project: Project, op: Extract<Operation, { op: 'add' }>, ctx: OpC
   }
   if (op.solution && op.solution.length > 0 && kind !== 'exercise') fail('E_SOLUTION', `Only exercises can have a solution; this frame is a ${kind}.`);
   if (authoritative) {
-    const existing = project.frames.find((frame) => isAuthoritative(frame) && frame.section === section && frame.label === label);
+    const existing = findBookFrame(project, section as string, label as string);
     if (existing) {
       if (op.replace !== true) {
         fail(
@@ -464,9 +600,11 @@ function opAdd(project: Project, op: Extract<Operation, { op: 'add' }>, ctx: OpC
     frame.section = section as string;
   }
   if (op.solution && op.solution.length > 0) frame.solution = op.solution.map((region, index) => regionOf(region, ctx, notes, `${id} solution[${index}]`, op.snap));
-  let frames = [...current.frames, frame];
-  if (frame.unit !== undefined) frames = consolidateUnitContext(frames, frame.unit);
-  return { project: replaceFrames(current, frames), created: [id], removed: [], notes, target: id };
+  if (frame.unit !== undefined) {
+    const frames = consolidateUnitContext([...current.frames, frame], frame.unit);
+    return { project: replaceFrames(current, frames), created: [id], removed: [], notes, target: id };
+  }
+  return { project: appendFrame(current, frame), created: [id], removed: [], notes, target: id };
 }
 
 function opUpdate(project: Project, op: Extract<Operation, { op: 'update' }>, ctx: OpContext): OpResult {
@@ -497,7 +635,7 @@ function opUpdate(project: Project, op: Extract<Operation, { op: 'update' }>, ct
     const base = op.rect !== undefined ? cleanRect(op.rect) : frame.rect;
     next.rect = fitRect(base, next.page, { snap: op.snap, enlarge: op.enlarge }, ctx, notes, frame.id);
   }
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === frame.id ? next : item))), created: [], removed: [], notes };
+  return { project: replaceFrame(project, frame, () => next), created: [], removed: [], notes };
 }
 
 /** An exercise left with one part is an ordinary exercise again: the unit goes. */
@@ -761,7 +899,7 @@ function opContextAdd(project: Project, op: Extract<Operation, { op: 'context.ad
   const region = regionOf({ page: op.page, rect: op.rect }, ctx, notes, `context of ${op.id}`, op.snap);
   const next = [...(owner.context ?? []), region];
   if (next.length > LIMITS.maxRegions) fail('E_CONTEXT', `${owner.id} would have ${next.length} context regions; at most ${LIMITS.maxRegions} are allowed.`, 'Merge regions that are next to each other.');
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === owner.id ? { ...item, context: next } : item))), created: [], removed: [], notes };
+  return { project: replaceFrame(project, owner, (item) => ({ ...item, context: next })), created: [], removed: [], notes };
 }
 
 function opContextRemove(project: Project, op: Extract<Operation, { op: 'context.remove' }>): OpResult {
@@ -776,13 +914,12 @@ function opContextRemove(project: Project, op: Extract<Operation, { op: 'context
   } else if (regions.length === 1) next = [];
   else fail('E_CONTEXT', `${op.id} has ${regions.length} context regions: say which with "index" (0..${regions.length - 1}) or remove all with "all".`);
   return {
-    project: replaceFrames(project, project.frames.map((item) => {
-      if (item.id !== owner.id) return item;
+    project: replaceFrame(project, owner, (item) => {
       const copy = { ...item };
       if (next.length > 0) copy.context = next;
       else delete copy.context;
       return copy;
-    })),
+    }),
     created: [],
     removed: [],
     notes: [],
@@ -795,13 +932,12 @@ function opContextSet(project: Project, op: Extract<Operation, { op: 'context.se
   const regions = op.regions.map((region, index) => regionOf(region, ctx, notes, `context[${index}] of ${op.id}`));
   if (regions.length > LIMITS.maxRegions) fail('E_CONTEXT', `At most ${LIMITS.maxRegions} context regions are allowed.`);
   return {
-    project: replaceFrames(project, project.frames.map((item) => {
-      if (item.id !== owner.id) return item;
+    project: replaceFrame(project, owner, (item) => {
       const copy = { ...item };
       if (regions.length > 0) copy.context = regions;
       else delete copy.context;
       return copy;
-    })),
+    }),
     created: [],
     removed: [],
     notes,
@@ -820,7 +956,7 @@ function opContinuesAdd(project: Project, op: Extract<Operation, { op: 'continue
   const region = regionOf({ page: op.page, rect: op.rect }, ctx, notes, `continuation of ${op.id}`, op.snap);
   const next = [...(owner.continues ?? []), region];
   if (next.length > LIMITS.maxRegions) fail('E_CONTINUES', `${owner.id} would have ${next.length} continuation regions; at most ${LIMITS.maxRegions} are allowed.`);
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === owner.id ? { ...item, continues: next } : item))), created: [], removed: [], notes };
+  return { project: replaceFrame(project, owner, (item) => ({ ...item, continues: next })), created: [], removed: [], notes };
 }
 
 function opContinuesRemove(project: Project, op: Extract<Operation, { op: 'continues.remove' }>): OpResult {
@@ -832,13 +968,12 @@ function opContinuesRemove(project: Project, op: Extract<Operation, { op: 'conti
   else if (op.index !== undefined && Number.isInteger(op.index) && op.index >= 0 && op.index < regions.length) next = regions.filter((_, index) => index !== op.index);
   else fail('E_CONTINUES', `${op.id} has ${regions.length} continuation regions: say which with "index" (0..${regions.length - 1}) or remove all with "all".`);
   return {
-    project: replaceFrames(project, project.frames.map((item) => {
-      if (item.id !== owner.id) return item;
+    project: replaceFrame(project, owner, (item) => {
       const copy = { ...item };
       if (next.length > 0) copy.continues = next;
       else delete copy.continues;
       return copy;
-    })),
+    }),
     created: [],
     removed: [],
     notes: [],
@@ -866,7 +1001,7 @@ function opAuthorityMark(project: Project, op: Extract<Operation, { op: 'authori
   const section = checkSectionId(op.section, frame.id);
   const next: Frame = { ...frame, authority: 'book', label, section };
   notes.push(`${frame.id} is now the exercise ${bookReference(section, label)}; it has no positional number any more.`);
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === frame.id ? next : item))), created: [], removed: [], notes, target: frame.id };
+  return { project: replaceFrame(project, frame, () => next), created: [], removed: [], notes, target: frame.id };
 }
 
 function opAuthorityUnmark(project: Project, op: Extract<Operation, { op: 'authority.unmark' }>): OpResult {
@@ -879,7 +1014,7 @@ function opAuthorityUnmark(project: Project, op: Extract<Operation, { op: 'autho
   delete next.label;
   delete next.section;
   return {
-    project: replaceFrames(project, project.frames.map((item) => (item.id === frame.id ? next : item))),
+    project: replaceFrame(project, frame, () => next),
     created: [],
     removed: [],
     notes: [`${frame.id} is an ordinary exercise again: it gets a positional number and can be cut into parts.`],
@@ -899,13 +1034,13 @@ function opLabelSet(project: Project, op: Extract<Operation, { op: 'label.set' }
   const notes: string[] = [];
   const frame = authoritativeFrame(project, op.id, 'label');
   const label = checkLabel(op.label, frame.id, notes);
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === frame.id ? { ...item, label } : item))), created: [], removed: [], notes, target: frame.id };
+  return { project: replaceFrame(project, frame, (item) => ({ ...item, label })), created: [], removed: [], notes, target: frame.id };
 }
 
 function opSectionSet(project: Project, op: Extract<Operation, { op: 'section.set' }>): OpResult {
   const frame = authoritativeFrame(project, op.id, 'section');
   const section = checkSectionId(op.section, frame.id);
-  return { project: replaceFrames(project, project.frames.map((item) => (item.id === frame.id ? { ...item, section } : item))), created: [], removed: [], notes: [], target: frame.id };
+  return { project: replaceFrame(project, frame, (item) => ({ ...item, section })), created: [], removed: [], notes: [], target: frame.id };
 }
 
 function solutionOwner(project: Project, id: string): Frame {
@@ -915,16 +1050,12 @@ function solutionOwner(project: Project, id: string): Frame {
 }
 
 function withSolution(project: Project, frame: Frame, regions: Region[]): Project {
-  return replaceFrames(
-    project,
-    project.frames.map((item) => {
-      if (item.id !== frame.id) return item;
-      const copy = { ...item };
-      if (regions.length > 0) copy.solution = regions;
-      else delete copy.solution;
-      return copy;
-    }),
-  );
+  return replaceFrame(project, frame, (item) => {
+    const copy = { ...item };
+    if (regions.length > 0) copy.solution = regions;
+    else delete copy.solution;
+    return copy;
+  });
 }
 
 function opSolutionAdd(project: Project, op: Extract<Operation, { op: 'solution.add' }>, ctx: OpContext): OpResult {
@@ -1274,6 +1405,16 @@ function resolveReferences(op: Operation, aliases: ReadonlyMap<string, string>):
 
 /** Applies the operations in order; the first failure aborts the whole batch (nothing is partly applied). */
 export function applyOperations(project: Project, operations: readonly Operation[], ctx: OpContext): BatchResult {
+  const outer = activeBatch;
+  activeBatch = { index: undefined, owned: undefined };
+  try {
+    return applyBatch(project, operations, ctx);
+  } finally {
+    activeBatch = outer;
+  }
+}
+
+function applyBatch(project: Project, operations: readonly Operation[], ctx: OpContext): BatchResult {
   // Once, here: the counter of generated ids goes above every id the project holds, so each operation can rely on it.
   let current = withSequenceBeyondIds(project);
   const steps: BatchResult['steps'] = [];

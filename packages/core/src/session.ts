@@ -5,7 +5,7 @@ import { writeBundle, type BundleWriteResult } from './bundle/writer.js';
 import { isAuthoritative } from './model/authority.js';
 import type { Frame, OutlineEntry, PageText, TextLine } from './model/types.js';
 import { PdfDocument, type TextOptions } from './pdf/document.js';
-import { applyOperations, findFrame, type BatchResult, type Operation } from './project/ops.js';
+import { applyOperations, frameFinder, type BatchResult, type Operation } from './project/ops.js';
 import type { Project } from './project/model.js';
 import { createProjectFile, readProjectFile, resolvePdfPath, withProjectLock, writeProjectFile, type CreateOptions } from './project/store.js';
 import { validateProject, type ProjectValidation } from './project/validate.js';
@@ -50,6 +50,8 @@ function addPagesOf(frame: Frame, pages: Set<number>): void {
 }
 
 function pagesMentioned(project: Project, operations: readonly Operation[]): number[] {
+  // The frames are indexed once, when the first operation names one (an operation list can hold thousands).
+  let find: ((reference: string) => Frame | undefined) | undefined;
   const pages = new Set<number>();
   const refPages = new Map<string, number>();
   const regionPages = (value: unknown): void => {
@@ -68,7 +70,7 @@ function pagesMentioned(project: Project, operations: readonly Operation[]): num
     regionPages(record['regions']);
     const id = record['id'];
     if (typeof id === 'string') {
-      const known = id.startsWith('@') ? refPages.get(id.slice(1)) : findFrame(project, id)?.page;
+      const known = id.startsWith('@') ? refPages.get(id.slice(1)) : (find ??= frameFinder(project))(id)?.page;
       if (known !== undefined) pages.add(known);
     }
     if (op.op === 'add' && op.ref !== undefined) refPages.set(op.ref, op.page);

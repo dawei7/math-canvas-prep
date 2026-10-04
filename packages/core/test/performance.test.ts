@@ -150,4 +150,24 @@ describe('the pipeline grows in step with the book', () => {
     expect(mixed.value.project.frames.every((entry) => entry.solution?.length === 1)).toBe(true);
     expect(mixed.ms).toBeLessThan(6000);
   });
+
+  it('sets the solution of thousands of exercises, and moves them to another section, by their numbers in one batch: no search through the project for each', () => {
+    // Each operation names its exercise as SECTION:LABEL. A search through all the frames for each (and a copy of the list of frames by
+    // a loop over all of them) made 5 000 of them take five seconds on Node 20; with an index of the batch it takes a tenth of that.
+    const batch = (project: Project): Operation[] =>
+      project.frames.flatMap((frame): Operation[] => [
+        { op: 'solution.set', id: `${frame.section}:${frame.label}`, regions: [{ page: 900, rect: [0.1, 0.1, 0.5, 0.2] }] },
+        { op: 'section.set', id: `${frame.section}:${frame.label}`, section: 'c1' },
+      ]);
+    const run = (count: number): number => {
+      const project = book(count, Math.max(10, Math.ceil(count / 40)));
+      const operations = batch(project);
+      const done = applyOperations(project, operations, { pageCount: PAGES });
+      expect(done.project.frames.every((entry) => entry.section === 'c1' && entry.solution?.length === 1 && entry.solution[0]?.page === 900)).toBe(true);
+      return median(() => applyOperations(project, operations, { pageCount: PAGES }));
+    };
+    const ratio = run(5000) / Math.max(1, run(500));
+    // Ten times the exercises: linear is about 10, a search for each operation a hundred.
+    expect(ratio).toBeLessThan(40);
+  });
 });
