@@ -58,7 +58,61 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const count = (n: number, word: string, many = `${word}s`): string => `${n} ${n === 1 ? word : many}`;
 
-const decode = (bytes: Uint8Array): string => new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+/** A value from a file as a short piece of JSON for a message. */
+const show = (value: unknown): string => {
+  const text = JSON.stringify(value);
+  return text.length > 60 ? `${text.slice(0, 57)}...` : text;
+};
+
+/**
+ * Whether the name of an archive entry is one that makes a bundle invalid (docs/BUNDLE_FORMAT.md, section 1): it has a ".."
+ * segment (a part between slashes that is exactly "..", so "a..b" is fine), starts with "/", or has a backslash. The app
+ * refuses such a bundle: the name could leave its folder when the archive is unpacked, and Android 14 and later cannot read
+ * past it.
+ */
+export function isUnsafeEntryName(name: string): boolean {
+  return name.startsWith('/') || name.includes('\\') || name.split('/').includes('..');
+}
+
+/** How deeply objects and lists nest in `json`, ignoring brackets inside strings (the count the app makes before it parses). */
+function nesting(json: string): number {
+  let depth = 0;
+  let deepest = 0;
+  let inString = false;
+  let escaped = false;
+  for (let at = 0; at < json.length; at += 1) {
+    const char = json.charCodeAt(at);
+    if (escaped) escaped = false;
+    else if (inString) {
+      if (char === 0x5c) escaped = true;
+      else if (char === 0x22) inString = false;
+    } else if (char === 0x22) inString = true;
+    else if (char === 0x7b || char === 0x5b) {
+      depth += 1;
+      if (depth > deepest) deepest = depth;
+    } else if (char === 0x7d || char === 0x5d) depth -= 1;
+  }
+  return deepest;
+}
+
+/**
+ * The parsed text of a JSON entry, read the way the app reads it: UTF-8 exactly (bytes that are not are refused, a leading
+ * byte order mark is ignored) and not nested deeper than a bundle file ever is (checked before parsing, so a hostile file
+ * cannot exhaust the stack). Throws a SyntaxError that says what is wrong.
+ */
+function readJson(bytes: Uint8Array): unknown {
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new SyntaxError('the bytes are not valid UTF-8 text, which the app refuses');
+  }
+  const deepest = nesting(text);
+  if (deepest > LIMITS.bundle.maxJsonNesting) {
+    throw new SyntaxError(`objects and lists are nested ${deepest} levels deep, and the app refuses more than ${LIMITS.bundle.maxJsonNesting}`);
+  }
+  return JSON.parse(text);
+}
 
 /**
  * Does what the Android importer does (docs/BUNDLE_FORMAT.md, section 5) and reports each step, every repair and every
@@ -112,8 +166,18 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
       method: entry.method === 0 ? 'stored' : 'deflate',
       role: roles[entry.name] ?? 'ignored',
     }));
+    // An entry whose name could leave its folder is not ignored like the others: it makes the whole bundle invalid (section 1).
+    const unsafe = infos.filter((entry) => isUnsafeEntryName(entry.name)).map((entry) => show(entry.name));
+    if (unsafe.length > 0) {
+      const one = unsafe.length === 1;
+      fail(
+        'entry-unsafe-name',
+        `The archive has ${one ? 'an entry' : 'entries'} with an unsafe name (${unsafe.join(', ')}): ${one ? 'it has' : 'each has'} a ".." segment, a leading "/" or a backslash. A name like that could leave its folder when the archive is unpacked, so the format does not ignore ${one ? 'it' : 'them'}: it makes the whole bundle invalid, and a reader rejects the bundle.`,
+        `Remove ${one ? 'the entry' : 'the entries'} from the archive. A bundle holds only bundle.json, document.pdf, frames.json and, if it has one, outline.json (\`mcprep export\` writes exactly these).`,
+      );
+    }
     for (const entry of infos) {
-      if (entry.role === 'ignored') {
+      if (entry.role === 'ignored' && !isUnsafeEntryName(entry.name)) {
         warnings.push(
           issue('warning', 'entry-ignored', `The entry "${entry.name}" is not one of the four fixed names; the importer ignores it and never extracts it.`, {
             fix: 'Entry names are case-sensitive and fixed: bundle.json, document.pdf, frames.json, outline.json.',
@@ -144,6 +208,16 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         fail('entry-missing', `The archive has no entry named "${name as string}".`, 'Names are case-sensitive and fixed; a bundle needs bundle.json, document.pdf and frames.json.');
       }
     }
+    // The app reads the archive as a stream, entry after entry, and a stored entry that has its size after its data (flag
+    // bit 3, as a writer that streams makes it) cannot be read that way, whether or not the entry is one of the four.
+    const unreadable = archive.entries.filter((entry) => entry.method === 0 && (entry.flags & 0x8) !== 0).map((entry) => show(entry.name));
+    if (unreadable.length > 0) {
+      fail(
+        'zip-stored-descriptor',
+        `The ${unreadable.length === 1 ? 'entry' : 'entries'} ${unreadable.join(', ')} ${unreadable.length === 1 ? 'is' : 'are'} stored, not deflated, with the size written after the data (a writer that streams does this); the app reads the archive as a stream and cannot read such an entry, so it refuses the bundle.`,
+        'Deflate the entries, or write the archive so that each entry header holds its size (`mcprep export` does).',
+      );
+    }
     if (errors.length > 0) {
       steps.push({ step: 1, name: 'archive', status: 'failed', detail: errors[0]?.message ?? '' });
       return { ...result(), archive: archiveInfo };
@@ -155,8 +229,7 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
     // Step 2: the manifest.
     let manifestRaw: Record<string, unknown> | undefined;
     try {
-      const text = decode(await archive.read(manifestEntry as ZipEntryInfo, LIMITS.bundle.maxJsonBytes));
-      const parsed: unknown = JSON.parse(text);
+      const parsed = readJson(await archive.read(manifestEntry as ZipEntryInfo, LIMITS.bundle.maxJsonBytes));
       if (!isRecord(parsed)) throw new SyntaxError('bundle.json is not a JSON object');
       manifestRaw = parsed;
     } catch (error) {
@@ -188,32 +261,40 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         const checkedTitle = typeof rawTitle === 'string' ? checkTitle(rawTitle) : { problem: 'The document title is missing.' };
         if (checkedTitle.problem) fail('manifest-title', `document.title: ${checkedTitle.problem}`, 'A title is 1 to 200 characters after trimming.');
         else title = checkedTitle.title;
+        // The app compares the hash as the text it is, so only lowercase hex is a hash.
         const rawSha = document['sha256'];
-        if (typeof rawSha !== 'string' || !/^[0-9a-fA-F]{64}$/.test(rawSha)) {
-          fail('manifest-sha256', 'document.sha256 must be 64 hex characters.');
-        } else {
+        if (typeof rawSha === 'string' && /^[0-9a-f]{64}$/.test(rawSha)) {
+          sha256 = rawSha;
+        } else if (typeof rawSha === 'string' && /^[0-9a-fA-F]{64}$/.test(rawSha)) {
           sha256 = rawSha.toLowerCase();
-          if (rawSha !== sha256) warnings.push(issue('warning', 'sha256-case', 'document.sha256 should be written in lowercase.'));
+          fail('manifest-sha256', 'document.sha256 has upper-case letters; the format says 64 lowercase hex characters and the app refuses anything else.', `Write it in lowercase: "${sha256}".`);
+        } else {
+          fail('manifest-sha256', 'document.sha256 must be 64 lowercase hex characters (0 to 9, a to f).');
         }
         const rawBytes = document['bytes'];
-        if (typeof rawBytes !== 'number' || !Number.isInteger(rawBytes) || rawBytes < 0) fail('manifest-bytes', 'document.bytes must be a whole number.');
+        if (typeof rawBytes !== 'number' || !Number.isInteger(rawBytes) || rawBytes < 1) fail('manifest-bytes', 'document.bytes must be a whole number of at least 1: the size of document.pdf.');
         else bytesDeclared = rawBytes;
         const rawPages = document['pageCount'];
-        if (typeof rawPages !== 'number' || !Number.isInteger(rawPages) || rawPages < 1) fail('manifest-page-count', 'document.pageCount must be a whole number of at least 1.');
-        else pageCount = rawPages;
+        if (typeof rawPages !== 'number' || !Number.isInteger(rawPages) || rawPages < 1 || rawPages > LIMITS.bundle.maxPageCount) {
+          fail('manifest-page-count', `document.pageCount must be a whole number from 1 to ${LIMITS.bundle.maxPageCount}.`);
+        } else pageCount = rawPages;
         fileName = typeof document['fileName'] === 'string' ? document['fileName'] : '';
         if (document['fileName'] !== undefined && typeof document['fileName'] !== 'string') {
           warnings.push(issue('warning', 'manifest-filename', 'document.fileName should be a string; it is only informational.'));
         }
-        if (typeof document['folder'] === 'string') {
-          const cleaned = cleanFolder(document['folder']);
+        // A JSON null counts as absent, here and for the entry names below, as it does in the app.
+        const rawFolder = document['folder'];
+        if (typeof rawFolder === 'string') {
+          const cleaned = cleanFolder(rawFolder);
           folder = cleaned.folder;
           for (const text of cleaned.repairs) repairs.push(issue('repair', 'folder-cleaned', text));
-        } else if (document['folder'] !== undefined) {
-          warnings.push(issue('warning', 'manifest-folder', 'document.folder should be a string; it is ignored.'));
+        } else if (rawFolder !== undefined && rawFolder !== null) {
+          fail('manifest-folder', `document.folder is ${show(rawFolder)}, which is not text; the app refuses a manifest whose folder is anything but text.`, 'Write the folder as names separated by "/" (for example "University/Analysis"), or leave it out.');
         }
-        if (document['pdf'] !== undefined && document['pdf'] !== ENTRY_PDF) {
-          warnings.push(issue('warning', 'manifest-pdf-name', `document.pdf is ${JSON.stringify(document['pdf'])}; the importer always reads the entry "${ENTRY_PDF}".`));
+        // The entry names are fixed. A manifest that points elsewhere describes a file the app cannot read, and it refuses it.
+        const pdfName = document['pdf'];
+        if (pdfName !== undefined && pdfName !== null && pdfName !== ENTRY_PDF) {
+          fail('manifest-pdf-name', `document.pdf is ${show(pdfName)}; the entry names are fixed, and the app refuses a manifest that names another entry for the PDF.`, `Store the PDF as the entry "${ENTRY_PDF}" and write "pdf": "${ENTRY_PDF}" (or leave "pdf" out).`);
         }
         const checkedInfo = checkDocumentInfo(document, { strict: false, where: 'document' });
         info = checkedInfo.info;
@@ -229,13 +310,17 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
           warnings.push(issue('warning', 'manifest-features', '"features" should be a list of texts (sections, authority, solution); it is informational and ignored.'));
         }
       }
-      if (manifestRaw['frames'] !== undefined && manifestRaw['frames'] !== ENTRY_FRAMES) {
-        warnings.push(issue('warning', 'manifest-frames-name', `"frames" is ${JSON.stringify(manifestRaw['frames'])}; the importer always reads the entry "${ENTRY_FRAMES}".`));
+      const framesName = manifestRaw['frames'];
+      if (framesName !== undefined && framesName !== null && framesName !== ENTRY_FRAMES) {
+        fail('manifest-frames-name', `"frames" is ${show(framesName)}; the entry names are fixed, and the app refuses a manifest that names another entry for the frames.`, `Store the frames as the entry "${ENTRY_FRAMES}" and write "frames": "${ENTRY_FRAMES}" (or leave "frames" out).`);
       }
-      if (manifestRaw['outline'] !== undefined && !outlineEntry) {
-        warnings.push(issue('warning', 'manifest-outline-missing', 'bundle.json names an outline but the archive has no outline.json; no contents are imported.'));
-      }
-      if (manifestRaw['outline'] === undefined && outlineEntry) {
+      const outlineName = manifestRaw['outline'];
+      const outlineNamed = outlineName !== undefined && outlineName !== null;
+      if (outlineNamed && outlineName !== ENTRY_OUTLINE) {
+        fail('manifest-outline-name', `"outline" is ${show(outlineName)}; the entry names are fixed, and the app refuses a manifest that names another entry for the outline.`, `Store the outline as the entry "${ENTRY_OUTLINE}" and write "outline": "${ENTRY_OUTLINE}" (or leave "outline" out).`);
+      } else if (outlineNamed && !outlineEntry) {
+        fail('manifest-outline-missing', `bundle.json names "${ENTRY_OUTLINE}" but the archive has no such entry; the app refuses a bundle that does not hold what its manifest says it holds.`, `Add the entry "${ENTRY_OUTLINE}" to the archive, or leave "outline" out of bundle.json.`);
+      } else if (!outlineNamed && outlineEntry) {
         warnings.push(issue('warning', 'manifest-outline-unlisted', 'The archive has outline.json but bundle.json does not list it; it is used anyway.'));
       }
     }
@@ -319,7 +404,7 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
     const stepFive = errors.length;
     let frames: Frame[] = [];
     try {
-      const raw: unknown = JSON.parse(decode(await archive.read(framesEntry as ZipEntryInfo, LIMITS.bundle.maxJsonBytes)));
+      const raw = readJson(await archive.read(framesEntry as ZipEntryInfo, LIMITS.bundle.maxJsonBytes));
       if (!isRecord(raw)) {
         fail('frames-json', 'frames.json must be a JSON object with "version" and "frames".');
       } else {
@@ -341,7 +426,7 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
     let outline: OutlineEntry[] | undefined;
     if (outlineEntry) {
       try {
-        const raw: unknown = JSON.parse(decode(await archive.read(outlineEntry, LIMITS.bundle.maxJsonBytes)));
+        const raw = readJson(await archive.read(outlineEntry, LIMITS.bundle.maxJsonBytes));
         if (!isRecord(raw)) {
           fail('outline-json', 'outline.json must be a JSON object with "version" and "entries".');
         } else {

@@ -139,6 +139,24 @@ describe('the project file of a book', () => {
     expect(result.ok).toBe(true);
     expect(result.warnings.map((entry) => `${entry.code}:${entry.frameId}`).sort()).toEqual(['label-style:f1', 'section-mismatch:f2']);
   });
+
+  it('tells a label copied with its dot from one with stray spaces: the importer drops the dot, and keeps the spaces', () => {
+    const frames = bookFrames().map((entry) => (entry.id === 'f1' ? { ...entry, label: '1.' } : entry.id === 'f3' ? { ...entry, label: '3a ' } : entry));
+    const result = validateProject({ ...project(), frames });
+    expect(result.ok).toBe(true);
+    expect(result.repairs).toEqual([]);
+    const byFrame = new Map(result.warnings.map((entry) => [entry.frameId, entry]));
+    expect([...byFrame.keys()]).toEqual(['f1', 'f3']);
+    expect(byFrame.get('f1')?.message).toContain('the importer drops it and keeps "1"');
+    expect(byFrame.get('f3')?.message).toContain('spaces');
+  });
+
+  it('compares labels the way the importer keeps them: 5 and 5. are one exercise', () => {
+    const frames = bookFrames().map((entry) => (entry.id === 'f2' ? { ...entry, label: '1.' } : entry));
+    const result = validateProject({ ...project(), frames });
+    expect(result.errors.map((entry) => `${entry.code}:${entry.frameId}`)).toEqual(['duplicate-exercise:f2']);
+    expect(result.errors[0]?.message).toContain('exercise "1"');
+  });
 });
 
 describe('writing the bundle of a book', () => {
@@ -220,6 +238,18 @@ describe('writing the bundle of a book', () => {
     expect(written.issues.filter((entry) => entry.severity === 'warning').map((entry) => entry.code)).toEqual(['label-style']);
   });
 
+  it('writes a label as the importer keeps it, so the bundle says the same on its own', async () => {
+    const frames = bookFrames().map((entry) => (entry.id === 'f1' ? { ...entry, label: '1)' } : entry.id === 'f3' ? { ...entry, label: '3a ' } : entry));
+    const written = await buildBundleBytes({ ...input(), frames });
+    expect(written.issues.filter((entry) => entry.severity === 'warning').map((entry) => `${entry.code}:${entry.frameId}`)).toEqual(['label-style:f1', 'label-style:f3']);
+    expect(written.frames.map((entry) => entry.label).slice(0, 3)).toEqual(['1', '2', '3a ']);
+    // Read back, the bundle has nothing left to say about the dot (spaces are for the tools to warn about, not the importer).
+    const report = await checkBundle(written.bytes);
+    expect(report.errors).toEqual([]);
+    expect(report.repairs).toEqual([]);
+    expect(report.warnings).toEqual([]);
+  });
+
   it('writes ordinary exercises and authoritative ones side by side', async () => {
     const mixed: Frame[] = [...bookFrames(), { id: 'mine', kind: 'exercise', page: 2, rect: { left: 0.1, top: 0.6, right: 0.9, bottom: 0.7 } }, { id: 'q', kind: 'question', page: 2, rect: { left: 0.1, top: 0.75, right: 0.9, bottom: 0.8 } }];
     const { bytes } = await buildBundleBytes({ ...input(), frames: mixed });
@@ -288,6 +318,40 @@ describe('reading a bundle of a book', () => {
     const report = await check({ omitOutline: true, manifest: manifest({ outline: undefined }) });
     expect(codes(report)).toEqual(['section-unknown']);
     expect(report.errors[0]?.frameId).toBe('f1');
+  });
+
+  it('drops one closing "." or ")" that closes nothing from a label before it checks the label, and keeps the label so', async () => {
+    const report = await check({ frames: [good('f1', '1.1', '5.'), good('f2', '1.1', '6)'), good('f3', '1.1', '7 (a)'), good('f4', '1.1', 'A.3'), good('f5', '1.1', '8..'), good('f6', '1.1', '9 .')] });
+    expect(report.errors).toEqual([]);
+    expect(report.ok).toBe(true);
+    expect(report.frames?.map((entry) => entry.label)).toEqual(['5', '6', '7 (a)', 'A.3', '8.', '9']);
+    // The bundle is accepted, and the tool says once per label what the importer does with it.
+    expect(report.warnings.map((entry) => `${entry.code}:${entry.frameId}`)).toEqual(['label-style:f1', 'label-style:f2', 'label-style:f5', 'label-style:f6']);
+    expect(report.warnings[0]?.message).toContain('"5."');
+    expect(report.warnings[0]?.message).toContain('the importer drops it and keeps "5"');
+    expect(report.warnings[1]?.message).toContain('"6)"');
+    expect(report.warnings[2]?.message).toContain('keeps "8."');
+    expect(report.repairs).toEqual([]);
+  });
+
+  it('compares the labels as the importer keeps them: 5 and 5. are one exercise, in one section', async () => {
+    const report = await check({ frames: [good('f1', '1.1', '5'), good('f2', '1.1', '5.'), good('f3', 'c1', '5.'), good('f4', '1.1', '5)')] });
+    expect(codes(report)).toEqual(['duplicate-exercise', 'duplicate-exercise']);
+    expect(report.errors.map((entry) => entry.frameId)).toEqual(['f2', 'f4']);
+    expect(report.errors[0]?.message).toContain('exercise "5" of section "1.1"');
+  });
+
+  it('judges the length and the characters of a label after the drop, and changes nothing else in it', async () => {
+    const fine = await check({ frames: [good('f1', '1.1', `${'1'.repeat(24)}.`), good('f2', '1.1', '6. '), good('f3', '1.1', '7  a'), good('f4', '1.1', '8.)')] });
+    expect(fine.errors).toEqual([]);
+    // One character is dropped, not every closing one: "8.)" is "8." (a label may hold dots).
+    expect(fine.frames?.map((entry) => entry.label)).toEqual(['1'.repeat(24), '6. ', '7  a', '8.']);
+    for (const label of [`${'1'.repeat(25)}.`, '1'.repeat(25), ' 5.', '.', ')', '(a)', '..', '5*.']) {
+      const report = await check({ frames: [good('f1', '1.1', label)] });
+      expect(codes(report), JSON.stringify(label)).toEqual(['bad-label']);
+      // The label is named as it was written.
+      expect(report.rejection?.message, JSON.stringify(label)).toContain(JSON.stringify(label));
+    }
   });
 
   it('rejects a bad outline and judges the sections only when the outline could be read', async () => {
