@@ -20,6 +20,10 @@ Nothing leaves the machine; do not upload the PDF anywhere.
 | 2 | `exercises propose` | The numbered exercises of every practice set: label as printed, section, frame, the instruction as context, optionally the solution regions. |
 | 3 | `solutions propose` | The answers in the answer key, matched by (section, label); exercises without an answer and answers without an exercise. |
 
+The desktop app does the same three steps with a review before anything is applied (**Derive sections** in the Sections panel,
+**Book exercises** and **Solutions** in the Propose panel): the same search, each proposal shown against what the project has, one
+atomic and undoable batch, and it can be run again. See [DESKTOP.md](DESKTOP.md).
+
 None of them writes anything without `--apply`; `--ops FILE` writes the operations (for `frames apply`) and `--details FILE` writes every
 proposal with its evidence. What `--apply` writes is what every other command writes: one atomic batch of the project operations
 (`add` with `"authority": "book"`, `label`, `section`, `context`, `solution`; `solution.set` named `SECTION:LABEL`), validated as a whole.

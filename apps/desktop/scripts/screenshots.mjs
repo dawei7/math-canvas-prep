@@ -3,10 +3,10 @@
 //   npm run screenshots --workspace @mcprep/desktop
 /* global window, document -- the callbacks given to `evaluate` run in the app's window, not in Node */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { _electron as electron } from 'playwright-core';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -116,6 +116,33 @@ await win.evaluate(() => {
   window.__store.openExport();
 });
 await shot('desktop-book-export', 'C:\\Books\\Algebra\\workbook.mcprep.json');
+
+// 8. Deriving the sections of a book (the synthetic textbook): what the search found, with the evidence of the one that is looked at,
+//    compared with the sections the project has (none yet), and its heading marked on the page.
+await win.evaluate(() => window.__store.closeExport());
+const testing = await import(pathToFileURL(join(root, 'packages/core/dist/testing.js')).href);
+writeFileSync(join(work, 'textbook.pdf'), testing.buildSyntheticBook().pdf);
+await win.evaluate((path) => window.mcprep.openPath(path).then((outcome) => window.__store.open(outcome)), join(work, 'textbook.pdf'));
+await win.waitForSelector('.thumbs .thumb');
+await win.evaluate(() => window.__store.setTab('sections'));
+await win.getByRole('button', { name: 'Derive sections' }).click();
+await win.waitForSelector('.derive-review');
+await win.locator('.derive-row', { hasText: 'Whole Numbers' }).click();
+await win.waitForSelector('.derive-detail');
+await win.waitForTimeout(900);
+await shot('desktop-derive', 'C:\\Books\\Algebra\\textbook.mcprep.json');
+
+// 9. The numbered exercises of the practice sets, found in the book: ghosts with the printed numbers and the instruction above
+//    them, the list with the state of each against the book, one of them looked at.
+await win.getByRole('button', { name: 'Accept all' }).click();
+await win.getByRole('tab', { name: /Propose/ }).click();
+await win.getByRole('button', { name: 'Book exercises', exact: true }).click();
+await win.getByRole('button', { name: 'Find the exercises' }).click();
+await win.waitForSelector('.book-row');
+await win.locator('.book-row').nth(2).click();
+await win.waitForSelector('.book-ghost');
+await win.waitForTimeout(900);
+await shot('desktop-book-propose', 'C:\\Books\\Algebra\\textbook.mcprep.json');
 
 await win.evaluate(() => window.mcprep.setDirty(false));
 await app.close();

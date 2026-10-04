@@ -130,22 +130,74 @@ to grade (see [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md)).
   are marked on the page while the panel is open), **Outdent/Indent** and **Move up/down** (always with everything below it) and
   **Delete...** (the book exercises filed under it are moved to another section you choose first). Renaming an id takes the
   exercises along. The list warns about ids used twice, sections without an id (with **Give ids**), and book exercises filed under
-  a section that does not exist. **Use the PDF's bookmarks** makes the PDF's own bookmarks the sections (with ids), **Find
-  headings** looks for headings in the printed text (offline), and **Use the PDF's contents** removes the project's own contents.
+  a section that does not exist. **Use the PDF's bookmarks** makes the PDF's own bookmarks the sections (with ids), **Derive
+  sections** reads the whole book and finds its chapters and sections (see below), and **Use the PDF's contents** removes the
+  project's own contents.
 - **Checks** runs the same validation as `mcprep validate`. A click on a message goes to the frame it is about. The rules about
   books say what to do on the screen (not a command). A change that would add a new error is refused with a message that says why,
   like on the command line.
-- **Propose** reads the printed text of the whole PDF **offline, without any AI**, and suggests exercises, parts, context and
-  bookmarks. They appear as dashed ghost frames with a confidence; the **i** next to each says what the suggestion is based on.
-  Accept or reject one by one, or all at once. Nothing is changed until you accept. Accepted exercises with a shared statement get
-  it as context of their parts, which is the recommended convention. Proposals are exercises you frame yourself; turn one into a
-  book exercise from the card.
+- **Propose** reads the printed text of the whole PDF **offline, without any AI**, and proposes. It has three modes. **Frames**
+  suggests exercises, parts, context and bookmarks. They appear as dashed ghost frames with a confidence; the **i** next to each
+  says what the suggestion is based on. Accept or reject one by one, or all at once. Nothing is changed until you accept. Accepted
+  exercises with a shared statement get it as context of their parts, which is the recommended convention. Proposals are exercises
+  you frame yourself; turn one into a book exercise from the card. **Book exercises** and **Solutions** find the numbered exercises
+  of a book and the answers of its answer key (see below).
 
 ![A book exercise selected: the card with its context and hidden solution, the list by section, the printed numbers on the page](img/desktop-book.png)
 
 ![The Sections: the outline as a tree with the book exercises and solutions under each section, the heading marked on its page](img/desktop-sections.png)
 
 ![Proposals as ghost frames, with the list of what was found and why](img/desktop-propose.png)
+
+### Deriving the sections of a book
+
+**Derive sections** (Sections panel) reads the whole book and finds its chapters and sections from the printed contents, the lists
+on the chapter openers and the headings on the pages: each with an id (`c3` for a chapter, `3.2` for a section), the number the
+book prints, title, page and the position of its heading, how sure the search is (a percentage) and the evidence (what each was
+read from, where the sources disagree). It is the same search as `mcprep outline derive --book`. A bar says what it is doing and a
+**Stop** button ends it; the window stays usable while the main process reads (a book of 500 pages takes a few seconds), and
+opening another document stops it.
+
+Nothing changes until you accept. The found sections replace the list for review, each compared by id with the sections the
+project has: **New**, **Different** (the title, the page, the heading position, the level or the number differs, and how) or **The
+same**. A click shows the evidence and goes to the heading, which is marked on the page (dashed, in the accent colour). New sections
+are ticked, different ones are not: the project's own is kept unless you take the new version. **Accept all**, **Accept selected**
+or **Discard**; taking is one undoable step, and a book that already has exactly these sections is reported as such.
+
+An exercise names its section by id, so the sections it is filed under are never lost. A section of the project that holds
+exercises and that the found list does not have (another id, or not taken) stays; the review lists these, and **Move exercises to
+the same-looking sections** files their exercises under the found section with the same printed number or title (one by one, or
+all at once) and lets the old one go. The found list replaces the project's own sections only when every section found is taken
+(a section of yours without exercises that it does not have is then removed unless you ask to keep it); with a part of it, nothing
+is removed.
+
+![Derive sections: what was found with its evidence, its heading marked on the page](img/desktop-derive.png)
+
+### Finding the exercises and the answers of a book
+
+**Propose → Book exercises** finds the numbered exercises of the practice sets of the sections the project has (they need ids and a
+level below the chapters: derive them first), in all sections or in one (choose it, or press **Find its exercises** on the selected
+section). **Propose → Solutions** finds the answers in the answer key at the back and matches each by section and number to an
+exercise of the book (find the exercises first). It is the search of `mcprep exercises propose` and `solutions propose`, with the
+window's own sections and exercises (saved or not), and the same progress bar and **Stop**.
+
+Each proposal shows the number the book prints, its first line, how sure the search is and the evidence (its frame, the instruction
+above it, the part on the next page). On the page, the proposals of the page that is showing are dashed ghosts: an exercise with
+its printed number and its instruction as a dashed region, an answer as a dashed green region with an `S`; the one you look at has
+**✓** (take it) and **✕** (dismiss it). Each is compared with the book: **New**, **Different** (the book's own frame or answer is
+somewhere else; ticking it replaces the book's own) or **The same**. The list is filtered by state (new or different by default)
+and by how sure the search is, and searched by number; a tick takes a proposal, **✕** dismisses it (it can be brought back from
+the filter).
+
+**Apply all** takes every new proposal the list shows, **Apply selected** the ticked ones (a different one only when ticked): one
+atomic, undoable batch of the operations the command line writes (`add` with the printed number, the section and the instruction;
+`solution.set`), validated as a whole and refused as a whole if it would add an error. A test applies one book both ways and
+compares the operations and the frames. Run again, a book that has everything says so and offers nothing; one line says what was
+applied. What is not a proposal is listed under **To look at**: numbers missing from a section, printed twice, lines that looked
+like exercises and were left out, exercises of the book that the search did not find now, answers without an exercise, exercises
+without an answer, and what cannot be applied (a number the bundle does not allow, an answer of more than eight regions).
+
+![Book exercises found in the book: ghosts with the printed numbers and the instruction, the list with the state of each](img/desktop-book-propose.png)
 
 ### Document information
 
@@ -206,15 +258,20 @@ sit under its neighbours, so that a click on a neighbour selects the neighbour.
 read the text of all 135 pages a second or two later, and then takes a fraction of a second for each of: choosing a frame in the
 list, drawing a book exercise and confirming its form, saving, and taking over a change the command line made. While the list was
 scrolled five times, a frame chosen in it and thirty pages turned, the window was never busy for more than about a tenth of a second.
-The tests assert generous limits (a slow or busy machine), not these numbers.
+The proposals of such a book are as quick: with the 5,000 exercises (and 5,000 answers) found, the list opens in a few dozen
+milliseconds, a search in it takes a few dozen, and applying them as one step takes about a fifth of a second (the answers about half
+a second); the window's timers were never late by more than a few milliseconds. Reading a book of 2,150 pages for the sections takes
+about three seconds in the main process, and the window answered all the time. The tests assert generous limits (a slow or busy
+machine), not these numbers.
 
 ## What the window can and cannot do
 
 The window is built so that opening a document you did not write is safe, and so that nothing leaves the computer:
 
 - The page code has **no Node access** (sandbox, context isolation, no integration). The only bridge to the rest of the
-  system is a fixed list of 19 functions (open, read the PDF of the open project, read the text of a page, propose,
-  save, export the bundle, export the book summary, ...); the test suite checks the list.
+  system is a fixed list of 22 functions (open, read the PDF of the open project, read the text of a page, propose, derive the
+  sections, find the exercises or the answers of a book, stop that search and hear its progress, save, export the bundle, export
+  the book summary, ...); the test suite checks the list.
 - It is served from the application folder under its own `mcprep-app://` address with a strict content policy
   (`default-src 'none'`, no inline script, no network). Every request to `http`, `https`, `ws`, `wss` or `ftp` is cancelled.
   Permission requests are denied. Navigation and new windows are blocked. The developer tools exist only in a checkout,
@@ -241,19 +298,25 @@ macOS and Linux targets are written down in the configuration but have not been 
 
 ## Tests
 
-- `apps/desktop/test/*.test.ts` (102 tests, no window needed, they run with `npm test`): `logic.test.ts` the editor's state,
+- `apps/desktop/test/*.test.ts` (187 tests, no window needed, they run with `npm test`): `logic.test.ts` the editor's state,
   geometry, undo, saving, conflicts, proposals; `book.test.ts` printed numbers, the form's suggestions, the two kinds of exercise,
   solutions and the plain words of the core's refusals, labels on a crowded page; `sections.test.ts` the rows of the Sections list
-  and every change of the outline; `info.test.ts` the document information and what the export dialog says; `perf.test.ts` the
-  synthetic big book (5,000 exercises, 100 sections): the work of the lists, the page and the store, and that it grows in step with
-  the book.
-- `apps/desktop/test/app.e2e.test.ts` (17 tests), `book.e2e.test.ts` (25) and `big.e2e.test.ts` (10): the built application driven
-  by Playwright like a person (real mouse and keyboard): drawing with snapping, moving, resizing, slicers, saving, an agent
-  editing the file, the conflict dialog, export and import check, proposals, the lock-down; the audit of a synthetic workbook
-  (book exercises with their forms, mark and unmark, context and solutions, the Sections list, the document information, the export
-  dialog and the summary, all read back by the command line); and the big book (opening, scrolling, choosing, drawing, saving,
-  live reload, readable labels). They need a display and the built bundle, so they are not part of the continuous integration:
-  `npm run build && npm run test:e2e`.
+  and every change of the outline; `info.test.ts` the document information and what the export dialog says; `derive.test.ts` what
+  is new, different or the same, what taking the derived sections does (and that no exercise is ever left without its section),
+  and the flow of progress, Stop and review; `proposals.test.ts` the rows, filters, findings and the batch of the exercises and
+  answers found in a book, with a test that applies one book through the window's code and through the command line and compares
+  the operations and the frames; `audit.test.ts` the long jobs of the main process (progress, Stop, one at a time, stopped by
+  closing the document); `perf.test.ts` the synthetic big book (5,000 exercises, 100 sections): the work of the lists, the page,
+  the store and the proposals, and that it grows in step with the book.
+- `apps/desktop/test/app.e2e.test.ts` (17 tests), `book.e2e.test.ts` (25), `derive.e2e.test.ts` (12), `proposals.e2e.test.ts` (12)
+  and `big.e2e.test.ts` (10): the built application driven by Playwright like a person (real mouse and keyboard): drawing with
+  snapping, moving, resizing, slicers, saving, an agent editing the file, the conflict dialog, export and import check, proposals,
+  the lock-down; the audit of a synthetic workbook (book exercises with their forms, mark and unmark, context and solutions, the
+  Sections list, the document information, the export dialog and the summary, all read back by the command line); deriving the
+  sections and finding the exercises and answers of a synthetic textbook through the main process, with progress, Stop and the
+  window staying responsive on a book of 2,150 pages; the window with the proposals of 5,000 exercises; and the big book (opening,
+  scrolling, choosing, drawing, saving, live reload, readable labels). They need a display and the built bundle, so they are not
+  part of the continuous integration: `npm run build && npm run test:e2e`.
 - `npm run screenshots --workspace @mcprep/desktop` takes the pictures on this page from the synthetic samples.
 
 ## Known gaps
@@ -261,11 +324,11 @@ macOS and Linux targets are written down in the configuration but have not been 
 - Mouse and keyboard first. Touch and pen input are not tuned, and the window is not meant for a small screen.
 - One window and one document at a time; no copy and paste of frames; no selecting several frames at once (so turning many
   exercises into book exercises, or giving many the same context or section, is one at a time).
-- **Derive sections** (finding the chapters and sections of a book from its printed text, with ids and heading positions), and
-  proposals of book exercises and of solutions from the answer key, are not in the window yet. The command line and the MCP
-  server have them (`outline derive --book`, `exercises propose`, `solutions propose`; see [AUDIT_A_BOOK.md](AUDIT_A_BOOK.md)); in
-  the window **Find headings** and **Propose** suggest ordinary headings and exercises only, and a person files them under
-  sections. The Sections panel and the editor logic have a reserved place for them.
+- Derive sections and the proposals of exercises and answers are the heuristics of the command line with their limits (see
+  [AUDIT_A_BOOK.md](AUDIT_A_BOOK.md)). A book printed in another way needs the words and patterns the command line takes
+  (`--chapter-words`, `--practice-words`, `--answer-words`, `--item-pattern`), which the window does not offer. A proposal is taken
+  or dismissed, not edited: edit it after taking it, with the tools. The search for exercises needs sections with ids below the
+  chapters; an outline of one level finds no practice set. One long search at a time.
 - The number offered for a book exercise is the previous one plus 1 (or `5b` after `5a`); it does not know a book's jumps or
   other ways of counting, so it is edited where the book differs.
 - A solution region is drawn one at a time for one exercise; there is no "this answer, then the next line for the next exercise".
