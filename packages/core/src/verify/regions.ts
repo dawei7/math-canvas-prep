@@ -50,18 +50,11 @@ export class PageLines {
   /** False when the page has no text layer (a scan), or when no text was given for the page. */
   readonly hasText: boolean;
   private readonly lines: Piece[] = [];
-  /** The whole lines (not their pieces) that may run into a region from the side. */
-  private readonly wide: Piece[] = [];
   private tallest = 0;
-  private tallestWide = 0;
 
   constructor(page: PageText | undefined) {
     this.hasText = page?.hasText === true;
     (page?.lines ?? []).forEach((line, at) => {
-      const whole = foldText(line.text);
-      if (whole.length === 0) return;
-      this.wide.push({ text: whole, rect: line.rect, headerFooter: line.headerFooter === true, line: at });
-      this.tallestWide = Math.max(this.tallestWide, line.rect.bottom - line.rect.top);
       // A line joined from pieces standing side by side (the rows of two columns, a fraction) is read piece by piece: a
       // region that holds only one of the columns must not be shown the other.
       const pieces = line.parts !== undefined && line.parts.length >= 2 ? line.parts : [line];
@@ -73,7 +66,6 @@ export class PageLines {
       }
     });
     this.lines.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
-    this.wide.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
   }
 
   /** The text inside a region. */
@@ -83,7 +75,7 @@ export class PageLines {
       return centre >= region.left && centre <= region.right;
     });
     const width = region.right - region.left;
-    const straddling = this.within(this.wide, region, (piece) => {
+    const straddling = this.within(this.lines, region, (piece) => {
       const centre = (piece.rect.left + piece.rect.right) / 2;
       const overlap = Math.min(piece.rect.right, region.right) - Math.max(piece.rect.left, region.left);
       return (centre < region.left || centre > region.right) && width > 0 && overlap / width >= STRADDLE;
@@ -119,7 +111,7 @@ export class PageLines {
     // The first piece that can reach into the region has its top no higher than the region's top minus the tallest piece.
     let low = 0;
     let high = source.length;
-    const limit = region.top - (source === this.lines ? this.tallest : this.tallestWide);
+    const limit = region.top - this.tallest;
     while (low < high) {
       const middle = (low + high) >> 1;
       if ((source[middle] as Piece).rect.top < limit) low = middle + 1;

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { Frame } from '../src/model/types.js';
+import type { Frame, PageText, Rect } from '../src/model/types.js';
 import { newProject, type Project } from '../src/project/model.js';
 import { buildAuthoritySample } from '../src/testing/authority-sample.js';
 import { VERIFY_CODES, VERIFY_FORMAT, VERIFY_VERSION, type VerifyCode, type VerifyFinding, type VerifyReport } from '../src/verify/types.js';
@@ -194,6 +194,31 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     const report = await check(book);
     expect(report.findings.filter((finding) => finding.code === 'no-text')).toEqual([]);
     expect(report.findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref)).toEqual(['s:7']);
+  });
+
+  it('trusts the pieces of a joined line over the line: a region on the wrong column does not hold its label through the whole line', () => {
+    const left = { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 };
+    const right = { left: 0.55, top: 0.2, right: 0.75, bottom: 0.22 };
+    const page: PageText = {
+      page: 0,
+      size: { width: 595, height: 842, rotation: 0 },
+      columns: 2,
+      hasText: true,
+      lines: [{ text: '1) first   2) second', rect: { left: 0.1, top: 0.2, right: 0.75, bottom: 0.22 }, fontSize: 11, column: 0, chars: 18, parts: [{ text: '1) first', chars: 7, rect: left }, { text: '2) second', chars: 8, rect: right }] }],
+    };
+    const make = (secondOn: Rect): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [
+        { id: 'a', kind: 'exercise', page: 0, rect: { left: 0.09, top: 0.19, right: 0.35, bottom: 0.23 }, authority: 'book', label: '1', section: 's' },
+        { id: 'b', kind: 'exercise', page: 0, rect: secondOn, authority: 'book', label: '2', section: 's' },
+      ],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    expect(verifyProject(make({ left: 0.5, top: 0.19, right: 0.8, bottom: 0.23 }), lookup).findings.filter((finding) => finding.code === 'label-not-first')).toEqual([]);
+    const wrong = verifyProject(make({ left: 0.09, top: 0.19, right: 0.35, bottom: 0.23 }), lookup).findings.filter((finding) => finding.code === 'label-not-first');
+    expect(wrong.map((finding) => finding.ref)).toEqual(['s:2']);
+    expect(wrong[0]?.evidence).toBe('1) first');
   });
 
   it('leaves a running header out of what it reads: validate reports a header inside a region', async () => {
