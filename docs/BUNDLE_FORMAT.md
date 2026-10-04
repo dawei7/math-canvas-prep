@@ -12,7 +12,8 @@ This page is the contract. The reference implementation of reading, validating a
 
 ## 1. The container
 
-- A ZIP archive, extension `.mcbundle`, UTF-8 entry names, no encryption, no directories, deflate or stored.
+- A ZIP archive, extension `.mcbundle`, UTF-8 entry names, no encryption, no directories, deflate or stored. A stored entry
+  has its size in its entry header, not after its data: a reader reads the archive as a stream and rejects one that does not.
 - Exactly these entries (names are case-sensitive and fixed):
 
 | Entry | Required | What it is |

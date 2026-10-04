@@ -188,6 +188,16 @@ export async function checkBundle(source: string | Uint8Array, options: CheckBun
         fail('entry-missing', `The archive has no entry named "${name as string}".`, 'Names are case-sensitive and fixed; a bundle needs bundle.json, document.pdf and frames.json.');
       }
     }
+    // The app reads the archive as a stream, entry after entry, and a stored entry that has its size after its data (flag
+    // bit 3, as a writer that streams makes it) cannot be read that way, whether or not the entry is one of the four.
+    const unreadable = archive.entries.filter((entry) => entry.method === 0 && (entry.flags & 0x8) !== 0).map((entry) => `"${entry.name}"`);
+    if (unreadable.length > 0) {
+      fail(
+        'zip-stored-descriptor',
+        `The ${unreadable.length === 1 ? 'entry' : 'entries'} ${unreadable.join(', ')} ${unreadable.length === 1 ? 'is' : 'are'} stored, not deflated, with the size written after the data (a writer that streams does this); the app reads the archive as a stream and cannot read such an entry, so it refuses the bundle.`,
+        'Deflate the entries, or write the archive so that each entry header holds its size (`mcprep export` does).',
+      );
+    }
     if (errors.length > 0) {
       steps.push({ step: 1, name: 'archive', status: 'failed', detail: errors[0]?.message ?? '' });
       return { ...result(), archive: archiveInfo };

@@ -159,6 +159,35 @@ describe('step 1: the archive', () => {
     await expect(ZipArchive.open({ size: 601 * 1024 * 1024, read: () => Promise.reject(new Error('no')), close: () => Promise.resolve() }, { maxEntries: 16, maxArchiveBytes: 600 * 1024 * 1024 })).rejects.toMatchObject({ code: 'zip-too-large' });
   });
 
+  it('rejects a stored entry that has its size after its data, which the app cannot read as a stream', async () => {
+    // Flag bit 3 in the central directory of every entry, as a writer that streams makes it; the sizes stay where they are.
+    const withDescriptors = (bytes: Uint8Array, only?: string): Uint8Array => {
+      const copy = new Uint8Array(bytes);
+      const view = new DataView(copy.buffer);
+      let at = view.getUint32(copy.length - 22 + 16, true);
+      const total = view.getUint16(copy.length - 22 + 10, true);
+      for (let i = 0; i < total; i += 1) {
+        const nameLength = view.getUint16(at + 28, true);
+        const name = new TextDecoder().decode(copy.subarray(at + 46, at + 46 + nameLength));
+        if (only === undefined || name === only) view.setUint16(at + 8, view.getUint16(at + 8, true) | 0x8, true);
+        at += 46 + nameLength + view.getUint16(at + 30, true) + view.getUint16(at + 32, true);
+      }
+      return copy;
+    };
+    const all = await checkBundle(withDescriptors(await bundle({})));
+    expect(all.ok).toBe(false);
+    expect(all.rejection).toMatchObject({ code: 'zip-stored-descriptor' });
+    expect(all.rejection?.message).toContain('"bundle.json", "document.pdf", "frames.json"');
+    expect(all.rejection?.fix).toContain('Deflate');
+    expect(all.steps.map((step) => `${step.step}:${step.status}`)).toEqual(['1:failed']);
+    // One entry is enough, and so is one the app would only read past.
+    const one = await checkBundle(withDescriptors(await bundle({ extra: [['notes.txt', json('x')]] }), 'notes.txt'));
+    expect(codes(one)).toEqual(['zip-stored-descriptor']);
+    expect(one.rejection?.message).toContain('The entry "notes.txt" is stored');
+    // A deflated entry can be inflated without knowing its size first, so the flag alone is not a reason.
+    expect(codes(await checkBundle(withDescriptors(await bundle({ deflate: true })))), 'deflated').not.toContain('zip-stored-descriptor');
+  });
+
   it('rejects files that are not archives', async () => {
     const report = await checkBundle(new TextEncoder().encode('not a zip'));
     expect(report.ok).toBe(false);

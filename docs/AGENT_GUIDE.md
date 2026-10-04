@@ -283,8 +283,9 @@ mcprep import-check sheet.mcbundle
 
 The exporter validates, writes atomically and reads the bundle back with the importer's own checks; a bundle that fails them is
 removed. The result lists repairs and warnings. `import-check` also refuses what the app refuses in a bundle the exporter would
-never write: an upper-case hash, a manifest that names another entry than `document.pdf`, `frames.json` or `outline.json` (or an
-`outline.json` the archive does not have), a folder that is not text, a JSON entry that is not UTF-8. Then tell the user, briefly:
+never write, for example an upper-case hash, a manifest that names another entry than `document.pdf`, `frames.json` or
+`outline.json` (or an `outline.json` the archive does not have), a folder that is not text, a JSON entry that is not UTF-8, a
+stored entry that has its size after its data. Then tell the user, briefly:
 
 - the **path** of the bundle and the project, and that the bundle goes to the tablet and is opened in the Math Canvas library;
 - how they can **review** your marking by eye: `npm run desktop -- name.mcprep.json` opens the project in the editor, where every
