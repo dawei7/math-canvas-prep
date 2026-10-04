@@ -326,6 +326,9 @@ Options:
 - `--book`: For a book that prints numbered chapters and sections: read the printed contents, the lists on the chapter openers and the headings, and propose chapters and sections with ids (c0, 0.1), labels, tops and where each practice set lies. Use it before `exercises propose`.
 - `--apply`: Store the result as the project's outline.
 - `--min-confidence <0..1>`: Keep headings at least this likely (default 0.55).
+- `--chapter-words <chapter,part,...>`: Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).
+- `--practice-words <practice,exercises,...>`: Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).
+- `--answer-words <answers,solutions,...>`: Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
@@ -446,6 +449,11 @@ Options:
 - `--section <0.1,0.2>`: Only these sections (ids or labels); default all.
 - `--solutions`: Also read the answer key and give each exercise its solution regions (hidden from the learner, used to grade).
 - `--max-items <n>`: At most this many exercises per section (the surplus is listed as excluded); default no limit.
+- `--instructions bold|margin|auto|none`: How instructions are recognised: bold (set in bold, at the margin), margin (at the margin, above an item), auto (bold when the pages carry font information, else margin; the default), none.
+- `--item-pattern <regex>`: How the number of an exercise (or of an answer) starts a line, as a regular expression: group 1 is the label as printed (without the closing mark), group 2 the text after it. Replaces the defaults, which read "5)", "5.", "(5)" and "5a)"; give the option more than once for several. Example: --item-pattern "^([A-Z]\.\d+)\s+(.*)$" for labels like "A.3".
+- `--chapter-words <chapter,part,...>`: Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).
+- `--practice-words <practice,exercises,...>`: Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).
+- `--answer-words <answers,solutions,...>`: Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).
 - `--ops <file>`: Write the operations as a JSON batch (for `frames apply`).
 - `--details <file>`: Write everything (every proposal with its evidence, the instructions, the rejected numbers) as JSON.
 - `--apply`: Apply the proposals to the project now (one atomic batch).
@@ -479,6 +487,10 @@ Options:
 - `--ops <file>`: Write the operations as a JSON batch (for `frames apply`).
 - `--details <file>`: Write everything (every answer with its evidence, the sequences, the headers) as JSON.
 - `--apply`: Apply the solutions to the project now (one atomic batch).
+- `--item-pattern <regex>`: How the number of an exercise (or of an answer) starts a line, as a regular expression: group 1 is the label as printed (without the closing mark), group 2 the text after it. Replaces the defaults, which read "5)", "5.", "(5)" and "5a)"; give the option more than once for several. Example: --item-pattern "^([A-Z]\.\d+)\s+(.*)$" for labels like "A.3".
+- `--chapter-words <chapter,part,...>`: Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).
+- `--practice-words <practice,exercises,...>`: Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).
+- `--answer-words <answers,solutions,...>`: Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).

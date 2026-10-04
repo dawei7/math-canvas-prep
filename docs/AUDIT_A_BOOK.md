@@ -57,6 +57,24 @@ mcprep import-check book.mcbundle
 
 Record the decisions you take (a cap, a number you accepted, an exercise you framed by hand) next to the bundle.
 
+## Other books: the words and patterns are options
+
+Nothing is built for one book. The defaults read English headings and numbers like `5)`, `5.`, `(5)`, `5a)`; a book that words or numbers
+differently is read with options (on `outline derive --book`, `exercises propose` and `solutions propose`; the MCP tools have the same
+arguments):
+
+| Option | What it changes | Default |
+| --- | --- | --- |
+| `--chapter-words chapter,kapitel` | Words that open a chapter heading ("Kapitel 3"). | chapter, part, unit, kapitel, chapitre, capítulo, ... |
+| `--practice-words exercises,problems` | Words that name a practice set in a heading ("3.2 Exercises - Title"). | practice, exercises, problems, übungen, aufgaben, ... |
+| `--answer-words answers,solutions` | Words that open the answer key and the header of a section in it. | answers, answer key, solutions, lösungen, ... |
+| `--item-pattern "^([A-Z]\.\d+)\s+(.*)$"` | How the number of an exercise or an answer starts a line (group 1 is the label, group 2 the text after it; repeat for several). | `5)`, `5.`, `(5)`, `5a)` |
+| `--instructions bold\|margin\|auto\|none` | How instructions are recognised. | auto: bold when the pages carry font information |
+
+Sections whose numbers are not like `3.2` (a book that numbers its sections `1`, `2`, `3` through the chapters) are not read by
+`outline derive --book`; write the outline by hand (`outline set`) with an `id` for every section, and `exercises propose` finds the
+practice sets from it (by the `id` or `label`, or by an unlabelled "Practice" or "Exercises" heading inside the section).
+
 ## Limits of the heuristics
 
 - A stray glyph with a wrong font size (some fonts give one for a "not equal" sign) can turn several lines around it into one unreadable

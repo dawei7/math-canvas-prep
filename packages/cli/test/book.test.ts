@@ -202,3 +202,41 @@ describe('solutions propose', () => {
     expect((applied.json.result as { applied: boolean }).applied).toBe(false);
   });
 });
+
+describe('patterns and words as options', () => {
+  it('reads other heading words, and finds no practice set when the words do not occur', async () => {
+    const cli = await bookWorkspace();
+    const none = await cli(['outline', 'derive', '--book', '--practice-words', 'problems,review']);
+    const entries = (none.json.result as { entries: { id: string; practice?: unknown }[] }).entries;
+    expect(entries.filter((entry) => entry.id.includes('.')).every((entry) => entry.practice === undefined)).toBe(true);
+    const some = await cli(['outline', 'derive', '--book', '--practice-words', 'practice']);
+    expect((some.json.result as { entries: { id: string; practice?: unknown }[] }).entries.find((entry) => entry.id === '0.1')?.practice).toBeDefined();
+    const empty = await cli(['exercises', 'propose', '--practice-words', 'problems']);
+    expect((empty.json.result as { counts: { exercises: number } }).counts.exercises).toBe(0);
+  });
+
+  it('reads the numbers of exercises with a pattern of its own', async () => {
+    const cli = await bookWorkspace();
+    const same = await cli(['exercises', 'propose', '--section', '0.2', '--item-pattern', '^(\\d{1,3})[).]\\s*(.*)$']);
+    expect((same.json.result as { counts: { exercises: number } }).counts.exercises).toBe(14);
+    const none = await cli(['exercises', 'propose', '--section', '0.2', '--item-pattern', '^Task (\\d+):\\s*(.*)$']);
+    expect((none.json.result as { counts: { exercises: number } }).counts.exercises).toBe(0);
+    const bad = await cli(['exercises', 'propose', '--item-pattern', '^(unclosed']);
+    expect(bad.code).not.toBe(0);
+    expect(bad.json.error?.message).toContain('--item-pattern');
+    const nogroup = await cli(['exercises', 'propose', '--item-pattern', '^\\d+\\)']);
+    expect(nogroup.code).not.toBe(0);
+    expect(nogroup.json.error?.message).toContain('no group for the label');
+  });
+
+  it('takes the instruction mode as an option and refuses an unknown one', async () => {
+    const cli = await bookWorkspace();
+    const none = await cli(['exercises', 'propose', '--section', '0.1', '--instructions', 'none']);
+    const result = none.json.result as { proposals: { context: unknown[] }[]; sections: { instructions: unknown[] }[] };
+    expect(result.proposals.every((proposal) => proposal.context.length === 0)).toBe(true);
+    expect(result.sections[0]?.instructions).toEqual([]);
+    const bad = await cli(['exercises', 'propose', '--instructions', 'sometimes']);
+    expect(bad.code).not.toBe(0);
+    expect(bad.json.error?.message).toContain('--instructions must be');
+  });
+});

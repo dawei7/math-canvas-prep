@@ -427,6 +427,9 @@ For a book that prints numbered chapters and sections (a table of contents with 
 Arguments:
 
 - `apply` (boolean): Store the proposal as the outline of the project (with ids, labels and tops).
+- `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
+- `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
+- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
 
 ### `exercises_propose`
 
@@ -439,6 +442,11 @@ Arguments:
 - `max_items` (integer): At most this many exercises per section; the surplus is listed as excluded (use when the book prints more than the audit wants).
 - `ops_file` (string): Write the operations as a JSON batch to this file (for apply_operations or `mcprep frames apply`).
 - `details_file` (string): Write every proposal with its evidence, the instructions and the rejected numbers as JSON to this file.
+- `instructions` ("bold" | "margin" | "auto" | "none"): How instructions are recognised: bold (set in bold, at the margin), margin (at the margin, above an item), auto (bold when the pages carry font information; the default), none.
+- `item_patterns` (string[]): How the number of an exercise or answer starts a line, as regular expressions: group 1 is the label as printed, group 2 the text after it. Replaces the defaults ("5)", "5.", "(5)", "5a)"). Example: "^([A-Z]\.\d+)\s+(.*)$" for labels like A.3.
+- `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
+- `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
+- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
 - `apply` (boolean): Apply the proposals to the project now, as one atomic batch.
 
 ### `solutions_propose`
@@ -449,4 +457,8 @@ Arguments:
 
 - `ops_file` (string): Write the operations as a JSON batch to this file.
 - `details_file` (string): Write every answer with its evidence and the sequences as JSON to this file.
+- `item_patterns` (string[]): How the number of an exercise or answer starts a line, as regular expressions: group 1 is the label as printed, group 2 the text after it. Replaces the defaults ("5)", "5.", "(5)", "5a)"). Example: "^([A-Z]\.\d+)\s+(.*)$" for labels like A.3.
+- `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
+- `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
+- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
 - `apply` (boolean): Apply the solutions to the project now, as one atomic batch.

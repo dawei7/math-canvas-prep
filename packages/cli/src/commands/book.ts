@@ -10,9 +10,11 @@ import {
   toOutlineEntries,
   type BookEntry,
   type BookExercises,
+  type BookPatterns,
   type BookSolutions,
   type ExerciseProposal,
   type Frame,
+  type ItemPattern,
   type Operation,
   type PageText,
   type PlaceOnPage,
@@ -22,7 +24,7 @@ import {
 } from '@mcprep/core';
 import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
-import type { CommandContext, CommandOutput, CommandSpec } from '../types.js';
+import type { CommandContext, CommandOutput, CommandSpec, OptionSpec } from '../types.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
 
 /**
@@ -33,6 +35,55 @@ import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
  */
 
 const box = (rect: { left: number; top: number; right: number; bottom: number }): [number, number, number, number] => [rect.left, rect.top, rect.right, rect.bottom];
+
+/** The words that make a heading of a book recognisable; the defaults are English, German, French, Spanish and Italian. */
+export const BOOK_WORD_OPTIONS: OptionSpec[] = [
+  { name: 'chapter-words', type: 'string', value: '<chapter,part,...>', description: 'Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).' },
+  { name: 'practice-words', type: 'string', value: '<practice,exercises,...>', description: 'Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).' },
+  { name: 'answer-words', type: 'string', value: '<answers,solutions,...>', description: 'Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).' },
+];
+
+export const ITEM_PATTERN_OPTION: OptionSpec = {
+  name: 'item-pattern',
+  type: 'string',
+  multiple: true,
+  value: '<regex>',
+  description:
+    'How the number of an exercise (or of an answer) starts a line, as a regular expression: group 1 is the label as printed (without the closing mark), group 2 the text after it. Replaces the defaults, which read "5)", "5.", "(5)" and "5a)"; give the option more than once for several. Example: --item-pattern "^([A-Z]\\.\\d+)\\s+(.*)$" for labels like "A.3".',
+};
+
+function wordList(options: CommandContext['options'], name: string): string[] | undefined {
+  const text = stringOption(options, name);
+  if (text === undefined) return undefined;
+  const words = text.split(',').map((word) => word.trim()).filter(Boolean);
+  if (words.length === 0) throw usage(`--${name} needs at least one word.`);
+  return words;
+}
+
+function patternsFrom(options: CommandContext['options']): Partial<BookPatterns> | undefined {
+  const chapterWords = wordList(options, 'chapter-words');
+  const practiceWords = wordList(options, 'practice-words');
+  const answerWords = wordList(options, 'answer-words');
+  if (!chapterWords && !practiceWords && !answerWords) return undefined;
+  return { ...(chapterWords ? { chapterWords } : {}), ...(practiceWords ? { practiceWords } : {}), ...(answerWords ? { answerWords } : {}) };
+}
+
+function itemPatternsFrom(options: CommandContext['options']): ItemPattern[] | undefined {
+  const given = options['item-pattern'];
+  const sources = Array.isArray(given) ? given.map(String) : typeof given === 'string' ? [given] : [];
+  if (sources.length === 0) return undefined;
+  return sources.map((source, index) => {
+    try {
+      const regex = new RegExp(source, 'u');
+      // How many capture groups the expression has: an empty alternative always matches and shows them.
+      const groups = (new RegExp(`${source}|`, 'u').exec('') as RegExpExecArray).length - 1;
+      if (groups < 1) throw new Error('it has no group for the label');
+      return { name: `pattern ${index + 1}`, regex };
+    } catch (error) {
+      throw usage(`--item-pattern "${source}" is not usable: ${(error as Error).message}.`, 'It must be a regular expression with a group for the label (group 1) and, optionally, one for the text after it (group 2).');
+    }
+  });
+}
 
 interface Loaded {
   session: ProjectSession;
@@ -59,13 +110,13 @@ interface Sections {
   notes: string[];
 }
 
-function sectionsFor(session: ProjectSession, pages: PageText[]): Sections {
+function sectionsFor(session: ProjectSession, pages: PageText[], patterns?: Partial<BookPatterns>): Sections {
   const outline = session.project.outline?.entries ?? [];
   if (outline.some((entry) => entry.id !== undefined)) {
-    const located = locateSections(pages, outline);
+    const located = locateSections(pages, outline, patterns ? { patterns } : {});
     return { entries: located.entries, answerKey: located.answerKey, source: 'project', notes: located.notes };
   }
-  const derived = deriveSections(pages);
+  const derived = deriveSections(pages, patterns ? { patterns } : {});
   return {
     entries: derived.entries,
     answerKey: derived.answerKey,
@@ -101,7 +152,8 @@ const percent = (confidence: number): string => confidence.toFixed(2);
 
 export async function runBookDerive(context: CommandContext): Promise<CommandOutput> {
   const { pages } = await load(context);
-  const structure = deriveSections(pages);
+  const patterns = patternsFrom(context.options);
+  const structure = deriveSections(pages, patterns ? { patterns } : {});
   const rows = structure.entries.map((entry) => [
     entry.id,
     entry.label ?? '',
@@ -178,6 +230,9 @@ export const exercisesPropose: CommandSpec = {
     { name: 'section', type: 'string', value: '<0.1,0.2>', description: 'Only these sections (ids or labels); default all.' },
     { name: 'solutions', type: 'boolean', description: 'Also read the answer key and give each exercise its solution regions (hidden from the learner, used to grade).' },
     { name: 'max-items', type: 'number', value: '<n>', description: 'At most this many exercises per section (the surplus is listed as excluded); default no limit.' },
+    { name: 'instructions', type: 'string', value: 'bold|margin|auto|none', description: 'How instructions are recognised: bold (set in bold, at the margin), margin (at the margin, above an item), auto (bold when the pages carry font information, else margin; the default), none.' },
+    ITEM_PATTERN_OPTION,
+    ...BOOK_WORD_OPTIONS,
     { name: 'ops', type: 'string', value: '<file>', description: 'Write the operations as a JSON batch (for `frames apply`).' },
     { name: 'details', type: 'string', value: '<file>', description: 'Write everything (every proposal with its evidence, the instructions, the rejected numbers) as JSON.' },
     { name: 'apply', type: 'boolean', description: 'Apply the proposals to the project now (one atomic batch).' },
@@ -188,12 +243,20 @@ export const exercisesPropose: CommandSpec = {
     '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution }, proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), skipped: string[], notes, applied }',
   async run(context) {
     const first = await load(context);
-    const sections = sectionsFor(first.session, first.pages);
+    const patterns = patternsFrom(context.options);
+    const itemPatterns = itemPatternsFrom(context.options);
+    const sections = sectionsFor(first.session, first.pages, patterns);
     const chosen = chooseSections(sections.entries, (stringOption(context.options, 'section') ?? '').split(',').map((value) => value.trim()).filter(Boolean));
     const ink = inkPages(chosen);
     const { session, pages } = ink.size > 0 ? await withInk(first, ink) : first;
     const maxItems = numberOption(context.options, 'max-items');
-    const exercises: BookExercises = proposeExercises(pages, chosen, maxItems !== undefined ? { maxItems } : {});
+    const instructionMode = stringOption(context.options, 'instructions');
+    if (instructionMode !== undefined && !['bold', 'margin', 'auto', 'none'].includes(instructionMode)) throw usage('--instructions must be bold, margin, auto or none.');
+    const exercises: BookExercises = proposeExercises(pages, chosen, {
+      ...(maxItems !== undefined ? { maxItems } : {}),
+      ...(itemPatterns ? { itemPatterns } : {}),
+      ...(instructionMode !== undefined ? { instructions: instructionMode as 'bold' | 'margin' | 'auto' | 'none' } : {}),
+    });
     const wantSolutions = flag(context.options, 'solutions');
     let solutions: BookSolutions | undefined;
     const proposals = exercises.sections.flatMap((section) => section.proposals);
@@ -201,7 +264,11 @@ export const exercisesPropose: CommandSpec = {
       const needInk = new Set<number>();
       if (sections.answerKey) for (let page = sections.answerKey.page; page < pages.length; page += 1) needInk.add(page);
       const loaded = needInk.size > 0 ? await withInk({ session, pages }, needInk) : { session, pages };
-      solutions = proposeSolutions(loaded.pages, sections.entries, proposals.map((proposal) => ({ section: proposal.section, label: proposal.label })), sections.answerKey ? { answerKey: sections.answerKey } : {});
+      solutions = proposeSolutions(loaded.pages, sections.entries, proposals.map((proposal) => ({ section: proposal.section, label: proposal.label })), {
+        ...(sections.answerKey ? { answerKey: sections.answerKey } : {}),
+        ...(patterns ? { patterns } : {}),
+        ...(itemPatterns ? { itemPatterns } : {}),
+      });
     }
     const solutionMap = new Map<string, readonly Region[]>();
     for (const answer of solutions?.sections.flatMap((section) => section.answers) ?? []) solutionMap.set(answer.exercise, answer.regions);
@@ -295,6 +362,8 @@ export const solutionsPropose: CommandSpec = {
     { name: 'ops', type: 'string', value: '<file>', description: 'Write the operations as a JSON batch (for `frames apply`).' },
     { name: 'details', type: 'string', value: '<file>', description: 'Write everything (every answer with its evidence, the sequences, the headers) as JSON.' },
     { name: 'apply', type: 'boolean', description: 'Apply the solutions to the project now (one atomic batch).' },
+    ITEM_PATTERN_OPTION,
+    ...BOOK_WORD_OPTIONS,
     ...GLOBAL_OPTIONS,
   ],
   examples: ['mcprep solutions propose', 'mcprep solutions propose --ops solutions.json', 'mcprep solutions propose --apply'],
@@ -302,12 +371,18 @@ export const solutionsPropose: CommandSpec = {
     '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise }, operations? (when there are at most 300; else operationsOmitted: n and the --ops file), skipped: string[], notes, applied }',
   async run(context) {
     const first = await load(context);
-    const sections = sectionsFor(first.session, first.pages);
+    const patterns = patternsFrom(context.options);
+    const itemPatterns = itemPatternsFrom(context.options);
+    const sections = sectionsFor(first.session, first.pages, patterns);
     const frames = first.session.project.frames.filter((frame): frame is Frame & { section: string; label: string } => frame.authority === 'book' && frame.section !== undefined && frame.label !== undefined);
     const needInk = new Set<number>();
     if (sections.answerKey) for (let page = sections.answerKey.page; page < first.pages.length; page += 1) needInk.add(page);
     const { session, pages } = needInk.size > 0 ? await withInk(first, needInk) : first;
-    const solutions = proposeSolutions(pages, sections.entries, frames.map((frame) => ({ section: frame.section, label: frame.label })), sections.answerKey ? { answerKey: sections.answerKey } : {});
+    const solutions = proposeSolutions(pages, sections.entries, frames.map((frame) => ({ section: frame.section, label: frame.label })), {
+      ...(sections.answerKey ? { answerKey: sections.answerKey } : {}),
+      ...(patterns ? { patterns } : {}),
+      ...(itemPatterns ? { itemPatterns } : {}),
+    });
     const byKey = new Map(frames.map((frame) => [`${frame.section}\u0000${frame.label}`, frame]));
     const operations: Operation[] = [];
     const skipped: string[] = [];

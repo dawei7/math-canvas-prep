@@ -4,7 +4,7 @@ import { McPrepError, deriveOutline, type OutlineEntry } from '@mcprep/core';
 import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
-import { runBookDerive } from './book.js';
+import { BOOK_WORD_OPTIONS, runBookDerive } from './book.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
 
 const rows = (entries: readonly OutlineEntry[]): string[][] => entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth)]);
@@ -64,6 +64,7 @@ export const outlineDerive: CommandSpec = {
     { name: 'book', type: 'boolean', description: 'For a book that prints numbered chapters and sections: read the printed contents, the lists on the chapter openers and the headings, and propose chapters and sections with ids (c0, 0.1), labels, tops and where each practice set lies. Use it before `exercises propose`.' },
     { name: 'apply', type: 'boolean', description: 'Store the result as the project\'s outline.' },
     { name: 'min-confidence', type: 'number', value: '<0..1>', description: 'Keep headings at least this likely (default 0.55).' },
+    ...BOOK_WORD_OPTIONS,
     ...GLOBAL_OPTIONS,
   ],
   examples: ['mcprep outline derive', 'mcprep outline derive --apply', 'mcprep outline derive --book', 'mcprep outline derive --book --apply'],
