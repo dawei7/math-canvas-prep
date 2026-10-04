@@ -63,6 +63,11 @@ describe('the pages in the evidence', () => {
     expect(inWindowPages('0.2: the printed table of contents says page 7, the lesson heading is on page 8; the heading was used')).toBe('0.2: the printed table of contents says page 8, the lesson heading is on page 9; the heading was used');
   });
 
+  it('leaves what the book says inside quotation marks as printed', () => {
+    expect(inWindowPages('instruction: "Turn to page 10 and read pages 3, 4" (printed on 2 pages), continues on page 7, 8')).toBe('instruction: "Turn to page 10 and read pages 3, 4" (printed on 2 pages), continues on page 8, 9');
+    expect(inWindowPages('the heading "see page 3" on page 12')).toBe('the heading "see page 3" on page 13');
+  });
+
   it('leaves everything else alone: decimals, other numbers, text without pages', () => {
     expect(inWindowPages('(page 0, 0.31 from the top)')).toBe('(page 1, 0.31 from the top)');
     expect(inWindowPages('the heading is 0.31 from the top, 12 sections follow: 0.1 to 0.12')).toBe('the heading is 0.31 from the top, 12 sections follow: 0.1 to 0.12');

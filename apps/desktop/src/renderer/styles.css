@@ -1376,6 +1376,108 @@ button:disabled {
   vector-effect: non-scaling-stroke;
 }
 
+/* ------------------------------------------------ the exercises and answers found in a book (propose) */
+
+.propose {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.modes {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 8px 12px 0;
+}
+
+.mode {
+  flex: 1;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mode.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.book-proposals {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.book-proposals > .panel-head {
+  flex: none;
+  gap: 6px;
+  max-height: 58%;
+  overflow-y: auto;
+}
+
+.book-list {
+  flex: 1;
+}
+
+.book-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px 0 8px;
+  cursor: pointer;
+}
+
+.book-row.focused {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+}
+
+.book-row.off .section-main {
+  opacity: 0.55;
+}
+
+.book-row .label-chip {
+  flex: none;
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.book-row .change {
+  color: var(--warn);
+}
+
+.derive-effect.applied {
+  color: var(--ok);
+}
+
+.book-findings {
+  flex: none;
+  max-height: 34%;
+  overflow-y: auto;
+  padding: 6px 12px;
+  border-top: 2px solid var(--line);
+  font-size: 12px;
+}
+
+.book-findings summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.finding-group {
+  margin-top: 6px;
+}
+
 /* ------------------------------------------------------- the sections found in the book (derive) */
 
 .audit-bar {

@@ -18,6 +18,7 @@ import { NO_PARTS_REASON } from '../logic/errors.js';
 import { HANDLES, frameAtTap, handlePositions, middleCut, partsOnPage, rectFromCorners, resizeRect, toScreen, unitArea, type HandleName, type PageBox } from '../logic/geometry.js';
 import { placeChips } from '../logic/labels.js';
 import { frameIndex, labelOf, pageContent, proposalsOnPage } from '../logic/model.js';
+import { ghostsOn, type BookKind, type BookRow, type GhostPiece } from '../logic/proposals.js';
 import type { Store, Tool } from '../logic/store.js';
 import { drawPage } from '../pdf.js';
 import { BookForm } from './BookForm.js';
@@ -332,6 +333,13 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
   const sectionMarks = state.tab === 'sections' ? store.book().entries.flatMap((entry, at) => (entry.page === state.page ? [{ entry, at }] : [])) : [];
   // And, while the sections the search found are being reviewed, where each of them starts (drawn from the left, in the accent colour).
   const deriveMarks = state.tab === 'sections' && state.derive !== null ? (store.derivePlan()?.rows ?? []).filter((row) => row.entry.page === state.page) : [];
+  // The exercises or answers the search found in the book that lie on this page, as the list shows them: ghosts, until applied.
+  const bookKind: BookKind | null = state.tab === 'propose' && state.proposeMode !== 'frames' ? state.proposeMode : null;
+  const bookGhosts = bookKind !== null ? ghostsOn(store.bookListed(bookKind), state.page) : [];
+  const bookChips = placeChips(
+    bookGhosts.filter(({ row, piece }) => row.pieces[0] === piece).map(({ row, piece }) => ({ id: row.key, label: bookKind === 'solutions' ? `S ${row.label}` : row.label, rect: piece.rect })),
+    box,
+  );
   const standalone = content.frames.filter((frame) => frame.unit === undefined);
   const unitsOnPage = [...new Set(content.frames.filter((frame) => frame.unit !== undefined).map((frame) => frame.unit as string))];
   const chips = placeChips(
@@ -566,6 +574,61 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
     );
   };
 
+  const bookGhostShape = ({ row, piece }: { row: BookRow; piece: GhostPiece }, at: number): preact.JSX.Element => {
+    const kind = bookKind as BookKind;
+    const focused = state.book[kind]?.focus === row.key;
+    const color = row.state === 'different' ? '#d97706' : row.state === 'same' ? '#64748b' : kind === 'solutions' ? SOLUTION_COLOR : BOOK_COLOR;
+    if (piece.role === 'context' || piece.role === 'continues') {
+      return <RegionBox key={`book-${row.key}-${at}`} kind={piece.role} rect={piece.rect} box={box} color={piece.role === 'context' ? CONTEXT_COLOR : color} own={focused} clickable={false} />;
+    }
+    const s = toScreen(piece.rect, box);
+    const first = row.pieces[0] === piece;
+    const placed = first ? bookChips.get(row.key) : undefined;
+    const outside = s.x + s.w + 58 <= box.width;
+    const acceptX = outside ? s.x + s.w + 16 : s.x + s.w - 14;
+    const rejectX = outside ? s.x + s.w + 42 : s.x + s.w - 40;
+    const canApply = row.state !== 'same' && row.refusal === undefined;
+    return (
+      <g key={`book-${row.key}-${at}`} class={`ghost book-ghost ${row.state}`} data-ghost={`book:${row.key}`} data-state={row.state}>
+        <rect class="body" x={s.x} y={s.y} width={s.w} height={s.h} fill={color} fill-opacity={focused ? 0.22 : 0.1} stroke={color} stroke-width={focused ? 2.6 : 1.6} stroke-dasharray={piece.role === 'solution' ? '7 4' : '3 4'} style={{ pointerEvents: 'none' }} />
+        {placed ? (
+          <ChipShape
+            chip={placed}
+            label={kind === 'solutions' ? `S ${row.label}` : row.label}
+            color={color}
+            square
+            title={`${row.key}: ${Math.round(row.confidence * 100)}% sure${row.state === 'different' ? ', different from the book\'s own' : ''}`}
+            interactive={state.tool === 'select'}
+            onDown={(event) => {
+              event.stopPropagation();
+              store.focusBook(kind, row.key);
+            }}
+          />
+        ) : null}
+        {first && focused ? (
+          <>
+            {canApply ? (
+              <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => store.applyBook(kind, [row.key])} style={{ cursor: 'pointer' }}>
+                <title>{row.state === 'different' ? 'Replace the one the book has' : 'Take this one'}</title>
+                <circle cx={acceptX} cy={s.y + Math.min(14, s.h / 2)} r={10} fill="#16a34a" />
+                <text x={acceptX} y={s.y + Math.min(14, s.h / 2) + 0.5} text-anchor="middle" dominant-baseline="middle" fill="#fff">
+                  ✓
+                </text>
+              </g>
+            ) : null}
+            <g class="round-button" onPointerDown={(event) => event.stopPropagation()} onClick={() => store.rejectBook(kind, row.key, true)} style={{ cursor: 'pointer' }}>
+              <title>Dismiss this proposal</title>
+              <circle cx={rejectX} cy={s.y + Math.min(14, s.h / 2)} r={10} fill="#64748b" />
+              <text x={rejectX} y={s.y + Math.min(14, s.h / 2) + 0.5} text-anchor="middle" dominant-baseline="middle" fill="#fff">
+                ✕
+              </text>
+            </g>
+          </>
+        ) : null}
+      </g>
+    );
+  };
+
   // The selected frame is drawn last: it is on top of its neighbours whatever the order of the file.
   const others = standalone.filter((frame) => frame.id !== state.selection);
   const chosen = standalone.filter((frame) => frame.id === state.selection);
@@ -673,6 +736,7 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
           {unitsOnPage.map(unitShape)}
           {chosen.map(frameShape)}
           {ghosts.map(ghostShape)}
+          {bookGhosts.map(bookGhostShape)}
           {deleteButton()}
           {draftBox ? (
             <g class="draft">

@@ -17,6 +17,7 @@ const api: Api = {
   pageText: (page) => invoke('pageText', page),
   propose: (request) => invoke('propose', request),
   deriveSections: () => invoke('deriveSections'),
+  proposeBook: (request) => invoke('proposeBook', request),
   cancelAudit: () => invoke('cancelAudit'),
   saveProject: (project, expectedRevision) => invoke('saveProject', project, expectedRevision),
   reloadProject: () => invoke('reloadProject'),

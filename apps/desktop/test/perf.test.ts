@@ -3,9 +3,10 @@ import { PdfDocument, validateProject, type Frame, type Project } from '@mcprep/
 import { FRAME_ROW_HEIGHT, buildFrameRows, visibleRange } from '../src/renderer/logic/list.js';
 import { placeChips } from '../src/renderer/logic/labels.js';
 import { bookModel, frameIndex, pageContent } from '../src/renderer/logic/model.js';
+import { bookRows, defaultTicks, ghostsOn, planBook, viewRows } from '../src/renderer/logic/proposals.js';
 import { buildSectionRows, sectionWarnings } from '../src/renderer/logic/sections.js';
 import { Store } from '../src/renderer/logic/store.js';
-import { buildBigBook, type BigBook } from './helpers/big-book.js';
+import { bookResultsOf, buildBigBook, type BigBook } from './helpers/big-book.js';
 import { fakeApi, openedDocument } from './helpers/fake-api.js';
 
 /**
@@ -222,6 +223,73 @@ describe('the store with 5 000 frames', () => {
   });
 });
 
+describe('what the Propose panel computes for 5 000 proposals', () => {
+  let results: ReturnType<typeof bookResultsOf>;
+  let empty: Project;
+
+  beforeAll(() => {
+    results = bookResultsOf(big);
+    empty = { ...big.project, frames: [], seq: 0 };
+  });
+
+  it('builds the 5 000 rows in a few milliseconds, and the same rows again for the same frames', () => {
+    // A new array of frames each time: the cache is keyed by it, so this is the cost of building.
+    expect(best(() => bookRows(results.exercises, [...empty.frames]), 5)).toBeLessThan(250);
+    const model = bookRows(results.exercises, empty.frames);
+    expect(model.counts).toMatchObject({ total: 5000, new: 5000, different: 0, same: 0 });
+    expect(bookRows(results.exercises, empty.frames)).toBe(model);
+    expect(Object.keys(defaultTicks(model.rows))).toHaveLength(5000);
+  });
+
+  it('knows that a book that has all of them has them: 5 000 the same, nothing to apply', () => {
+    const frames = [...big.project.frames];
+    expect(best(() => bookRows(results.exercises, [...frames]), 5)).toBeLessThan(400);
+    const model = bookRows(results.exercises, frames);
+    expect(model.counts).toMatchObject({ total: 5000, new: 0, different: 0, same: 5000 });
+    expect(planBook('exercises', model.rows, new Set(model.rows.map((row) => row.key))).operations).toEqual([]);
+    const answers = bookRows(results.solutions, frames);
+    expect(answers.counts).toMatchObject({ total: 5000, same: 5000 });
+  });
+
+  it('filters, searches and finds the ghosts of a page in a few milliseconds', () => {
+    const model = bookRows(results.exercises, empty.frames);
+    expect(best(() => viewRows(model.rows, { filter: 'todo', confidence: 'unsure', rejected: {}, query: '1.5:' }), 15)).toBeLessThan(60);
+    expect(viewRows(model.rows, { filter: 'all', confidence: 'any', rejected: {}, query: '1.5:12' }).map((row) => row.key)).toEqual(['1.5:12']);
+    const listed = viewRows(model.rows, { filter: 'todo', confidence: 'any', rejected: {} });
+    const first = timed(() => ghostsOn(listed, 9));
+    expect(first.ms).toBeLessThan(150);
+    expect(first.value.filter(({ row, piece }) => row.pieces[0] === piece)).toHaveLength(44);
+    expect(timed(() => ghostsOn(listed, 10)).ms).toBeLessThan(5); // built once for the list: other pages are lookups
+  });
+
+  it('makes the batch of 5 000 and applies it as one step in seconds, quickly again for the answers', async () => {
+    const api = fakeApi(
+      { pdf: () => big.pdf, texts: () => big.pageTexts, fresh: () => empty },
+      { proposeBook: (request) => Promise.resolve({ ok: true, result: request.kind === 'exercises' ? results.exercises : results.solutions }) },
+    );
+    const store = new Store(api);
+    await store.openDocument({ ...openedDocument(empty, big.pageCount, null), pageSizes: big.pageSizes });
+    await store.proposeBook('exercises');
+    const keys = store.applicableKeys('exercises', store.bookListed('exercises'), 'all');
+    expect(keys).toHaveLength(5000);
+    const applied = timed(() => store.applyBook('exercises', keys));
+    expect(applied.value.ok).toBe(true);
+    expect(applied.ms).toBeLessThan(4000);
+    expect(store.state.project?.frames).toHaveLength(5000);
+    expect(store.state.past).toHaveLength(1);
+    expect(store.bookModel('exercises')?.counts).toMatchObject({ same: 5000, new: 0 });
+    await store.proposeBook('solutions');
+    const answers = store.applicableKeys('solutions', store.bookListed('solutions'), 'all');
+    expect(answers).toHaveLength(5000);
+    const solved = timed(() => store.applyBook('solutions', answers));
+    expect(solved.value.ok).toBe(true);
+    expect(solved.ms).toBeLessThan(4000);
+    expect((store.state.project?.frames ?? []).every((frame) => (frame.solution?.length ?? 0) > 0)).toBe(true);
+    // The book is what the synthetic big book is: the same exercises, the same places.
+    expect(store.state.project?.frames.map((frame) => `${frame.section}:${frame.label}:${frame.page}`)).toEqual(big.project.frames.map((frame) => `${frame.section}:${frame.label}:${frame.page}`));
+  });
+});
+
 describe('the work grows in step with the book', () => {
   it('lists ten times the frames in far less than a hundred times the time', () => {
     const run = (book: BigBook): number => {
@@ -231,6 +299,15 @@ describe('the work grows in step with the book', () => {
     };
     const ratio = run(big) / Math.max(0.1, run(small));
     // Ten times the frames: linear is about 10, quadratic a hundred.
+    expect(ratio).toBeLessThan(40);
+  });
+
+  it('builds the rows of ten times the proposals in far less than a hundred times the time', () => {
+    const run = (book: BigBook): number => {
+      const result = bookResultsOf(book).exercises;
+      return best(() => bookRows(result, []), 15);
+    };
+    const ratio = run(big) / Math.max(0.1, run(small));
     expect(ratio).toBeLessThan(40);
   });
 

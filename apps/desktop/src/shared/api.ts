@@ -1,4 +1,4 @@
-import type { BookStructure, OutlineEntry, PageSize, PageText, Project, ProposalSet } from '@mcprep/core/pure';
+import type { BookExercises, BookSolutions, BookStructure, OutlineEntry, PageSize, PageText, PlaceOnPage, Project, ProposalSet } from '@mcprep/core/pure';
 
 /**
  * The whole surface between the renderer (the editor's user interface, which has no Node access) and the main process
@@ -65,6 +65,30 @@ export interface AuditProgress {
 /** The result of a long job: what it found, or why it did not (`cancelled`: the person stopped it). */
 export type AuditOutcome<T> = { ok: true; result: T } | { ok: false; cancelled: boolean; message: string };
 
+/**
+ * What the search for the exercises or the answers of a book is given. The window's working copy of the project is the
+ * truth (it may hold changes that are not saved yet), so the sections and the exercises come with the request, not from the
+ * file on disk.
+ */
+export type BookRequest =
+  | {
+      kind: 'exercises';
+      /** The sections of the project (with the ids that exercises name). */
+      outline: OutlineEntry[];
+      /** Ids or printed numbers of the sections to search; omitted: all of them. */
+      sections?: string[];
+    }
+  | {
+      kind: 'solutions';
+      outline: OutlineEntry[];
+      /** The book exercises of the project (section id and printed number): the answers are matched to them. */
+      exercises: { section: string; label: string }[];
+    };
+
+export type BookResult =
+  | { kind: 'exercises'; exercises: BookExercises; notes: string[] }
+  | { kind: 'solutions'; solutions: BookSolutions; notes: string[]; answerKey?: PlaceOnPage };
+
 export interface DiskChange {
   /** The project as it is on disk now. */
   project: Project;
@@ -90,6 +114,12 @@ export interface Api {
    * of every page, so it takes seconds on a big book; `onProgress` reports it and `cancelAudit` stops it.
    */
   deriveSections(): Promise<AuditOutcome<BookStructure>>;
+  /**
+   * Finds the numbered exercises of the practice sets, or the answers in the answer key, of the open book (offline): it reads
+   * the text of every page and looks at the pages of the practice sets or of the key, so it takes seconds. Reports through
+   * `onProgress`, stopped by `cancelAudit`. It proposes; nothing is written.
+   */
+  proposeBook(request: BookRequest): Promise<AuditOutcome<BookResult>>;
   /** Stops the long job that is running (reading the pages, deriving the sections, proposing exercises). */
   cancelAudit(): Promise<void>;
   /** Progress of the long job that is running. */

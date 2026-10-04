@@ -187,6 +187,7 @@ function registerIpc(): void {
   handle('pageText', (page: number) => service.pageText(Number(page)));
   handle('propose', (request: Parameters<DocumentService['propose']>[0]) => service.propose(request));
   handle('deriveSections', () => service.deriveSections());
+  handle('proposeBook', (request: Parameters<DocumentService['proposeBook']>[0]) => service.proposeBook(request));
   handle('cancelAudit', () => service.cancelAudit());
   handle('saveProject', (project: Parameters<DocumentService['save']>[0], expected: number) => service.save(project, Number(expected)));
   handle('reloadProject', () => service.reload());

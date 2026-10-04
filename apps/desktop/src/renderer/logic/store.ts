@@ -21,7 +21,7 @@ import {
   type ProposalSet,
   type Rect,
 } from '@mcprep/core/pure';
-import type { Api, AuditOutcome, AuditProgress, BookSummaryOutcome, DiskChange, ExportOutcome, OpenedDocument, RecentEntry } from '../../shared/api.js';
+import type { Api, AuditOutcome, AuditProgress, BookRequest, BookResult, BookSummaryOutcome, DiskChange, ExportOutcome, OpenedDocument, RecentEntry } from '../../shared/api.js';
 import { checkBookLabel, suggestFor, suggestLabel } from './book.js';
 import { describeChange, summarizeChange } from './contents.js';
 import { compareOutline, defaultSelection, describeOutcome, resolveDerive, type DeriveFilter, type DeriveOutcome, type DerivePlan } from './derive.js';
@@ -29,9 +29,12 @@ import { plainError, NO_PARTS_REASON } from './errors.js';
 import { middleCut } from './geometry.js';
 import { bookModel, frameIndex, type BookModel } from './model.js';
 import { Progress } from './progress.js';
+import { bookRows, defaultTicks, describePlan, exerciseRefs, planBook, viewRows, type BookFilter, type BookKind, type BookRow, type BookRows, type ConfidenceFilter } from './proposals.js';
 
 export type Tool = 'select' | 'exercise' | 'book' | 'parts' | 'context' | 'continues' | 'solution' | 'question' | 'bookmark';
 export type Tab = 'frames' | 'sections' | 'checks' | 'propose';
+/** What the Propose panel proposes: frames from the text of the pages, or the exercises or the answers of a book. */
+export type ProposeMode = 'frames' | 'exercises' | 'solutions';
 export type Theme = 'system' | 'light' | 'dark';
 /** Which frames the Frames list shows: everything, what a person framed for themselves, or the book exercises. */
 export type FramesFilter = 'all' | 'ordinary' | 'book';
@@ -56,6 +59,24 @@ export interface DeriveReview {
   /** The derived entry whose evidence is shown. */
   focus: string | null;
   /** Why the last attempt to apply failed, in plain words. */
+  error: string | null;
+}
+
+/** The exercises or the answers the search found in the book, looked at before anything is applied. */
+export interface BookReview {
+  kind: BookKind;
+  result: BookResult;
+  /** Ticked rows are taken by "Apply selected": by default every row the project does not have. */
+  ticked: Record<string, true>;
+  /** Rows the person dismissed: never applied, not listed (unless the list shows them). */
+  rejected: Record<string, true>;
+  filter: BookFilter;
+  confidence: ConfidenceFilter;
+  /** The row whose evidence is shown. */
+  focus: string | null;
+  /** What the last apply did, in one line. */
+  summary: string | null;
+  /** Why the last apply was refused, in plain words. */
   error: string | null;
 }
 
@@ -121,6 +142,12 @@ export interface State {
   /** The long job that is running in the main process, and whether the person asked it to stop. */
   audit: { job: AuditJob | null; stopping: boolean };
   derive: DeriveReview | null;
+  proposeMode: ProposeMode;
+  /** The section the search for exercises is limited to ("all" or a section id). */
+  bookScope: string;
+  book: { exercises: BookReview | null; solutions: BookReview | null };
+  /** Why the last search for exercises or answers found nothing to look at, in plain words. */
+  bookMessage: { kind: BookKind; text: string } | null;
   notice: Notice | null;
   /** The time of the last change made by another program (for the quiet indicator). */
   agentAt: number;
@@ -176,6 +203,10 @@ const initial = (): State => ({
   decided: {},
   audit: { job: null, stopping: false },
   derive: null,
+  proposeMode: 'frames',
+  bookScope: 'all',
+  book: { exercises: null, solutions: null },
+  bookMessage: null,
   notice: null,
   agentAt: 0,
   saving: false,
@@ -254,6 +285,7 @@ export class Store {
   private auditSeq = 0;
   private planCache: { structure: BookStructure; entries: readonly OutlineEntry[]; groups: BookModel['groups']; plan: DerivePlan } | undefined;
   private outcomeCache: { review: DeriveReview; plan: DerivePlan; outcome: DeriveOutcome } | undefined;
+  private listCache: Partial<Record<BookKind, { review: BookReview; model: BookRows; list: BookRow[] }>> = {};
 
   constructor(
     private readonly api: Api,
@@ -322,6 +354,10 @@ export class Store {
       proposals: null,
       decided: {},
       derive: null,
+      proposeMode: 'frames',
+      bookScope: 'all',
+      book: { exercises: null, solutions: null },
+      bookMessage: null,
       conflict: null,
       saveError: null,
       welcomeError: null,
@@ -1153,6 +1189,178 @@ export class Store {
     }
     this.set({ derive: null, sectionSelection: null });
     this.notify('success', describeOutcome(outcome));
+    return result;
+  }
+
+  // ----------------------------------------------------------------------------- exercises and answers of a book
+
+  setProposeMode(proposeMode: ProposeMode): void {
+    this.set({ proposeMode });
+  }
+
+  setBookScope(bookScope: string): void {
+    this.set({ bookScope });
+  }
+
+  /**
+   * Looks in the book for its numbered exercises (the sections in `scope`, "all" by default) or for the answers of the
+   * exercises it has. The sections and exercises are the window's own, saved or not. The result is shown for review: nothing is applied.
+   */
+  async proposeBook(kind: BookKind, options: { scope?: string } = {}): Promise<void> {
+    const { project, doc } = this.state;
+    if (!project || !doc) return;
+    const scope = options.scope ?? this.state.bookScope;
+    const outline = [...(project.outline?.entries ?? [])];
+    const request: BookRequest = kind === 'exercises' ? { kind, outline, ...(scope !== 'all' ? { sections: [scope] } : {}) } : { kind, outline, exercises: exerciseRefs(project.frames) };
+    const token = this.beginAudit(kind);
+    if (token === null) return;
+    this.set({ proposeMode: kind, tab: 'propose', bookMessage: null, ...(options.scope !== undefined ? { bookScope: options.scope } : {}) });
+    let outcome: AuditOutcome<BookResult>;
+    try {
+      outcome = await this.api.proposeBook(request);
+    } catch (error) {
+      outcome = { ok: false, cancelled: false, message: error instanceof Error ? error.message : String(error) };
+    }
+    if (this.state.doc !== doc) {
+      this.finishAudit(token);
+      return;
+    }
+    if (!outcome.ok) {
+      this.finishAudit(token, outcome.cancelled ? {} : { bookMessage: { kind, text: outcome.message } });
+      if (outcome.cancelled) this.notify('info', 'Stopped. Nothing was changed.');
+      return;
+    }
+    const model = bookRows(outcome.result, this.state.project?.frames ?? project.frames);
+    const review: BookReview = {
+      kind,
+      result: outcome.result,
+      ticked: defaultTicks(model.rows),
+      rejected: {},
+      filter: model.counts.new + model.counts.different > 0 ? 'todo' : 'all',
+      confidence: 'any',
+      focus: null,
+      summary: null,
+      error: null,
+    };
+    this.finishAudit(token, { book: { ...this.state.book, [kind]: review } });
+  }
+
+  bookReview(kind: BookKind): BookReview | null {
+    return this.state.book[kind];
+  }
+
+  /** The proposals of a search against the project as it is now (built once for a result and a version of the frames). */
+  bookModel(kind: BookKind): BookRows | null {
+    const review = this.state.book[kind];
+    const project = this.state.project;
+    return review && project ? bookRows(review.result, project.frames) : null;
+  }
+
+  /** The rows the list shows for the filters (the ghosts on the page are these too); the same array until something changes. */
+  bookListed(kind: BookKind): BookRow[] {
+    const review = this.state.book[kind];
+    const model = this.bookModel(kind);
+    if (!review || !model) return [];
+    const cached = this.listCache[kind];
+    if (cached && cached.review.filter === review.filter && cached.review.confidence === review.confidence && cached.review.rejected === review.rejected && cached.model === model) return cached.list;
+    const list = viewRows(model.rows, { filter: review.filter, confidence: review.confidence, rejected: review.rejected });
+    this.listCache[kind] = { review, model, list };
+    return list;
+  }
+
+  private editBook(kind: BookKind, patch: (review: BookReview) => Partial<BookReview>): void {
+    const review = this.state.book[kind];
+    if (review) this.set({ book: { ...this.state.book, [kind]: { ...review, error: null, ...patch(review) } } });
+  }
+
+  tickBook(kind: BookKind, key: string, on: boolean): void {
+    this.editBook(kind, (review) => {
+      const ticked = { ...review.ticked };
+      if (on) ticked[key] = true;
+      else delete ticked[key];
+      return { ticked };
+    });
+  }
+
+  /** Ticks (or unticks) every row that can be applied among these (the ones the list shows). */
+  tickRows(kind: BookKind, rows: readonly BookRow[], on: boolean): void {
+    this.editBook(kind, (review) => {
+      const ticked = { ...review.ticked };
+      for (const row of rows) {
+        if (row.state === 'same' || row.refusal !== undefined) continue;
+        if (on) ticked[row.key] = true;
+        else delete ticked[row.key];
+      }
+      return { ticked };
+    });
+  }
+
+  /** Dismisses a proposal (it is never applied and leaves the list), or takes the dismissal back. */
+  rejectBook(kind: BookKind, key: string, on: boolean): void {
+    this.editBook(kind, (review) => {
+      const rejected = { ...review.rejected };
+      if (on) rejected[key] = true;
+      else delete rejected[key];
+      const ticked = { ...review.ticked };
+      if (on) delete ticked[key];
+      return { rejected, ticked, ...(on && review.focus === key ? { focus: null } : {}) };
+    });
+  }
+
+  setBookFilter(kind: BookKind, filter: BookFilter): void {
+    this.editBook(kind, () => ({ filter }));
+  }
+
+  setBookConfidence(kind: BookKind, confidence: ConfidenceFilter): void {
+    this.editBook(kind, () => ({ confidence }));
+  }
+
+  /** Shows the evidence for a proposal and goes to it on its page. */
+  focusBook(kind: BookKind, key: string | null): void {
+    this.editBook(kind, () => ({ focus: key }));
+    const row = key === null ? undefined : this.bookModel(kind)?.byKey.get(key);
+    if (!row) return;
+    this.set({ focus: { tick: this.state.focus.tick + 1, ghost: `book:${row.key}` } });
+    this.setPage(row.page);
+  }
+
+  discardBook(kind: BookKind): void {
+    this.set({ book: { ...this.state.book, [kind]: null } });
+  }
+
+  /** The keys "Apply all" takes among the rows the list shows: the new ones, and the different ones the person ticked (to replace). */
+  applicableKeys(kind: BookKind, listed: readonly BookRow[], which: 'selected' | 'all'): string[] {
+    const review = this.state.book[kind];
+    if (!review) return [];
+    return listed
+      .filter((row) => row.refusal === undefined && row.state !== 'same' && (which === 'selected' ? review.ticked[row.key] === true : row.state === 'new' || review.ticked[row.key] === true))
+      .map((row) => row.key);
+  }
+
+  /**
+   * Applies these proposals as one atomic, undoable batch (the operations the command line writes for the same
+   * proposals). A new exercise is added, a different one replaces the project's, an answer is given or replaced. Refused as a whole
+   * when it would introduce an error.
+   */
+  applyBook(kind: BookKind, keys: readonly string[]): ApplyResult {
+    const review = this.state.book[kind];
+    const model = this.bookModel(kind);
+    if (!review || !model) return fail('There is nothing to apply.');
+    const plan = planBook(kind, model.rows, new Set(keys));
+    if (plan.operations.length === 0) {
+      const error = plan.refused.length > 0 ? `Nothing can be applied: ${plan.refused[0]?.refusal as string}.` : keys.length === 0 ? 'Nothing is selected.' : 'Nothing to apply: the book has these already.';
+      this.editBook(kind, () => ({ error }));
+      return fail(error);
+    }
+    const result = this.apply(plan.operations, { quiet: true, select: null });
+    if (!result.ok) {
+      this.editBook(kind, () => ({ error: result.error ?? 'The proposals could not be applied.' }));
+      return result;
+    }
+    const summary = describePlan(kind, plan);
+    const applied = new Set(model.rows.filter((row) => keys.includes(row.key) && row.refusal === undefined && row.state !== 'same').map((row) => row.key));
+    this.editBook(kind, (current) => ({ summary, ticked: Object.fromEntries(Object.keys(current.ticked).filter((key) => !applied.has(key)).map((key) => [key, true as const])) }));
+    this.notify('success', summary);
     return result;
   }
 

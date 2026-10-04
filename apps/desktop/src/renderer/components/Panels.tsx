@@ -2,7 +2,8 @@ import { KIND_COLORS, type Issue } from '@mcprep/core/pure';
 import { useStore } from '../hooks.js';
 import { guiFix } from '../logic/errors.js';
 import { frameIndex } from '../logic/model.js';
-import type { Store, Tab } from '../logic/store.js';
+import type { ProposeMode, Store, Tab } from '../logic/store.js';
+import { BookProposalsPanel } from './BookProposals.js';
 import { FramesPanel } from './FramesPanel.js';
 import { Inspector } from './Inspector.js';
 import { SectionsPanel } from './SectionsPanel.js';
@@ -60,7 +61,8 @@ function ChecksPanel({ store }: { store: Store }): preact.JSX.Element {
 
 const PROPOSAL_ROW_HEIGHT = 38;
 
-function ProposePanel({ store }: { store: Store }): preact.JSX.Element {
+/** Frames suggested from the text of the pages: exercises, parts, context and bookmarks that a person frames for themselves. */
+function FrameProposals({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
   const pending = store.pendingProposals();
   const decided = Object.keys(state.decided).length;
@@ -107,7 +109,40 @@ function ProposePanel({ store }: { store: Store }): preact.JSX.Element {
   );
 }
 
+const MODES: { id: ProposeMode; label: string; title: string }[] = [
+  { id: 'frames', label: 'Frames', title: 'Exercises, parts, context and bookmarks to frame for yourself, from the text of the pages' },
+  { id: 'exercises', label: 'Book exercises', title: 'The numbered exercises of the practice sets of a book, filed under its sections' },
+  { id: 'solutions', label: 'Solutions', title: 'The answers of the answer key at the back of the book, matched to its exercises' },
+];
+
+/** What the search can propose: frames from the text, the numbered exercises of a book, or the answers of its answer key. */
+function ProposePanel({ store }: { store: Store }): preact.JSX.Element {
+  const state = useStore(store);
+  return (
+    <div class="propose">
+      <div class="modes" role="group" aria-label="What to propose">
+        {MODES.map((mode) => (
+          <button key={mode.id} class={`mode ${state.proposeMode === mode.id ? 'active' : ''}`} aria-pressed={state.proposeMode === mode.id} title={mode.title} onClick={() => store.setProposeMode(mode.id)}>
+            {mode.label}
+          </button>
+        ))}
+      </div>
+      {state.proposeMode === 'frames' ? <FrameProposals store={store} /> : <BookProposalsPanel store={store} kind={state.proposeMode} />}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------------------------------------------- container
+
+/** The number on the Propose tab: frame proposals waiting, or the exercises or answers of the book that are new or different. */
+function proposeBadge(store: Store): string | undefined {
+  const { proposeMode, proposals } = store.state;
+  if (proposeMode !== 'frames') {
+    const counts = store.bookModel(proposeMode)?.counts;
+    return counts ? String(counts.new + counts.different) : undefined;
+  }
+  return proposals ? String(store.pendingProposals().length) : undefined;
+}
 
 export function SidePanel({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
@@ -117,7 +152,7 @@ export function SidePanel({ store }: { store: Store }): preact.JSX.Element {
     { id: 'frames', label: 'Frames', badge: String(state.project?.frames.length ?? 0) },
     { id: 'sections', label: 'Sections', badge: String((state.project?.outline?.entries ?? []).length) },
     { id: 'checks', label: 'Checks', badge: errors > 0 ? String(errors) : warnings > 0 ? String(warnings) : '✓', bad: errors > 0 },
-    { id: 'propose', label: 'Propose', badge: state.proposals ? String(store.pendingProposals().length) : undefined },
+    { id: 'propose', label: 'Propose', badge: proposeBadge(store) },
   ];
   return (
     <aside class="side">

@@ -16,8 +16,8 @@ import {
   type Project,
   type ProposalSet,
 } from '@mcprep/core';
-import type { AuditOutcome, AuditProgress, BookSummaryOutcome, DiskChange, ExportOutcome, OpenOutcome, ProposeRequest, SaveOutcome } from '../shared/api.js';
-import { AuditCancelled, AuditProblem, runDerive, type AuditHooks } from './audit.js';
+import type { AuditOutcome, AuditProgress, BookRequest, BookResult, BookSummaryOutcome, DiskChange, ExportOutcome, OpenOutcome, ProposeRequest, SaveOutcome } from '../shared/api.js';
+import { AuditCancelled, AuditProblem, runDerive, runExercises, runSolutions, type AuditHooks } from './audit.js';
 
 const PROJECT_SUFFIX = '.mcprep.json';
 
@@ -111,6 +111,11 @@ export class DocumentService {
   /** The chapters and sections of the book, from its printed contents and headings. Reports its progress; can be stopped. */
   deriveSections(): Promise<AuditOutcome<BookStructure>> {
     return this.runAudit((pdf, hooks) => runDerive(pdf, hooks));
+  }
+
+  /** The numbered exercises of the practice sets, or the answers of the answer key, for the sections and exercises the window has. Nothing is written. */
+  proposeBook(request: BookRequest): Promise<AuditOutcome<BookResult>> {
+    return this.runAudit((pdf, hooks) => (request.kind === 'exercises' ? runExercises(pdf, request, hooks) : runSolutions(pdf, request, hooks)));
   }
 
   /** Stops the long job that is running, at the next page or step. */

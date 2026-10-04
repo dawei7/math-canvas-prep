@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { newProject, type Frame, type OutlineEntry, type PageSize, type PageText, type Project, type Region, type TextLine } from '@mcprep/core';
+import { newProject, type ExerciseProposal, type Frame, type OutlineEntry, type PageSize, type PageText, type Project, type Region, type SectionExercises, type SectionSolutions, type SolutionProposal, type TextLine } from '@mcprep/core';
 import { buildPdf, type PdfPageSpec, type PdfText } from '@mcprep/core/testing';
+import type { BookResult } from '../../src/shared/api.js';
 
 /**
  * A synthetic workbook of the size the owner has in mind, for tests of speed: thousands of book exercises on two-column
@@ -116,3 +117,36 @@ export function buildBigBook(options: BigBookOptions = {}): BigBook {
 
 /** The regions of a frame on a page, for the checks of a test. */
 export const regionsOn = (frame: Frame, page: number): Region[] => [...(frame.context ?? []), ...(frame.solution ?? [])].filter((region) => region.page === page);
+
+/**
+ * What the main process would hand over for the synthetic big book: its own frames as proposals (half of them with a confidence
+ * under 80%), its answer key as answers. The window is tested with this, the heuristics with the synthetic textbook.
+ */
+export function bookResultsOf(big: BigBook): { exercises: BookResult; solutions: BookResult } {
+  const sections: SectionExercises[] = [];
+  const answers: SectionSolutions[] = [];
+  const leaves = big.project.outline?.entries.filter((entry) => entry.depth > 0) ?? [];
+  const byId = new Map(leaves.map((entry) => [entry.id as string, entry]));
+  const proposals = new Map<string, ExerciseProposal[]>();
+  const solved = new Map<string, SolutionProposal[]>();
+  big.project.frames.forEach((frame, at) => {
+    const section = frame.section as string;
+    const label = frame.label as string;
+    const confidence = 0.6 + ((at * 7) % 40) / 100;
+    const list = proposals.get(section) ?? [];
+    list.push({ id: `x${section}-${label}`, section, label, page: frame.page, rect: frame.rect, ...(frame.context ? { context: frame.context } : { context: [] }), confidence, evidence: [`starts with "${label}."`, 'column 1 of 2 in its group', frame.context ? 'instruction: "Solve each equation."' : 'no instruction found above it'], title: `${label}. Solve the sum of x + ${label}`, layout: 'text' } as ExerciseProposal);
+    proposals.set(section, list);
+    const key = solved.get(section) ?? [];
+    key.push({ section, label, exercise: `x${section}-${label}`, regions: frame.solution ?? [], confidence, evidence: [`starts with "${label})"`], text: `${label}) ${label}` });
+    solved.set(section, key);
+  });
+  for (const [section, list] of proposals) {
+    const entry = byId.get(section);
+    sections.push({ section, ...(entry?.label !== undefined ? { label: entry.label } : {}), title: entry?.title ?? section, pages: [list[0]?.page ?? 0, list[list.length - 1]?.page ?? 0], proposals: list, first: list[0]?.label, last: list[list.length - 1]?.label, gaps: [], duplicates: [], instructions: [], rejected: [], excluded: [], notes: [] } as SectionExercises);
+  }
+  for (const [section, list] of solved) {
+    const entry = byId.get(section);
+    answers.push({ section, ...(entry?.label !== undefined ? { label: entry.label } : {}), title: entry?.title ?? section, answers: list, gaps: [], duplicates: [], headers: [], withoutAnswer: [], withoutExercise: [], rejected: [], notes: [] } as SectionSolutions);
+  }
+  return { exercises: { kind: 'exercises', exercises: { sections, notes: [] }, notes: [] }, solutions: { kind: 'solutions', solutions: { sections: answers, notes: [] }, notes: [] } };
+}

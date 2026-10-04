@@ -20,6 +20,7 @@ export function fakeApi(
     pageText: (page) => Promise.resolve(source.texts()[page] as PageText),
     propose: () => Promise.resolve(proposeFrames(source.texts())),
     deriveSections: () => Promise.resolve({ ok: true, result: deriveSections(source.texts()) }),
+    proposeBook: () => Promise.resolve({ ok: false, cancelled: false, message: 'The book search is not set up in this test.' }),
     cancelAudit: () => Promise.resolve(),
     onProgress: () => () => undefined,
     saveProject: (project, expected) => {

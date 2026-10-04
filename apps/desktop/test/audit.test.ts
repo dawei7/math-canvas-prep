@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { PdfDocument, deriveSections, type BookStructure } from '@mcprep/core';
+import { PdfDocument, deriveSections, toOutlineEntries, type BookStructure, type OutlineEntry } from '@mcprep/core';
 import { AuditCancelled, readPages, runDerive, type AuditHooks } from '../src/main/audit.js';
 import { DocumentService } from '../src/main/service.js';
 import type { AuditProgress } from '../src/shared/api.js';
@@ -126,6 +126,76 @@ describe('deriving the sections in the main process', () => {
     const service = await opened();
     service.cancelAudit();
     expect((await service.deriveSections()).ok).toBe(true);
+  });
+});
+
+describe('looking for the exercises and the answers through the service', () => {
+  const outlineOf = async (): Promise<OutlineEntry[]> => {
+    const pdf = await PdfDocument.fromBytes(bytes);
+    const outline = toOutlineEntries(deriveSections(await pdf.allPageText({ fonts: true })));
+    await pdf.close();
+    return outline;
+  };
+
+  it('finds the exercises of the sections the window has, reporting each step', async () => {
+    const service = await opened();
+    const reports: AuditProgress[] = [];
+    service.onProgress = (progress) => reports.push(progress);
+    const outcome = await service.proposeBook({ kind: 'exercises', outline: await outlineOf() });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok || outcome.result.kind !== 'exercises') return;
+    expect(outcome.result.exercises.sections.map((section) => [section.section, section.proposals.length])).toEqual([
+      ['0.1', 70],
+      ['0.2', 14],
+      ['1.1', 12],
+      ['1.2', 16],
+    ]);
+    const phases = [...new Set(reports.map((report) => report.phase))];
+    expect(phases).toEqual(['Reading the text of the pages', 'Looking at the white between the lines', 'Looking for the exercises']);
+    expect(reports[reports.length - 1]).toEqual({ phase: 'Looking for the exercises', done: 1, total: 1 });
+  });
+
+  it('finds the answers for the exercises it is given', async () => {
+    const service = await opened();
+    const outcome = await service.proposeBook({ kind: 'solutions', outline: await outlineOf(), exercises: [{ section: '0.2', label: '1' }, { section: '0.2', label: '2' }] });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok || outcome.result.kind !== 'solutions') return;
+    const answered = outcome.result.solutions.sections.find((section) => section.section === '0.2');
+    expect(answered?.answers).toHaveLength(14);
+    expect(answered?.withoutExercise.length).toBe(12);
+    expect(outcome.result.answerKey?.page).toBeGreaterThan(10);
+  });
+
+  it('says what is missing as a problem to solve, not a failure: no sections with ids, no exercises for the answers', async () => {
+    const service = await opened();
+    const flat: OutlineEntry[] = (await outlineOf()).map(({ title, page, depth }) => ({ title, page, depth }));
+    const noIds = await service.proposeBook({ kind: 'exercises', outline: flat });
+    expect(noIds).toMatchObject({ ok: false, cancelled: false });
+    expect((noIds as { message: string }).message).toContain('The book has no sections with ids yet');
+    const noExercises = await service.proposeBook({ kind: 'solutions', outline: await outlineOf(), exercises: [] });
+    expect((noExercises as { message: string }).message).toContain('The book has no book exercises yet');
+    // And the job is over: the next one can run.
+    expect((await service.deriveSections()).ok).toBe(true);
+  });
+
+  it('stops between two pages, also while the pages of the practice sets are looked at', async () => {
+    const service = await opened();
+    const outline = await outlineOf();
+    service.onProgress = (progress) => {
+      if (progress.phase === 'Looking at the white between the lines' && progress.done === 0) service.cancelAudit();
+    };
+    expect(await service.proposeBook({ kind: 'exercises', outline })).toEqual({ ok: false, cancelled: true, message: 'Stopped.' });
+    service.onProgress = undefined;
+    expect((await service.proposeBook({ kind: 'exercises', outline })).ok).toBe(true);
+  });
+
+  it('runs one job at a time, whatever kind', async () => {
+    const service = await opened();
+    const outline = await outlineOf();
+    const first = service.proposeBook({ kind: 'exercises', outline });
+    const second = await service.deriveSections();
+    expect(second).toMatchObject({ ok: false, cancelled: false });
+    expect((await first).ok).toBe(true);
   });
 });
 

@@ -204,6 +204,11 @@ function SectionEditor({ store, model, index, autofocus }: { store: Store; model
         <button class="text-button small" title="Start this section on the page that is showing" onClick={() => change({ page: state.page })}>
           Use page {state.page + 1}
         </button>
+        {entry.id !== undefined && entry.depth > 0 ? (
+          <button class="text-button small" disabled={state.audit.job !== null} title="Look for the numbered exercises of the practice set of this section only (Propose, Book exercises)" onClick={() => void store.proposeBook('exercises', { scope: entry.id as string })}>
+            Find its exercises
+          </button>
+        ) : null}
         <Info text="A section runs from its heading (its page and position) to the next heading of the same or a higher level. With the position, two sections that share a page can be told apart. Exercises are filed under a section by its id." label="where a section starts" />
       </div>
       {error !== null ? (

@@ -307,10 +307,18 @@ export function describeOutcome(outcome: DeriveOutcome): string {
 /**
  * The heuristics write the pages of the file counted from 0, like the command line does ("page 9"); the window numbers them
  * from 1 ("p10"), so a person comparing the evidence with the page in front of them would be one off. The numbers after "page"
- * and "pages" are raised by one, except the page numbers the book prints itself ("printed page 12").
+ * and "pages" are raised by one, except the page numbers the book prints itself ("printed page 12") and anything the book says
+ * inside quotation marks (a heading that reads "see page 3" stays as printed).
  */
 export function inWindowPages(text: string): string {
-  return text.replace(/(?<!printed )\b(pages?) (\d+(?:, \d+)*)(?![\d.])/g, (_whole, word: string, numbers: string) => `${word} ${numbers.split(', ').map((value) => String(Number(value) + 1)).join(', ')}`);
+  return text
+    .split(/("[^"]*")/)
+    .map((part, at) =>
+      at % 2 === 1
+        ? part
+        : part.replace(/(?<!printed )\b(pages?) (\d+(?:, \d+)*)(?![\d.])/g, (_whole, word: string, numbers: string) => `${word} ${numbers.split(', ').map((value) => String(Number(value) + 1)).join(', ')}`),
+    )
+    .join('');
 }
 
 /** How sure the heuristics are, as a word the row can show next to the percentage. */

@@ -118,7 +118,7 @@ describe.skipIf(!available)('the desktop app', () => {
     expect(facts['fetch']).toBe('blocked');
     expect(String(facts['csp'])).toContain("default-src 'none'");
     expect(String(facts['csp'])).not.toContain("'unsafe-eval'");
-    expect(facts['api']).toEqual(['cancelAudit', 'chooseAndOpenPdf', 'chooseAndOpenProject', 'copyToFolder', 'deriveSections', 'onDiskChange', 'onMenu', 'onProgress', 'openPath', 'pageText', 'pathForFile', 'propose', 'readPdf', 'ready', 'recent', 'reloadProject', 'reveal', 'saveProject', 'setDirty', 'exportBundle', 'exportBookSummary'].sort());
+    expect(facts['api']).toEqual(['cancelAudit', 'chooseAndOpenPdf', 'chooseAndOpenProject', 'copyToFolder', 'deriveSections', 'onDiskChange', 'onMenu', 'onProgress', 'openPath', 'pageText', 'pathForFile', 'propose', 'proposeBook', 'readPdf', 'ready', 'recent', 'reloadProject', 'reveal', 'saveProject', 'setDirty', 'exportBundle', 'exportBookSummary'].sort());
   });
 
   it('draws an exercise with the mouse, snaps it to the lines, and undoes and redoes it', async () => {

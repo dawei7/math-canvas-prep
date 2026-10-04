@@ -1,4 +1,16 @@
-import { deriveSections, type BookStructure, type PageText, type PdfDocument } from '@mcprep/core';
+import {
+  deriveSections,
+  locateSections,
+  proposeExercises,
+  proposeSolutions,
+  type BookEntry,
+  type BookStructure,
+  type OutlineEntry,
+  type PageText,
+  type PdfDocument,
+  type PlaceOnPage,
+} from '@mcprep/core';
+import type { BookRequest, BookResult } from '../shared/api.js';
 
 /**
  * The long jobs of auditing a book, run in the main process: the PDF is read page by page, the heuristics themselves take a
@@ -88,4 +100,74 @@ export async function runDerive(pdf: PdfDocument, hooks: AuditHooks): Promise<Bo
   hooks.check();
   hooks.report(phase, 1, 1);
   return structure;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The exercises and the answers
+
+/**
+ * The sections of the window's outline, with the practice set of each found on the pages and the place of the answer key.
+ * Exercises are filed under sections by id: without ids there is nothing to file them under.
+ */
+function locate(pages: readonly PageText[], outline: readonly OutlineEntry[]): { entries: BookEntry[]; answerKey?: PlaceOnPage; notes: string[] } {
+  if (!outline.some((entry) => entry.id !== undefined)) {
+    throw new AuditProblem('The book has no sections with ids yet, and exercises are filed under sections. Find them first: Sections tab, Derive sections.');
+  }
+  return locateSections(pages, outline);
+}
+
+/** The sections to search: all, or those named by id or printed number. */
+export function chooseSections(entries: readonly BookEntry[], ids: readonly string[] | undefined): BookEntry[] {
+  if (ids === undefined || ids.length === 0) return [...entries];
+  const sections = entries.filter((entry) => entry.kind === 'section');
+  const known = new Set(sections.flatMap((entry) => [entry.id, ...(entry.label !== undefined ? [entry.label] : [])]));
+  for (const id of ids) if (!known.has(id)) throw new AuditProblem(`There is no section "${id}" that can have a practice set (a section below a chapter, with an id).`);
+  return sections.filter((entry) => ids.includes(entry.id) || (entry.label !== undefined && ids.includes(entry.label)));
+}
+
+/** The pages of the practice sets (the ink map of a page tells where the white between two lines is), at most 40 pages of a set. */
+export function practicePages(entries: readonly BookEntry[]): Set<number> {
+  const pages = new Set<number>();
+  for (const entry of entries) {
+    const practice = entry.practice;
+    if (!practice) continue;
+    for (let page = practice.page; page <= Math.min(practice.end.page, practice.page + 40); page += 1) pages.add(page);
+  }
+  return pages;
+}
+
+/** The numbered exercises of the practice sets of the chosen sections. Reads every page, then the practice pages as pictures. */
+export async function runExercises(pdf: PdfDocument, request: Extract<BookRequest, { kind: 'exercises' }>, hooks: AuditHooks): Promise<BookResult> {
+  const pages = await readPages(pdf, hooks);
+  hooks.check();
+  const sections = locate(pages, request.outline);
+  const chosen = chooseSections(sections.entries, request.sections);
+  await addInk(pdf, pages, practicePages(chosen), 'Looking at the white between the lines', hooks);
+  const phase = 'Looking for the exercises';
+  hooks.report(phase, 0, 1);
+  await breathe();
+  const exercises = proposeExercises(pages, chosen);
+  hooks.check();
+  hooks.report(phase, 1, 1);
+  return { kind: 'exercises', exercises, notes: [...sections.notes, ...exercises.notes] };
+}
+
+/** The answers of the answer key, matched to the exercises the window has. Reads every page, then the pages of the key as pictures. */
+export async function runSolutions(pdf: PdfDocument, request: Extract<BookRequest, { kind: 'solutions' }>, hooks: AuditHooks): Promise<BookResult> {
+  if (request.exercises.length === 0) {
+    throw new AuditProblem('The book has no book exercises yet, and an answer belongs to an exercise. Find the exercises first (Propose, Book exercises).');
+  }
+  const pages = await readPages(pdf, hooks);
+  hooks.check();
+  const sections = locate(pages, request.outline);
+  const key = new Set<number>();
+  if (sections.answerKey) for (let page = sections.answerKey.page; page < pages.length; page += 1) key.add(page);
+  await addInk(pdf, pages, key, 'Looking at the answer key', hooks);
+  const phase = 'Looking for the answers';
+  hooks.report(phase, 0, 1);
+  await breathe();
+  const solutions = proposeSolutions(pages, sections.entries, request.exercises, sections.answerKey ? { answerKey: sections.answerKey } : {});
+  hooks.check();
+  hooks.report(phase, 1, 1);
+  return { kind: 'solutions', solutions, notes: solutions.notes, ...(sections.answerKey ? { answerKey: sections.answerKey } : {}) };
 }
