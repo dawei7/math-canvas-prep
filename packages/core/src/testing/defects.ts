@@ -40,6 +40,8 @@ export interface DefectType {
 
 export const DEFECT_TYPES: readonly DefectType[] = [
   { type: 'region-cut-top', on: 'workbook', what: 'the top edge moves down into the text of the exercise (its first line is cut)' },
+  { type: 'region-cut-top-hair', on: 'workbook', what: 'the top edge moves down by 0.010 of the page, 8.4 points: it cuts the first line by a hair (the tops of the capitals and digits, about a point, are flattened)' },
+  { type: 'region-cut-top-graze', on: 'workbook', what: 'the top edge moves down by 0.009 of the page, 7.6 points: it grazes the first line (a third of a point of the tallest glyphs is cut, under one pixel at 2 pixels per point)' },
   { type: 'region-cut-bottom', on: 'workbook', what: 'the bottom edge moves up so that the last lines are left out' },
   { type: 'region-grow', on: 'workbook', what: 'the region grows down over the next exercise' },
   { type: 'region-move', on: 'workbook', what: 'the region moves down by more than its height (onto the text of another exercise)' },
@@ -66,7 +68,7 @@ export const INVISIBLE_DEFECTS: readonly string[] = [
   'a continuation that holds no text (a figure) left out',
   'an instruction dropped from an exercise that is alone in its group (nothing else carries it, so only the unattached line shows, as text left behind)',
   'a region that is too large on blank paper (it holds nothing a learner would miss)',
-  'an edge that cuts between two words and so no glyph (with --ink the ones that cut a glyph are found)',
+  'an edge that cuts no glyph: between two words, or in the white a fraction of a point above the ink (a top edge moved down by 0.008 of the page leaves a third of a point and only touches the first line); the pixel check finds an edge that the ink goes across at 2 pixels or more',
   'two exercises swapped whose answers are swapped too',
 ];
 
@@ -137,6 +139,23 @@ const GENERATORS: Record<string, Generator> = {
     const mine = frames.get(target.id) as Frame;
     mine.rect = { ...mine.rect, top: mine.rect.top + 0.85 * height(target) };
     return { description: `${refOf(target)}: the top edge moves down into its text`, expect: { codes: ['label-not-first', 'no-text', 'numbered-text-left-behind', 'text-left-behind'], refs: [refOf(target), target.section as string] } };
+  },
+  // The synthetic workbook leaves 7.1 to 7.3 points (0.0084 to 0.0087 of the page) of white above the first ink of an exercise: a shift of 0.008
+  // or less cuts nothing (0.004 leaves 3.8 points, 0.008 leaves a third of a point and only touches), 0.009 cuts a third of a point and 0.010
+  // a point and a quarter. The text checks cannot see any of these; the pixel check of the edges can.
+  'region-cut-top-hair': (frames, context) => {
+    const target = context.pick(bookFrames(context));
+    if (!target) return undefined;
+    const mine = frames.get(target.id) as Frame;
+    mine.rect = { ...mine.rect, top: mine.rect.top + 0.01 };
+    return { description: `${refOf(target)}: the top edge cuts its first line by a hair`, expect: { codes: ['edge-on-ink'], refs: [refOf(target)] } };
+  },
+  'region-cut-top-graze': (frames, context) => {
+    const target = context.pick(bookFrames(context));
+    if (!target) return undefined;
+    const mine = frames.get(target.id) as Frame;
+    mine.rect = { ...mine.rect, top: mine.rect.top + 0.009 };
+    return { description: `${refOf(target)}: the top edge grazes its first line`, expect: { codes: ['edge-on-ink'], refs: [refOf(target)] } };
   },
   'region-cut-bottom': (frames, context) => {
     const target = context.pick(bookFrames(context).filter((frame) => height(frame) >= 0.045 && frame.continues === undefined));

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFECT_TYPES, buildSpanBook, buildSyntheticBook, defectRates, evaluateDefects, injectDefects, seeded } from '@mcprep/core/testing';
-import { newProject, type Project } from '@mcprep/core';
+import { PdfDocument, measureInk, newProject, type Project } from '@mcprep/core';
 import { auditedBook } from './audited.js';
 
 /**
@@ -38,6 +38,28 @@ describe('defect injection', () => {
     const rates = defectRates(results);
     // The workbook has one exercise that goes on over a page break: that defect has one place to be injected.
     for (const rate of rates) expect(rate, rate.type).toMatchObject({ injected: rate.type === 'continuation-left-out' ? 1 : 4, caught: rate.injected, named: rate.injected });
+  });
+
+  it('knows what a top edge cuts: nothing while it is still in the white above the ink (+0.004), the pixels of the glyphs from a hair on (+0.010)', async () => {
+    const cli = await auditedBook();
+    const project = JSON.parse(await readFile(join(cli.dir, 'book.mcprep.json'), 'utf8')) as Project;
+    const doc = await PdfDocument.fromBytes(new Uint8Array(await readFile(join(cli.dir, 'book.pdf'))));
+    try {
+      const frames = project.frames.filter((frame) => frame.authority === 'book');
+      expect(frames).toHaveLength(112);
+      const crossings = async (shift: number): Promise<number[]> => {
+        const regions = frames.map((frame) => ({ page: frame.page, rect: { ...frame.rect, top: frame.rect.top + shift } }));
+        const ink = await measureInk(doc, regions);
+        return regions.map((region) => ink.lookup(region)?.cross?.top ?? -1);
+      };
+      // The workbook leaves 7.1 to 7.3 points of white above the first ink of an exercise: 0.004 of the page (3.4 points) cuts nothing ...
+      expect(Math.max(...(await crossings(0)))).toBe(0);
+      expect(Math.max(...(await crossings(0.004)))).toBe(0);
+      // ... and 0.010 (8.4 points) cuts a point and a quarter of every first line: at least 6 pixels of ink go across the edge of every exercise.
+      expect(Math.min(...(await crossings(0.01)))).toBeGreaterThanOrEqual(6);
+    } finally {
+      await doc.close();
+    }
   });
 
   it('stops the gate for every damage to the span of an exercise over three pages; the untouched span passes', async () => {
