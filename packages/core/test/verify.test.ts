@@ -483,6 +483,15 @@ describe('the numbers of a section', () => {
     expect(report.sections[0]).toMatchObject({ firstLabel: '1', lastLabel: '11', gaps: ['4', '5', '8', '9'] });
   });
 
+  it('names the first and the last number as the book counts, in numeric order and not in reading order', async () => {
+    const report = await numbered(['2', '1', '3', '10', '9']);
+    expect(report.sections[0]).toMatchObject({ firstLabel: '1', lastLabel: '10', exercises: 5 });
+    const parts = await numbered(['5', '5a', '5b', 'A.1']);
+    expect(parts.sections[0]).toMatchObject({ firstLabel: '5', lastLabel: '5b' });
+    const letters = await numbered(['B.2', 'A.1']);
+    expect(letters.sections[0]).toMatchObject({ firstLabel: 'B.2', lastLabel: 'A.1' });
+  });
+
   it('starts where the book starts, not at 1', async () => {
     const report = await numbered(['11', '12', '13', '14']);
     expect(codes(report)).toEqual([]);

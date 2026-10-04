@@ -68,8 +68,8 @@
           "id": { "type": "string" },
           "label": { "type": ["string", "null"], "description": "The number printed with the section's heading, when its outline entry has one." },
           "exercises": { "type": "integer", "minimum": 1 },
-          "firstLabel": { "type": ["string", "null"], "description": "Of the first exercise of the section in reading order." },
-          "lastLabel": { "type": ["string", "null"] },
+          "firstLabel": { "type": ["string", "null"], "description": "The smallest number of the section, as the book counts: labels that start with an integer in numeric order (`5a` after `5`), else the first in reading order." },
+          "lastLabel": { "type": ["string", "null"], "description": "The largest number of the section (a stray number shows here: see label-outlier)." },
           "withSolution": { "type": "integer", "minimum": 0 },
           "gaps": { "type": "array", "items": { "type": "string" }, "description": "The numbers between the first and the last that no exercise has (labels that start with an integer; strays left out)." },
           "duplicates": { "type": "array", "items": { "type": "string" }, "description": "Labels that two or more exercises of the section have." }

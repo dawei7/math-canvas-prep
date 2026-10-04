@@ -281,13 +281,14 @@ export function checkSections(prepared: Prepared): { drafts: Draft[]; sections: 
       }
     }
 
-    const ordered = items;
+    // The first and the last number of the section as the book counts: in numeric order (a stray number shows here), else in reading order.
+    const counted = numeric.length > 0 ? [...numeric].sort((a, b) => compareKeys(keyOf(a), keyOf(b)) || a.exercise.order - b.exercise.order) : items;
     sections.push({
       id,
       label: node?.entry.label ?? null,
       exercises: items.length,
-      firstLabel: (ordered[0] as Item).label,
-      lastLabel: (ordered[ordered.length - 1] as Item).label,
+      firstLabel: (counted[0] as Item).label,
+      lastLabel: (counted[counted.length - 1] as Item).label,
       withSolution: solved.length,
       gaps,
       duplicates,

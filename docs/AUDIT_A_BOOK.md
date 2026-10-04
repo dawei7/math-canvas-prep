@@ -108,8 +108,10 @@ then in the order of the book (the sections as the outline lists them, the exerc
 the file does not matter. A finding is `{ code, severity, ref, page, message, evidence }`: `ref` is `SECTION:LABEL` (the section id alone
 for a finding about a whole section, the frame id for an exercise a person framed), `page` is the zero-based page to look at,
 `evidence` is what was found (the first 40 characters of the text, the numbers that were measured). The report also has `summary`
-(the counts) and `sections` (for each section: how many exercises, the first and the last label, how many have a solution, the numbers
-that are missing, the labels that are repeated). `--section ID` (repeatable) checks only those sections; `--item-pattern REGEX` is the
+(the counts) and `sections` (for each section: how many exercises, the first and the last number as the book counts, that is in numeric
+order, a stray number included; how many have a solution; the numbers that are missing; the labels that are repeated). The table the
+command prints from it is the line to hold next to the book's own count: `1..40` and 40 exercises. `--section ID` (repeatable) checks
+only those sections; `--item-pattern REGEX` is the
 same option as for `exercises propose` and is for a book that prints its numbers some other way (`Problem 12.`).
 
 | code | severity | what it means | what to do |

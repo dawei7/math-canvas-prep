@@ -79,7 +79,7 @@ export interface VerifySection {
   /** The number printed with the section's heading, when the outline entry has one. */
   label: string | null;
   exercises: number;
-  /** The labels of the first and the last exercise of the section in reading order. */
+  /** The first and the last number of the section as the book counts: labels that start with an integer in numeric order, else in reading order. */
   firstLabel: string | null;
   lastLabel: string | null;
   /** How many of the section's exercises have a solution region. */
