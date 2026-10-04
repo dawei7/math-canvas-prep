@@ -4,14 +4,15 @@
   "title": "The certificate of the gate of an audit (mcprep audit gate --json and <name>.audit-gate.json)",
   "description": "What the gate found when it ran: every check that needs no looking, what is open (neither repaired nor acknowledged), what is acknowledged with its reason, and whether it passed. It is for the frames and the outline whose SHA-256 it records: any later change makes it stale. Pages are zero-based. Plain JSON, camelCase.",
   "type": "object",
-  "required": ["format", "version", "createdAt", "passed", "perfect", "unconfirmed", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements", "refusedAcknowledgements"],
+  "required": ["format", "version", "createdAt", "passed", "perfect", "unconfirmed", "ink", "project", "counts", "checks", "itemPatterns", "open", "acknowledged", "staleAcknowledgements", "unusedAcknowledgements", "refusedAcknowledgements"],
   "properties": {
     "format": { "const": "math-canvas-audit-gate" },
     "version": { "const": 1 },
     "createdAt": { "type": "string", "description": "When the gate ran (ISO 8601)." },
     "passed": { "type": "boolean", "description": "True only when `open` is empty." },
-    "perfect": { "type": "boolean", "description": "True only when nothing is open, the visual record covers every exercise and no acknowledgement is unconfirmed: the book is finished." },
+    "perfect": { "type": "boolean", "description": "True only when nothing is open, the visual record covers every exercise, no acknowledgement is unconfirmed and the pixel check of the edges ran: the book is finished." },
     "unconfirmed": { "type": "integer", "minimum": 0, "description": "Acknowledgements that apply and that no second reviewer has confirmed (`audit confirm`)." },
+    "ink": { "type": "boolean", "description": "Whether the pixel check of the edges of the regions (`edge-on-ink`) ran. It is part of the gate and runs by default; `--no-ink` skips it for a quick loop, and the book is not perfect until the gate has run without it." },
     "project": {
       "type": "object",
       "required": ["name", "frames", "outline", "hash"],

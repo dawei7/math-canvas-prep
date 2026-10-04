@@ -16,16 +16,18 @@ interface Finding {
   ref: string;
   page: number | null;
   message: string;
+  evidence: string;
   acknowledgeable: boolean;
 }
 interface Gate {
   passed: boolean;
   perfect: boolean;
+  ink: boolean;
   unconfirmed: number;
   open: Finding[];
   acknowledged: { finding: Finding; acknowledgement: { code: string; ref: string; confirmed: boolean; confirmedBy?: string } }[];
   refusedAcknowledgements: { acknowledgement: { code: string; ref: string }; why: string }[];
-  checks: { visual: { entries: number; exercises: number; missing: number; mismatches: number; defects: number; exhaustive: boolean } | null; sheets: { exhaustive: boolean } | null };
+  checks: { verify: { ink: boolean }; visual: { entries: number; exercises: number; missing: number; mismatches: number; defects: number; exhaustive: boolean } | null; sheets: { exhaustive: boolean } | null };
 }
 const gateOf = (done: Result): Gate => done.json.result as unknown as Gate;
 const said = (done: Result): string => `${done.json.error?.message ?? ''} ${done.json.error?.hint ?? ''}`;
@@ -169,6 +171,70 @@ describe('the seven defects of the cold-start test', () => {
       expect((await cli(['context', 'add', '1.2:5', '--page', String(region.page), '--rect', `${region.rect.left},${region.rect.top},${region.rect.right},${region.rect.bottom}`])).code).toBe(0);
     }
     expect(named(gateOf(await cli(['audit', 'gate'])))).not.toContain('context-inconsistent 1.2:5');
+  });
+});
+
+describe('the pixel check of the edges is part of the gate', () => {
+  it('runs by default and is recorded in the certificate; --no-ink skips it for a quick loop, and the book is not perfect until it has run', async () => {
+    const cli = await auditedBook();
+    await writeFile(join(cli.dir, 'visual.json'), JSON.stringify(await visualRecord(cli.dir)));
+    const full = await cli(['audit', 'gate', '--visual', 'visual.json', '--final']);
+    expect(full.code).toBe(0);
+    expect(gateOf(full)).toMatchObject({ passed: true, perfect: true, ink: true });
+    expect(gateOf(full).checks.verify.ink).toBe(true);
+    expect(JSON.parse(await readFile(join(cli.dir, 'book.audit-gate.json'), 'utf8'))).toMatchObject({ ink: true, perfect: true });
+    expect((await cli(['audit', 'gate', '--visual', 'visual.json', '--ink'])).code).toBe(0);
+    expect(gateOf(await cli(['audit', 'gate', '--visual', 'visual.json', '--ink'])).ink).toBe(true);
+    // The quick loop: it passes, says it did not look at the edges, and is not perfect.
+    const quick = await cli(['audit', 'gate', '--visual', 'visual.json', '--no-ink']);
+    expect(quick.code).toBe(0);
+    expect(gateOf(quick)).toMatchObject({ passed: true, perfect: false, ink: false });
+    expect(gateOf(quick).checks.verify.ink).toBe(false);
+    expect(JSON.parse(await readFile(join(cli.dir, 'book.audit-gate.json'), 'utf8'))).toMatchObject({ ink: false, perfect: false });
+    const text = await cli(['audit', 'gate', '--visual', 'visual.json', '--no-ink'], { json: false });
+    expect(text.stdout).toContain('WITHOUT the pixel check of the edges: --no-ink');
+    expect(text.stdout).toContain('run the gate without --no-ink');
+    const final = await cli(['audit', 'gate', '--visual', 'visual.json', '--no-ink', '--final'], { json: false });
+    expect(final.code).toBe(4);
+    expect(final.stdout).toContain('--final: the book is not perfect yet, so the exit code is 4: run the gate without --no-ink.');
+    expect((await cli(['audit', 'gate', '--status'], { json: false })).stdout).toContain('the pixel check of the edges did not run (run the gate without --no-ink)');
+    expect((await cli(['audit', 'gate', '--status'])).json.result).toMatchObject({ status: 'passed', ink: false, perfect: false });
+    expect((await cli(['export', '--out', 'book.mcbundle'], { json: false })).stdout).toContain('the pixel check of the edges did not run');
+    // Together the two options contradict each other.
+    const both = await cli(['audit', 'gate', '--ink', '--no-ink']);
+    expect(both.code).toBe(2);
+    expect(said(both)).toContain('--ink and --no-ink together');
+    // And the full gate again is perfect.
+    expect(gateOf(await cli(['audit', 'gate', '--visual', 'visual.json', '--final']))).toMatchObject({ perfect: true, ink: true });
+    expect((await cli(['export', '--out', 'book.mcbundle'], { json: false })).stdout).not.toContain('pixel check');
+  });
+
+  it('finds an edge that cuts ink without being asked to, in the gate, in audit ack and in audit review; --no-ink does not look', async () => {
+    const cli = await auditedBook();
+    const { path, project, by } = await projectOf(cli);
+    const frame = by('0.1:5');
+    frame.rect = { ...frame.rect, top: round(frame.rect.top + 0.01) };
+    await writeFile(path, JSON.stringify(project));
+    const gate = gateOf(await cli(['audit', 'gate']));
+    expect(gate.passed).toBe(false);
+    const found = gate.open.find((finding) => finding.code === 'edge-on-ink' && finding.ref === '0.1:5');
+    expect(found?.message).toContain('The top edge of the region of 0.1:5');
+    expect(found?.message).toContain('cuts printed ink: the ink goes on across it at');
+    expect(found?.evidence).toMatch(/ink goes across it at \d+ px/);
+    expect(named(gateOf(await cli(['audit', 'gate', '--no-ink'])))).not.toContain('edge-on-ink 0.1:5');
+    // The note for it: audit ack runs the pixel check as well, so the finding exists; with --no-ink it does not.
+    const quote = 'Evaluate each expression';
+    const page = String(found?.page);
+    const args = ['audit', 'ack', '--code', 'edge-on-ink', '--ref', '0.1:5', '--page', page, '--quote', quote, '--reason', 'The book prints the number touching the top of the box on this page.'];
+    const nothing = await cli([...args, '--no-ink']);
+    expect(nothing.code).toBe(2);
+    expect(said(nothing)).toContain('There is no finding edge-on-ink for 0.1:5 now');
+    expect((await cli(args)).code).toBe(0);
+    expect(named(gateOf(await cli(['audit', 'gate'])))).not.toContain('edge-on-ink 0.1:5');
+    const review = (await cli(['audit', 'review', '--out', 'review'])).json.result as unknown as { entries: { status: string }[] };
+    expect(review.entries.map((entry) => entry.status)).toEqual(['applies']);
+    const without = (await cli(['audit', 'review', '--out', 'review', '--no-ink'])).json.result as unknown as { entries: { status: string }[] };
+    expect(without.entries.map((entry) => entry.status)).toEqual(['unused']);
   });
 });
 

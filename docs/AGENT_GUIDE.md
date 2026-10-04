@@ -712,8 +712,10 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    the cell **shows**, not what you expect: the gate compares every entry with the text layer and the project, and an entry that does not fit
    is open (`visual-mismatch`, `visual-defect`, `visual-missing`) and cannot be acknowledged. If you cannot look at images, say so and do not
    write entries: a book without a record is not `perfect`.
-5. `audit_gate` (`audit gate --reference ... --ink --visual FILE`): read `open`. Repair what is open and run it again. It writes
-   `<project>.audit-gate.json`; a later change to a frame or to the outline makes that certificate stale (`--status`; `export` says so).
+5. `audit_gate` (`audit gate --reference ... --visual FILE`): read `open`. Repair what is open and run it again. The pixel check of the
+   edges of every region (`edge-on-ink`) is part of the gate and runs by default; `--no-ink` (`ink=false`) skips it for a quick loop, and a
+   book is not perfect until the gate has run without it. It writes `<project>.audit-gate.json` (`ink: true` when the pixel check ran); a
+   later change to a frame or to the outline makes that certificate stale (`--status`; `export` says so).
 6. `audit_ack` (`audit ack --code C --ref R --page N --quote "..." --reason "..."`) only for what the **book** itself prints: a number
    printed twice, an answer missing from the key, a practice set with more exercises than the reference lists, a remark printed between
    two exercises. Give the page, a quote that is **printed on that page** (`mcprep lines N`), the reason (what the book prints and where, at
@@ -727,8 +729,8 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    Until then the gate says `unconfirmed: N`, `export` says "N acknowledgements are not yet confirmed by a second reviewer" and the book
    is not `perfect`.
 8. `audit_gate` with `final` (`--final`): exit code 0 only when the book is **perfect** (nothing open, the visual record covers every
-   exercise, no acknowledgement unconfirmed). Report the counts, the certificate and every acknowledgement with its reason: the gate
-   lists them, nothing is left out.
+   exercise, no acknowledgement unconfirmed, the pixel check ran: "run the gate without --no-ink"). Report the counts, the certificate and
+   every acknowledgement with its reason: the gate lists them, nothing is left out.
 
 A book is finished when `audit_gate` with `final` says `perfect: true`, the certificate is current and `export` and `import-check` were
 done after it.

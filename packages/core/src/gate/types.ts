@@ -77,7 +77,9 @@ export interface GateReport {
   counts: { sections: number; exercises: number; solutions: number; errors: number; warnings: number; infos: number; open: number; acknowledged: number };
   /** Acknowledgements that apply and that no second reviewer has confirmed yet (`audit confirm`): the gate passes, but the book is not perfect until this is 0. */
   unconfirmed: number;
-  /** Nothing is open, the visual record covers every exercise and no acknowledgement is unconfirmed: the book is finished. */
+  /** Whether the pixel check of the edges of the regions (`edge-on-ink`) ran. It is part of the gate and runs by default; `--no-ink` skips it for a quick loop. */
+  ink: boolean;
+  /** Nothing is open, the visual record covers every exercise, no acknowledgement is unconfirmed and the pixel check ran: the book is finished. */
   perfect: boolean;
   checks: {
     validate: { errors: number; warnings: number };
@@ -113,4 +115,6 @@ export interface GateStatus {
   exhaustive?: boolean;
   /** The certificate says the book is perfect (and is current). */
   perfect?: boolean;
+  /** The pixel check of the edges ran when the gate ran. */
+  ink?: boolean;
 }

@@ -56,6 +56,7 @@ describe('the tools that finish an audit', () => {
     expect(named('audit_ack')?.annotations?.readOnlyHint).toBe(false);
     const properties = named('audit_gate')?.inputSchema.properties as Record<string, { type?: string }>;
     expect(properties['ink']?.type).toBe('boolean');
+    expect(named('audit_gate')?.description).toContain('runs by default');
     expect(properties['sheets_seen']?.type).toBe('string');
     expect(properties['visual']?.type).toBe('string');
     expect(properties['final']?.type).toBe('boolean');
@@ -79,7 +80,11 @@ describe('the tools that finish an audit', () => {
   it('audit_gate passes on the audited book, then audit_ack lets it pass with a reference that differs, and the sheets are made', async () => {
     const passed = await call('audit_gate', {});
     expect(passed.isError).toBeUndefined();
-    expect(data(passed)).toMatchObject({ passed: true, open: [] });
+    // The pixel check of the edges is part of the gate: it runs unless ink is false.
+    expect(data(passed)).toMatchObject({ passed: true, open: [], ink: true });
+    expect(data(await call('audit_gate', { ink: false }))).toMatchObject({ passed: true, ink: false, perfect: false });
+    expect(data(await call('audit_gate', { status: true }))).toMatchObject({ status: 'passed', ink: false });
+    expect(data(await call('audit_gate', { ink: true }))).toMatchObject({ passed: true, ink: true });
     const failing = await call('audit_gate', { reference: 'reference.json' });
     expect((data(failing)['open'] as { code: string }[]).map((finding) => finding.code)).toEqual(['reference-count']);
     expect(data(failing)['passed']).toBe(false);

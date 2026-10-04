@@ -145,7 +145,7 @@ some other way (`Problem 12.`).
 | `context-inconsistent` | warning | The instruction of an exercise (`context`, compared as the set of its regions: an instruction across a page break is two) is not the one of its group: (a) an instruction printed right above it, between the end of the previous exercise and its top, that other exercises have and it does not (the first exercise of a group, an exercise that was put back without it); (b) the exercises before and after it share an instruction that it does not have, and it has none or another one that is not printed above it; (c) it has none, the exercise before it has an instruction that two or more exercises share, and nothing is printed between them (the last exercise of a group). Not judged: an exercise with an instruction of its own printed above it, an exercise alone in its group, a section whose exercises stand inline. Can never be acknowledged. | `crop SECTION:LABEL --region context:0`; copy the regions of its neighbour: `exercises list --section S --regions`, then `context add SECTION:LABEL --page P --rect l,t,r,b` for each region (`context remove` for a wrong one). |
 | `solution-section-mismatch` | error | The answer key is set in sections, with a marker (the section's number alone on a row, or a heading with its unique title), and the solution region of an exercise lies under the marker of another section. | `crop SECTION:LABEL --region solution:0`; point the exercise at its own answer (`solution remove`, `solution add`). |
 | `solution-order` | warning | The answers of one section do not run in the order of their numbers within a column of the key (numbers are compared as numbers, a dotted label number by number). Answers that share one region are left out. | Look at the answer and its neighbours: a region that was put on the wrong exercise (`solution add`) or a label that was mistyped (`exercises label`). |
-| `edge-on-ink` | warning | Only with `--ink` (MCP `ink: true`): an edge of a region of an exercise, instruction, continuation or solution **cuts printed ink**. Each page that has a region is drawn once at 2 pixels per point; a pixel is dark below luminance 150. Along the edge take the pixels at which the row (top and bottom edge) or the column (left and right edge) **just inside** the region and the one **just outside** it are both dark, at the same place: those are the places where the ink goes on across the edge (the **crossing count**). The edge is reported when the crossing count is **2 or more** (an edge in white paper has 0; one pixel is the tip of a glyph that grazes the edge; a hairline of a figure that the edge cuts is two pixels wide), **or** when more than 2 percent of the pixels in the three rows or columns around it are dark (the edge lies on ink). A region that has the border of a box whole, or none of it, has 0 crossing pixels; one whose edge runs inside the border has the whole edge. An edge at the border of the page has nothing outside, so 0. Worst first, with the side. Evidence: the side, the dark share and the number of crossing pixels (`top edge 1.4% dark; ink goes across it at 6 px`). | `crop SECTION:LABEL` and move that edge into the white (`frames update`, `--snap` places an edge in the white between two lines); a figure or a box that the region must hold whole is framed with its border. |
+| `edge-on-ink` | warning | The pixel check of the edges: always in the gate (`audit gate`, `audit ack`, `audit review`; `--no-ink` skips it, MCP `ink: false`), on `exercises verify` only with `--ink` (MCP `ink: true`). An edge of a region of an exercise, instruction, continuation or solution **cuts printed ink**. Each page that has a region is drawn once at 2 pixels per point; a pixel is dark below luminance 150. Along the edge take the pixels at which the row (top and bottom edge) or the column (left and right edge) **just inside** the region and the one **just outside** it are both dark, at the same place: those are the places where the ink goes on across the edge (the **crossing count**). The edge is reported when the crossing count is **2 or more** (an edge in white paper has 0; one pixel is the tip of a glyph that grazes the edge; a hairline of a figure that the edge cuts is two pixels wide), **or** when more than 2 percent of the pixels in the three rows or columns around it are dark (the edge lies on ink). A region that has the border of a box whole, or none of it, has 0 crossing pixels; one whose edge runs inside the border has the whole edge. An edge at the border of the page has nothing outside, so 0. Worst first, with the side. Evidence: the side, the dark share and the number of crossing pixels (`top edge 1.4% dark; ink goes across it at 6 px`). | `crop SECTION:LABEL` and move that edge into the white (`frames update`, `--snap` places an edge in the white between two lines); a figure or a box that the region must hold whole is framed with its border. |
 | `region-open-end` | warning | In a section whose exercises stand inline (see below): the line of text that follows the region of an exercise comes at the pitch of the lines inside it, in its column, is no item, no heading and in no region, and the region's last line reaches the right margin: the text goes on below the region's bottom edge. | Lengthen the region (`frames update`). |
 | `region-holds-item` | error | In a section whose exercises stand inline: a region holds a line that starts another exercise of the same section (by its label): the region reaches into the next exercise. | `frames update SECTION:LABEL --rect l,t,r,b` so that the region ends before it. |
 | `stray-frame` | warning | The project has book exercises and a frame that is not one (an exercise, question or bookmark framed for oneself, without a label): a stray region in an audited book. | `frames delete ID`, or, if it is an exercise of the book, `exercises mark ID --label L --section S`. |
@@ -312,26 +312,30 @@ mcprep exercises verify --details verify.json       # 1. the text checks (about 
 mcprep exercises verify --ink                       #    and the pixel check of the edges of every region (renders the pages once)
 mcprep book compare reference.json --details c.json # 2. the sections and their counts against the book's own list
 mcprep exercises sheets --out sheets/ --solutions   # 3. contact sheets of EVERY exercise: look at every one, write the visual record
-mcprep audit gate --reference reference.json --ink --visual visual.json   # 4. the gate; exit code 0 only when nothing is open
+mcprep audit gate --reference reference.json --visual visual.json   # 4. the gate (draws the pages once for the pixel check of the edges); exit code 0 only when nothing is open
+mcprep audit gate --no-ink                          #    a quick loop while repairing: skips the pixel check, and then the book is not perfect
 mcprep audit ack --code duplicate --ref 3.2:7 --page 120 --quote "7. Find the" --reason "..."   # 5. only for what the book prints
 mcprep audit review --out review/ && mcprep audit confirm --by REVIEWER --all  # 6. a second reviewer looks at each note
-mcprep audit gate --reference reference.json --ink --visual visual.json --final   # 7. exit code 0 only when the book is perfect
+mcprep audit gate --reference reference.json --visual visual.json --final   # 7. exit code 0 only when the book is perfect
 mcprep export && mcprep import-check book.mcbundle  # 8. export says whether the gate is current
 ```
 
 **What the gate runs.** `validate` (0 errors: never acknowledgeable); `exercises verify` with every check of the table above (every
-error and warning must be repaired or acknowledged; information needs nothing); with `--ink` the edges of the regions; with
-`--reference FILE` the comparison of `book compare` (a count that differs, a section on one side only, a title: each is a finding
+error and warning must be repaired or acknowledged; information needs nothing) and its **pixel check of the edges of the regions**
+(`edge-on-ink`: each page that has a region is drawn once; it is part of the gate and runs by default, `--no-ink` skips it for a quick
+loop, MCP `ink: false`); with `--reference FILE` the comparison of `book compare` (a count that differs, a section on one side only, a title: each is a finding
 `reference-count`, `reference-missing`, `reference-extra`, `reference-title`); the bundle exported last, when there is one (it must pass
 the importer's checks and have the frames of the project: `bundle-rejected`, `bundle-stale`); with `--sheets-seen FILE` the contact
 sheets (below); and with `--visual FILE` the visual record (below). It reports `open`, `acknowledged` (each with its reason) and exits with
 code 4 unless `open` is empty. Give it the same `--item-pattern` as the audit (or put them in the notes file, as `itemPatterns`): the
 certificate lists them.
 
-**Perfect.** The report says `passed` (nothing is open), `unconfirmed` (how many acknowledgements no second reviewer confirmed) and
-`perfect`: nothing is open, the visual record has an entry for every exercise and nothing is unconfirmed. `--final` makes the exit code 4
-unless the book is perfect. A book is finished when `audit gate --final` exits with 0, the certificate is current, and `export` and
-`import-check` were done after it.
+**Perfect.** The report says `passed` (nothing is open), `unconfirmed` (how many acknowledgements no second reviewer confirmed), `ink`
+(whether the pixel check ran) and `perfect`: nothing is open, the visual record has an entry for every exercise, nothing is unconfirmed
+and the pixel check ran. `--final` makes the exit code 4 unless the book is perfect (a gate that ran with `--no-ink` says "run the gate
+without --no-ink"). A book is finished when `audit gate --final` exits with 0, the certificate is current, and `export` and `import-check`
+were done after it. `audit ack` and `audit review` run the same checks (a finding of the pixel check is only there when the pixel check
+runs), `export` and `audit gate --status` say when the certificate is for a gate that skipped it.
 
 **The contact sheets** (`exercises sheets`, MCP `exercises_sheets`) are for an exhaustive look: every exercise of the book in the
 order of the book, each cell captioned `SECTION:LABEL` and the zero-based pages of its regions (`p. 12, 13-14`), the instruction in a
@@ -399,7 +403,8 @@ exercise its instruction (`context`), continuation and solution regions as `page
 (an instruction across a page break is two regions), or `exercises add ... --context P:l,t,r,b`.
 
 **The certificate** `<project>.audit-gate.json` (`mcprep schema gate`) holds the SHA-256 of the frames and of the outline, the counts, the
-open and the acknowledged findings, `unconfirmed`, `perfect`, the checks that ran and `passed`. Any later change to a frame or to the
+open and the acknowledged findings, `unconfirmed`, `ink` (true when the pixel check of the edges ran), `perfect`, the checks that ran and
+`passed`. Any later change to a frame or to the
 outline changes the hash and makes the certificate **stale**: `mcprep audit gate --status` says whether it is current and passed (exit code
 0 only then), and `export` says so in its last lines (`gate` in its JSON result). Run the gate again after every repair; it takes seconds.
 
@@ -407,7 +412,7 @@ outline changes the hash and makes the certificate **stale**: `mcprep audit gate
 
 `node scripts/inject-defects.mjs` damages the audited synthetic workbook and the three-page span in a seeded, reproducible way, one
 damaged project for each defect, and runs the gate on each; it must not pass and must name the exercise. Kinds of defect (every one is
-stopped and named in 100 percent of the damaged projects, with 5 or 6 injected for each kind and `--ink` on, for the seed 20261004 and for
+stopped and named in 100 percent of the damaged projects, with 5 or 6 injected for each kind (the pixel check is part of the gate), for the seed 20261004 and for
 four other seeds):
 
 | defect | what is done |

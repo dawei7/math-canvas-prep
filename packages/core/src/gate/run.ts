@@ -31,7 +31,10 @@ import { checkVisual } from './visual.js';
 /** Running the gate on a project: the checks, the notes, the certificate. */
 
 export interface GateRunOptions {
-  /** Also render the pages and check the edges of the regions (slower). */
+  /**
+   * The pixel check of the edges of the regions (`edge-on-ink`: the pages are drawn once). It is part of the gate and runs unless this is
+   * false (a quick loop): the certificate says whether it ran, and a book is not perfect without it.
+   */
   ink?: boolean;
   itemPatterns?: readonly RegExp[];
   /** The reference list of the book (read by the caller), with the name it came from. */
@@ -155,14 +158,15 @@ export interface Collected {
 /** Every check of the gate, as findings. */
 export async function collectFindings(session: ProjectSession, options: GateRunOptions & { sheets?: boolean; bundle?: boolean }): Promise<Collected> {
   const validation = await session.validate({ text: true });
-  const verify = await verifySession(session, { ...(options.itemPatterns !== undefined && options.itemPatterns.length > 0 ? { itemPatterns: [...options.itemPatterns] } : {}), ...(options.ink === true ? { ink: true } : {}) });
+  const ink = options.ink !== false;
+  const verify = await verifySession(session, { ...(options.itemPatterns !== undefined && options.itemPatterns.length > 0 ? { itemPatterns: [...options.itemPatterns] } : {}), ...(ink ? { ink: true } : {}) });
   const findings: GateFinding[] = [
     ...validation.errors.map((issue): GateFinding => ({ source: 'validate', code: issue.code, severity: 'error', ref: issue.frameId ?? 'project', page: issue.page ?? null, message: issue.message, evidence: issue.fix ?? '', acknowledgeable: false })),
     ...verifyFindings(verify),
   ];
   const checks: GateReport['checks'] = {
     validate: { errors: validation.errors.length, warnings: validation.warnings.length },
-    verify: { errors: verify.summary.errors, warnings: verify.summary.warnings, infos: verify.summary.infos, ink: options.ink === true },
+    verify: { errors: verify.summary.errors, warnings: verify.summary.warnings, infos: verify.summary.infos, ink },
     reference: null,
     bundle: null,
     sheets: null,
@@ -218,7 +222,8 @@ export async function runGate(session: ProjectSession, options: GateRunOptions =
     project: { name: projectStem(session.projectPath), ...hashes },
     counts: { sections: book.sections, exercises: book.authoritative, solutions: book.solutions, errors: book.errors, warnings: book.warnings, infos: book.infos, open: judged.open.length, acknowledged: judged.acknowledged.length },
     unconfirmed,
-    perfect: judged.open.length === 0 && unconfirmed === 0 && collected.checks.visual?.exhaustive === true,
+    ink: collected.checks.verify.ink,
+    perfect: judged.open.length === 0 && unconfirmed === 0 && collected.checks.visual?.exhaustive === true && collected.checks.verify.ink,
     checks: collected.checks,
     itemPatterns: patterns.map((pattern) => asciiPattern(pattern.source)),
     open: judged.open,
@@ -252,7 +257,9 @@ export async function gateStatus(session: ProjectSession): Promise<GateStatus> {
   const listed = new Map<string, Acknowledgement>();
   for (const item of certificate.acknowledged ?? []) listed.set(`${item.acknowledgement.code}|${item.acknowledgement.ref}|${item.acknowledgement.evidence.page ?? ''}`, item.acknowledgement);
   const unconfirmed = [...listed.values()].filter((entry) => !confirmedNow(entry)).length;
-  const base = { certificate: certificate.project.hash, current, createdAt: certificate.createdAt, open: certificate.open.length, unconfirmed, exhaustive: certificate.checks?.visual?.exhaustive === true, perfect: certificate.perfect === true && unconfirmed === 0 };
+  // A certificate of an older gate has no `ink`: the check ran when its verify part says so.
+  const ink = certificate.ink ?? certificate.checks?.verify?.ink === true;
+  const base = { certificate: certificate.project.hash, current, createdAt: certificate.createdAt, open: certificate.open.length, unconfirmed, exhaustive: certificate.checks?.visual?.exhaustive === true, ink, perfect: certificate.perfect === true && unconfirmed === 0 && ink };
   if (certificate.project.hash !== current) return { status: 'stale', ...base };
   return { status: certificate.passed ? 'passed' : 'failed', ...base };
 }
