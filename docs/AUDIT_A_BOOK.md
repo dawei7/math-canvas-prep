@@ -155,7 +155,8 @@ What it cannot see, and what to do about it:
   not belong to the exercise below its last line, is not found: look at the crops of the sample (`exercises sample`).
 - A text layer that joins two exercises of a row into one text run cannot be cut at the column. The check then asks only that the label
   starts an item of that line.
-- A picture has no text: `no-text` and `solution-no-text` are the only things the check can say about it.
+- A picture has no text: `no-text` and `solution-no-text` are the only things the check can say about it. A number that is set as a
+  picture (no text) is reported as `label-not-first`: look at the crop.
 - An indented line of the previous exercise at the top of a region is not at the margin: `overlap` sees it when the regions touch.
 
 ## A fixed sample to look at: `exercises sample`

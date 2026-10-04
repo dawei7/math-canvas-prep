@@ -75,7 +75,7 @@ export function sampleText(report: SampleReport, crops?: readonly Crop[], out?: 
   ];
   if (report.exercises.length > 0) lines.push('', 'Exercises (look at each with `mcprep crop <ref>`):', tableLimited(rows(report.exercises), ['ref', 'why', 'page', 'region'], 500));
   if (report.solutions.length > 0) lines.push('', 'Answers (look at each with `mcprep crop <ref> --region solution:0`):', tableLimited(rows(report.solutions), ['ref', 'why', 'page', 'region'], 500));
-  if (report.notes.length > 0) lines.push('', 'Not in this book:', ...report.notes.map((note) => `  - ${note}`));
+  if (report.notes.length > 0) lines.push('', 'Notes:', ...report.notes.map((note) => `  - ${note}`));
   if (crops !== undefined) lines.push('', `Wrote ${plural(crops.length, 'crop')}, named by reference and kind (for example ${crops[0] !== undefined ? crops[0].path : 'none'}).`);
   if (out !== undefined) lines.push(`Wrote the sample to ${out}.`);
   return lines.join('\n');

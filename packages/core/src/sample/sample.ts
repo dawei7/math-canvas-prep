@@ -125,7 +125,17 @@ export function sampleProject(project: Project, pages: PageSource, options: Samp
   const wantSolutions = Math.max(0, Math.floor(options.solutions ?? SAMPLE_DEFAULTS.solutions));
   const items = itemsOf(project);
   const notes: string[] = [];
-  if (items.length === 0) notes.push('The project has no book exercises: audit a book first (`exercises propose --apply`).');
+  if (items.length === 0) {
+    return {
+      format: SAMPLE_FORMAT,
+      version: SAMPLE_VERSION,
+      options: { exercises: wantExercises, solutions: wantSolutions },
+      summary: { sections: 0, exercises: 0, withSolution: 0, sampledExercises: 0, sampledSolutions: 0 },
+      exercises: [],
+      solutions: [],
+      notes: ['The project has no book exercises: audit a book first (`exercises propose --apply`).'],
+    };
+  }
 
   const sections = new Map<string, Item[]>();
   for (const item of items) {
