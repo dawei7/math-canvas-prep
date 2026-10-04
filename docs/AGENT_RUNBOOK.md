@@ -201,11 +201,11 @@ Order: errors first, in this order. `REF` is `SECTION:LABEL`. After each repair:
 | `region-holds-item` | error | a region contains the line that starts another exercise | Shrink it as for `overlap`. |
 | `visual-mismatch`, `visual-missing`, `visual-defect`, `sheets-*` | error | the visual record does not fit the project or says a cell is wrong | Look at that cell again, repair what is wrong, draw its sheet again, write the entry as the cell shows now. Never acknowledged. |
 | `no-text` | warning | the region holds no text (a picture or a scan) | Look at the crop. A figure-only exercise is what the book prints: acknowledge. Otherwise the region is in the wrong place: repair it. |
-| `region-size` | warning | the region is very tall, narrow or small | Look at the crop. A short item is legal: acknowledge. A region that holds more than one exercise: shrink it. |
+| `region-size` | warning | the region is very tall, narrow or small | Look at the crop. A short item is legal: acknowledge. An exercise that stands alone on its page and is tall because of a figure, a table or fields to fill in is legal too: acknowledge it, with the page and a quote of its label. A region that holds more than one exercise: shrink it. |
 | `gap` | warning | numbers are missing between the first and the last | Search the pages for the missing label (`mcprep lines PAGE --json`). Printed but not framed: `exercises add`. Not printed: acknowledge, with the page where the numbers jump. |
 | `order`, `label-outlier` | warning | a label is out of order in its column, or very large | A misread label: `exercises label REF NEWLABEL`. Otherwise acknowledge what the book prints. |
 | `no-solution` | info or warning | a section has no answers at all, or too few | List the exercises without an answer (`mcprep exercises list --without-solution --section S`). For each: look for its answer in the key. Printed: `solution add`. Not printed (a key of selected answers): acknowledge with `--count`. |
-| `text-left-behind` | warning | text of the exercise zone lies outside every region | Find the exercise above it: extend its region (`frames update`) or `continues add`; or the text is a heading or remark of the book: acknowledge. |
+| `text-left-behind` | warning | text of the exercise zone lies outside every region | Find the exercise above it: extend its region (`frames update`) or `continues add`; or the text is a heading or remark of the book: acknowledge. A running head that changes with the chapter (the tools know only the ones that repeat on many pages) or an imprint page is such a case: one note for each finding, the quote is the head itself. |
 | `answer-clipped` | warning | an answer goes on below or beside its region | Extend the answer's region (`solution remove REF --index I` then `solution add`) or add a region for the rest. |
 | `context-overlaps-frame` | warning | an instruction region touches an exercise | Move the instruction's region off the exercise (`context remove` and `context add` with the formulas of section 6); a context shared by several exercises is attached to each. |
 | `continuation-limit` | warning | an exercise already holds 8 continuation regions and text follows | The book spans more than the format allows: acknowledge with the pages; do not cut the exercise. |
@@ -228,11 +228,15 @@ have a practice set. Write the option you used into `WORK/progress.md` and the r
    `--item-pattern-file FILE`.
 3. `--answer-words "WORD,..."` for the words that open the answer key.
 4. `--instructions margin` or `none` when the instructions are not set in bold.
-5. Manual mode (section 9).
+5. A keyword in front of the number with no practice heading above it (`Aufgabe 1.3 (Title).`, `Exercise 4.2.`), for example in an exercise booklet that prints one
+   exercise to a page: no option reads it. Manual mode (section 9).
 
 ## 9. Manual mode (a layout the tools do not read)
 
-This is the slow way to perfection and it always works. Do it for every section that has a practice set and no, or wrong, proposals.
+This is the slow way to perfection and it always works. Do it for every section that has a practice set and no, or wrong, proposals. When the book repeats one
+regular shape (one exercise to a page, a keyword in front of every number), a short script is the sensible way: read each page with `mcprep lines PAGE --json`, apply
+the formulas of section 6 (a figure or a table has no text lines: the region runs to the last ink of the page, and an edge must lie in a white row, which
+`--ink` checks), write the ONE batch file below and apply it. Say in the report (heading Layout) which rule the script used.
 
 1. Find the practice set: its pages from the contents (`outline derive` prints the practice pages), else search `mcprep lines PAGE --json` for the heading.
 2. For each page: `mcprep lines PAGE --json --project "P"`. An exercise starts at a line whose text starts with the label pattern of the book.
