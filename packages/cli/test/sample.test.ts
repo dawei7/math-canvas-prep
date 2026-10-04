@@ -73,7 +73,7 @@ describe('exercises sample', () => {
     for (const ref of ['0.1:1', '0.1:70', '0.2:1', '0.2:14', '1.1:1', '1.1:12', '1.2:1', '1.2:16']) expect(refs, ref).toContain(ref);
     const reasons = new Set(report.exercises.flatMap((entry) => entry.reasons));
     for (const reason of ['first-in-section', 'last-in-section', 'has-continuation', 'context-on-another-page', 'two-in-a-row', 'three-in-a-row', 'longest', 'smallest', 'beside-a-figure', 'stride']) expect(reasons.has(reason), reason).toBe(true);
-    expect(report.notes).toEqual(['No answer is a picture without text.', 'The answers of the other sampled exercises: 13 of 33 taken, thinned by an even stride to stay within 20 answers.']);
+    expect(report.notes).toEqual(['No exercise goes on over two or more further pages.', 'No answer is a picture without text.', 'The answers of the other sampled exercises: 13 of 33 taken, thinned by an even stride to stay within 20 answers.']);
     expect(report.exercises.every((entry) => entry.kind === 'exercise' && entry.region === 'main')).toBe(true);
     expect(report.solutions.every((entry) => entry.kind === 'solution' && entry.region === 'solution:0')).toBe(true);
     expect(report.solutions.find((entry) => entry.ref === '0.1:1')?.reasons).toContain('first-of-chapter-key');

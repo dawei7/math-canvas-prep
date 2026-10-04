@@ -14,7 +14,7 @@ import { EXERCISE_REASONS, SAMPLE_DEFAULTS, SAMPLE_FORMAT, SAMPLE_LIMITS, SAMPLE
  * are not in the sample yet until the cap is reached, and a rule that does not fit what is left is thinned by an even stride,
  * never cut off at the end.
  *
- * Exercises: (1) one exercise of each layout kind the book has, the first in the order of the book (a continuation, an
+ * Exercises: (1) one exercise of each layout kind the book has, the first in the order of the book (a continuation, a span over two or more further pages, an
  * instruction on another page, two in a row, three in a row, the longest region, the smallest, one beside a figure);
  * (2) the first and the last exercise of every chapter; (3) the first and the last exercise of every section, or, when what is
  * left of the cap is less than twice the number of sections, of an even stride of sections that keeps the first and the last;
@@ -249,6 +249,11 @@ export function sampleProject(project: Project, pages: PageSource, options: Samp
       else notes.push(missing);
     };
     firstWith('has-continuation', (item) => (item.frame.continues?.length ?? 0) > 0, 'No exercise continues on another region (a continuation).');
+    firstWith(
+      'spans-pages',
+      (item) => new Set((item.frame.continues ?? []).map((region) => region.page).filter((page) => page !== item.frame.page)).size >= 2,
+      'No exercise goes on over two or more further pages.',
+    );
     firstWith('context-on-another-page', (item) => (item.frame.context ?? []).some((region) => region.page !== item.frame.page), 'No exercise has its instruction on another page than its own.');
     const rows = rowsOf(items);
     const firstRow = (test: (columns: number) => boolean): Item | undefined => rows.filter((row) => test(row.columns)).reduce<Item | undefined>((best, row) => (best === undefined || row.first.order < best.order ? row.first : best), undefined);

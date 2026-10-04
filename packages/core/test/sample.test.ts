@@ -5,6 +5,7 @@ import { bookExercisesInOrder } from '../src/book/summary.js';
 import { newProject, type Project } from '../src/project/model.js';
 import { EXERCISE_REASONS, SAMPLE_FORMAT, SAMPLE_VERSION, SOLUTION_REASONS, type SampleReport } from '../src/sample/types.js';
 import { pagesToSample, sampleProject } from '../src/sample/sample.js';
+import { buildSpanBook } from '../src/testing/span.js';
 import { Workbook, around, pagesOf, sectionEntries } from './verify-helpers.js';
 
 /**
@@ -98,7 +99,7 @@ describe('the sample of exercises is capped, and the rules come in this order: l
     expect(report.summary).toEqual({ sections: 3, exercises: 15, withSolution: 15, sampledExercises: 15, sampledSolutions: 15 });
     expect(report.exercises.every((entry) => entry.kind === 'exercise' && entry.region === 'main')).toBe(true);
     expect(report.exercises.find((entry) => entry.ref === 's2:2')).toMatchObject({ reason: 'context-on-another-page', page: 1 });
-    expect(report.notes).toEqual([]);
+    expect(report.notes).toEqual(['No exercise goes on over two or more further pages.']);
   });
 
   it('is cut to the cap: the layouts first, then the first and the last exercise of the chapters, then a stride of sections, then the rest', async () => {
@@ -170,6 +171,7 @@ describe('the sample of exercises is capped, and the rules come in this order: l
     });
     expect(plain.notes).toEqual([
       'No exercise continues on another region (a continuation).',
+      'No exercise goes on over two or more further pages.',
       'No exercise has its instruction on another page than its own.',
       'No two exercises stand in one row.',
       'No three exercises stand in one row.',
@@ -514,6 +516,21 @@ describe('the chapters of an outline', () => {
     expect(report.exercises.map((entry) => entry.ref)).toContain(refs[0]);
     expect(report.exercises.map((entry) => entry.ref)).toContain(refs[refs.length - 1]);
     expect(report.notes.some((note) => note.startsWith('The first and the last exercise of every chapter:'))).toBe(true);
+  });
+});
+
+describe('a span over pages', () => {
+  it('is a layout kind of its own: continuation regions on two or more further pages, the first in the order of the book', () => {
+    const span = buildSpanBook();
+    const project: Project = { ...newProject({ pdf: { path: 'book.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: span.pageCount }, title: 'Span' }), outline: { source: 'manual', entries: span.outline }, frames: span.frames };
+    const report = sampleProject(project, () => undefined, { exercises: 40 });
+    expect(report.exercises.find((entry) => entry.ref === '0.1:3')?.reasons).toContain('spans-pages');
+    expect(report.exercises.find((entry) => entry.ref === '0.1:3')?.reasons).toContain('has-continuation');
+    // A continuation on one further page is not a span over pages.
+    const first = (span.frames.find((frame) => frame.label === '3')?.continues as NonNullable<Frame['continues']>)[0] as NonNullable<Frame['continues']>[number];
+    const one = sampleProject({ ...project, frames: span.frames.map((frame) => (frame.label === '3' ? { ...frame, continues: [first] } : frame)) }, () => undefined, { exercises: 40 });
+    expect(one.exercises.some((entry) => entry.reasons.includes('spans-pages'))).toBe(false);
+    expect(one.notes).toContain('No exercise goes on over two or more further pages.');
   });
 });
 

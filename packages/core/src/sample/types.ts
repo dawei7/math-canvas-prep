@@ -16,6 +16,7 @@ export const EXERCISE_REASONS = [
   'first-in-section',
   'last-in-section',
   'has-continuation',
+  'spans-pages',
   'context-on-another-page',
   'two-in-a-row',
   'three-in-a-row',

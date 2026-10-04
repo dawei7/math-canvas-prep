@@ -251,6 +251,7 @@ that nobody takes the sample for more than it is.
 | `reason` | rule | the exercise ... |
 | --- | --- | --- |
 | `has-continuation` | 1 | has a continuation region (it goes on in the next column or on the next page). |
+| `spans-pages` | 1 | has continuation regions on two or more further pages (a statement that goes on over two page breaks). |
 | `context-on-another-page` | 1 | has an instruction region (`context`) on another page than its own. |
 | `two-in-a-row` | 1 | stands in a row of exactly two exercises: the same section and page, regions that share at least half of the smaller one's height, left edges at least 0.05 apart. |
 | `three-in-a-row` | 1 | the same for a row of three or more. |
