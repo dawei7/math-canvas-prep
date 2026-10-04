@@ -434,7 +434,7 @@ function attachUnlabeledPractice(entries: readonly BookEntry[], hits: readonly H
   });
 }
 
-export interface LocateOptions {
+export interface LocateSectionsOptions {
   patterns?: Partial<BookPatterns>;
 }
 
@@ -444,7 +444,7 @@ export interface LocateOptions {
  * titles and pages. A section is matched to its practice heading by its label (or its id when that looks like a
  * label); without one, by an unlabelled heading inside its extent.
  */
-export function locateSections(pages: readonly PageText[], outline: readonly OutlineEntry[], options: LocateOptions = {}): { entries: BookEntry[]; answerKey?: PlaceOnPage & { evidence: string }; notes: string[] } {
+export function locateSections(pages: readonly PageText[], outline: readonly OutlineEntry[], options: LocateSectionsOptions = {}): { entries: BookEntry[]; answerKey?: PlaceOnPage & { evidence: string }; notes: string[] } {
   const patterns: BookPatterns = { ...DEFAULT_BOOK_PATTERNS, ...options.patterns };
   const scan = scanHeadings(pages, patterns);
   const notes: string[] = [];

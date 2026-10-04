@@ -5,7 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { run } from '@mcprep/cli';
 import { VERSION, readAgentGuide } from '@mcprep/core';
 import { z } from 'zod';
-import { registerBookTools } from './book-tools.js';
+import { registerBookTools } from './audit-tools.js';
 
 /**
  * The MCP server: the same operations as the `mcprep` command line, as typed tools with descriptions that teach the

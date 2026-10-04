@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { PageText, TextLine } from '../src/model/types.js';
-import { exerciseToOperation, exercisesToOperations } from '../src/book/ops.js';
-import { proposeExercises, type ExerciseOptions } from '../src/book/exercises.js';
-import { locateSections, type BookEntry } from '../src/book/sections.js';
+import { exerciseToOperation, exercisesToOperations } from '../src/audit/ops.js';
+import { proposeExercises, type ExerciseOptions } from '../src/audit/exercises.js';
+import { locateSections, type BookEntry } from '../src/audit/sections.js';
 
 /**
  * Practice pages built by hand, line by line, for the layouts that a generated PDF cannot make on purpose: lines the

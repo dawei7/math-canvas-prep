@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PdfDocument } from '../src/pdf/document.js';
 import type { PageText, Rect } from '../src/model/types.js';
-import { deriveSections, type BookStructure } from '../src/book/sections.js';
-import { exerciseId, proposeExercises, type BookExercises, type ExerciseProposal } from '../src/book/exercises.js';
+import { deriveSections, type BookStructure } from '../src/audit/sections.js';
+import { exerciseId, proposeExercises, type BookExercises, type ExerciseProposal } from '../src/audit/exercises.js';
 import { buildSyntheticBook, type BookAnchor, type BookTruthItem, type SyntheticBook } from '../src/testing/book.js';
 
 const inside = (rect: Rect, anchor: BookAnchor): boolean => anchor.x >= rect.left && anchor.x <= rect.right && anchor.y >= rect.top && anchor.y <= rect.bottom;

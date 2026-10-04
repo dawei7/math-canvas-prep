@@ -1,5 +1,5 @@
 import { exportBundle, importCheck, inspectBundle } from './commands/bundle.js';
-import { exercisesPropose, solutionsPropose } from './commands/book.js';
+import { exercisesPropose, solutionsPropose } from './commands/audit.js';
 import { contextAdd, contextRemove, continuesAdd, continuesRemove } from './commands/context.js';
 import { guide, schema } from './commands/docs.js';
 import { framesAdd, framesApply, framesArea, framesDelete, framesDividers, framesList, framesMerge, framesMove, framesSplit, framesUpdate } from './commands/frames.js';

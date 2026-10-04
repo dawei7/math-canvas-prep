@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PdfDocument } from '../src/pdf/document.js';
 import type { PageText } from '../src/model/types.js';
-import { readPageNumbers } from '../src/book/pagenumbers.js';
-import { deriveSections, toOutlineEntries, type BookStructure } from '../src/book/sections.js';
-import { chooseTitle, editDistance, normalizeTitle, stripChapterPrefix, titleKey } from '../src/book/titles.js';
-import { parseTocLine } from '../src/book/toc.js';
+import { readPageNumbers } from '../src/audit/pagenumbers.js';
+import { deriveSections, toOutlineEntries, type BookStructure } from '../src/audit/sections.js';
+import { chooseTitle, editDistance, normalizeTitle, stripChapterPrefix, titleKey } from '../src/audit/titles.js';
+import { parseTocLine } from '../src/audit/toc.js';
 import { buildSyntheticBook, type SyntheticBook } from '../src/testing/book.js';
 import { buildSampleSheet } from '../src/testing/sample.js';
 

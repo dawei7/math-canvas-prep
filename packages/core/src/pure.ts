@@ -17,7 +17,7 @@ export * from './rules/document.js';
 export * from './geometry/snap.js';
 export * from './pdf/lines.js';
 export * from './propose/index.js';
-export * from './book/index.js';
+export * from './audit/index.js';
 export * from './project/model.js';
 export * from './project/serialize.js';
 export * from './project/ops.js';

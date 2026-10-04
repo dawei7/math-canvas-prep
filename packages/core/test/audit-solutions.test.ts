@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PdfDocument } from '../src/pdf/document.js';
 import type { PageText, Rect, TextLine } from '../src/model/types.js';
-import { exercisesToOperations } from '../src/book/ops.js';
-import { proposeExercises } from '../src/book/exercises.js';
-import { deriveSections, type BookEntry, type BookStructure } from '../src/book/sections.js';
-import { proposeSolutions, type BookSolutions, type SolutionProposal } from '../src/book/solutions.js';
+import { exercisesToOperations } from '../src/audit/ops.js';
+import { proposeExercises } from '../src/audit/exercises.js';
+import { deriveSections, type BookEntry, type BookStructure } from '../src/audit/sections.js';
+import { proposeSolutions, type BookSolutions, type SolutionProposal } from '../src/audit/solutions.js';
 import { buildSyntheticBook, type BookAnchor, type SyntheticBook } from '../src/testing/book.js';
 
 const inside = (rect: Rect, anchor: BookAnchor): boolean => anchor.x >= rect.left && anchor.x <= rect.right && anchor.y >= rect.top && anchor.y <= rect.bottom;

@@ -4,7 +4,7 @@ import { McPrepError, deriveOutline, type OutlineEntry } from '@mcprep/core';
 import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
-import { BOOK_WORD_OPTIONS, runBookDerive } from './book.js';
+import { BOOK_WORD_OPTIONS, runBookDerive } from './audit.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
 
 const rows = (entries: readonly OutlineEntry[]): string[][] => entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth)]);
