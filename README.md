@@ -18,11 +18,11 @@ Chapter 14 of the [agent guide](docs/AGENT_GUIDE.md) describes it; a transcript 
 
 | Part | State |
 | --- | --- |
-| `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check; authoritative book exercises, hidden solution regions, sections, document information (licence, notice) and the book summary. 598 tests. |
-| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands. 69 tests, plus two end-to-end tests of the built binary. |
-| `packages/mcp` | Works. 49 tools over stdio. 12 tests, plus an end-to-end test of the built server. |
+| `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check; authoritative book exercises, hidden solution regions, sections, document information (licence, notice) and the book summary; proposals for a whole book (the sections from the printed contents, the numbered exercises of the practice sets with their instruction, the answers of the answer key). 727 tests. |
+| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands, and `outline derive --book`, `exercises propose` and `solutions propose` for a whole book. 91 tests, plus two end-to-end tests of the built binary. |
+| `packages/mcp` | Works. 52 tools over stdio. 16 tests, plus an end-to-end test of the built server. |
 | `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file, and for auditing a book: book exercises with their printed numbers and sections, hidden solutions drawn on the answer key, the list of sections, the licence and notice of the document, an export that says which parts of the format the bundle uses and checks it as the importer does, and lists that stay quick with 5,000 exercises. 102 unit tests and 52 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux; finding the sections of a book from its text and proposing book exercises and solutions are not in the window yet: see [docs/DESKTOP.md](docs/DESKTOP.md). |
-| Docs | [Agent guide](docs/AGENT_GUIDE.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [dependencies](docs/DEPENDENCIES.md). |
+| Docs | [Agent guide](docs/AGENT_GUIDE.md), [audit a book](docs/AUDIT_A_BOOK.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [dependencies](docs/DEPENDENCIES.md). |
 
 The bundle format ([docs/BUNDLE_FORMAT.md](docs/BUNDLE_FORMAT.md)) is the contract with the Android app; the writer and the
 importer check implement every rule of it. Whether the Android app accepts a bundle made here has been checked against the
@@ -111,7 +111,7 @@ generated.
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources): 817 tests
+npm test             # unit tests (Vitest, against the sources): 936 tests
 npm run lint
 npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md

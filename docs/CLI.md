@@ -74,6 +74,8 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`outline ids`](#outline-ids): Give every outline entry that has no id one (from its printed label, else the number in its title), so that exercises can name it.
 - [`outline clear`](#outline-clear): Remove the project's own outline (the bundle then carries none and the app reads the PDF's).
 - [`propose`](#propose): Suggest exercises, parts, context and bookmarks from the printed text (offline heuristics, nothing is applied).
+- [`exercises propose`](#exercises-propose): Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).
+- [`solutions propose`](#solutions-propose): Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.
 - [`frames list`](#frames-list): List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.
 - [`frames add`](#frames-add): Add a frame: an exercise, a question or a bookmark.
 - [`frames update`](#frames-update): Change the page, rectangle or kind of a frame.
@@ -348,8 +350,14 @@ Heuristics, with their evidence: a line is a heading when it is set larger than 
 
 Options:
 
+- `--book`: For a book that prints numbered chapters and sections: read the printed contents, the lists on the chapter openers and the headings, and propose chapters and sections with ids (c0, 0.1), labels, tops and where each practice set lies. Use it before `exercises propose`.
 - `--apply`: Store the result as the project's outline.
 - `--min-confidence <0..1>`: Keep headings at least this likely (default 0.55).
+- `--chapter-words <chapter,part,...>`: Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).
+- `--practice-words <practice,exercises,...>`: Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).
+- `--answer-words <answers,solutions,...>`: Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
@@ -360,9 +368,11 @@ Examples:
 ```console
 $ mcprep outline derive
 $ mcprep outline derive --apply
+$ mcprep outline derive --book
+$ mcprep outline derive --book --apply
 ```
 
-With `--json`, `result` is: `{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }`
+With `--json`, `result` is: `{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }; with --book each entry also has id, label, top, kind, differences and practice, and the result has chapters, sections, numbering, toc and answerKey`
 
 ## outline set
 
@@ -592,6 +602,86 @@ $ mcprep propose --apply --ids p1,p2,p3
 ```
 
 With `--json`, `result` is: `{ pages, proposals: [{ id, kind, page, rect, continues?, title, number?, confidence, evidence, parts? }], contexts: [{ id, page, rect, text, numbers, appliesTo }], rejected, operations, bodyFontSize, notes, applied? }`
+
+## exercises propose
+
+Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).
+
+```
+mcprep exercises propose [options]
+```
+
+For every section with a practice set (found from the outline of the project, or derived now): the lines that start with a printed number ("5)", "5.", "(5)", "5a)") that form a sequence and align like the others, a frame for each exercise (its own text, the continuation lines, the second line of a fraction, the figure that stands beside it, the lines on the next page), the bold instruction printed above a group of exercises as its context (two regions when it crosses a page break), and the evidence. Numbers that are missing, printed twice or put aside are reported, not hidden: what the book prints is what is proposed, and a difference from what you expected is a finding to look at. Look at the crops (`render --page`/`crop`) of a sample before you apply. `--ops` writes the operations (add with authority "book", label, section, context) for `frames apply`. `--apply` applies them as one atomic batch and can be repeated: an exercise is identified by its section and label, so one the project already has the same way is skipped, one that only lacks its answer gets the answer found now, and one that differs (a person may have corrected the frame) is kept and listed under "changed" unless you say `--replace`, which overwrites it in place (it keeps its id). `--solutions` also reads the answer key and puts the solution regions into the same operations.
+
+Options:
+
+- `--section <0.1,0.2>`: Only these sections (ids or labels); default all.
+- `--solutions`: Also read the answer key and give each exercise its solution regions (hidden from the learner, used to grade).
+- `--max-items <n>`: At most this many exercises per section (the surplus is listed as excluded); default no limit.
+- `--instructions bold|margin|auto|none`: How instructions are recognised: bold (set in bold, at the margin), margin (at the margin, above an item), auto (bold when the pages carry font information, else margin; the default), none.
+- `--item-pattern <regex>`: How the number of an exercise (or of an answer) starts a line, as a regular expression: group 1 is the label as printed (without the closing mark), group 2 the text after it. Replaces the defaults, which read "5)", "5.", "(5)" and "5a)"; give the option more than once for several. Example: --item-pattern "^([A-Z]\.\d+)\s+(.*)$" for labels like "A.3".
+- `--chapter-words <chapter,part,...>`: Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).
+- `--practice-words <practice,exercises,...>`: Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).
+- `--answer-words <answers,solutions,...>`: Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).
+- `--ops <file>`: Write the operations as a JSON batch (for `frames apply`).
+- `--details <file>`: Write everything (every proposal with its evidence, the instructions, the rejected numbers) as JSON.
+- `--apply`: Apply the proposals to the project now (one atomic batch). Exercises the project already has are skipped (see --replace).
+- `--replace`: With --apply (or --ops): overwrite the exercises of the project that differ from the proposal, in place (they keep their ids); without it they are kept and listed.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises propose
+$ mcprep exercises propose --section 0.1,0.2 --ops batch.json
+$ mcprep exercises propose --solutions --apply
+$ mcprep exercises propose --section 1.7 --replace --apply
+```
+
+With `--json`, `result` is: `{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution, added, unchanged, solutionsAdded, changed, replaced }, changed: string[] (SECTION:LABEL of exercises of the project that differ from the proposal), notProposed: string[], refused: string[], proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has the fields of every command that changes the project (created, replaced, counts, book, validation)`
+
+## solutions propose
+
+Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.
+
+```
+mcprep solutions propose [options]
+```
+
+The answer key is cut into bands by the section markers and headers (a band runs across all columns and over page breaks); inside a band the answers are the lines that start with a printed number, framed with their continuation lines, the second line of a fraction or the graph that stands where the answer is. Each answer is matched by (section, label) to an authoritative exercise of the project; exercises without an answer and answers without an exercise are reported. `--ops` writes `solution.set` operations (one per exercise, named SECTION:LABEL) for `frames apply`; `--apply` applies them as one atomic batch. It can be repeated: an exercise that already has this solution is skipped, and one whose solution differs (a person may have corrected it) is kept and listed under "changed" unless you say `--replace`. The solution is hidden: it is never shown with the exercise, never sent to a tutor, used only to grade.
+
+Options:
+
+- `--ops <file>`: Write the operations as a JSON batch (for `frames apply`).
+- `--details <file>`: Write everything (every answer with its evidence, the sequences, the headers) as JSON.
+- `--apply`: Apply the solutions to the project now (one atomic batch).
+- `--replace`: Overwrite the solution of an exercise that has a different one; without it that exercise is kept and listed.
+- `--item-pattern <regex>`: How the number of an exercise (or of an answer) starts a line, as a regular expression: group 1 is the label as printed (without the closing mark), group 2 the text after it. Replaces the defaults, which read "5)", "5.", "(5)" and "5a)"; give the option more than once for several. Example: --item-pattern "^([A-Z]\.\d+)\s+(.*)$" for labels like "A.3".
+- `--chapter-words <chapter,part,...>`: Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).
+- `--practice-words <practice,exercises,...>`: Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).
+- `--answer-words <answers,solutions,...>`: Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep solutions propose
+$ mcprep solutions propose --ops solutions.json
+$ mcprep solutions propose --apply
+$ mcprep solutions propose --replace --apply
+```
+
+With `--json`, `result` is: `{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise, added, unchanged, changed }, changed: string[] (SECTION:LABEL of exercises whose solution differs from the proposal), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has dryRun, created, replaced, removed, book and validation`
 
 ## frames list
 

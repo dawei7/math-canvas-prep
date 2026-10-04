@@ -5,6 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { run } from '@mcprep/cli';
 import { VERSION, readAgentGuide } from '@mcprep/core';
 import { z } from 'zod';
+import { AUDIT_INSTRUCTIONS, registerAuditTools } from './audit-tools.js';
 import { capLists, dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
 import { BOOK_INSTRUCTIONS, registerBookTools } from './book-tools.js';
 
@@ -34,7 +35,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
   let current: string | undefined = options.project ?? env['MCPREP_PROJECT'];
-  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}` });
+  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}` });
 
   async function cli(argv: string[], extra: { stdin?: string; project?: string | undefined } = {}): Promise<CliResult> {
     let out = '';
@@ -630,6 +631,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
   );
 
   registerBookTools({ tool, cli, toResult, projectOf });
+  registerAuditTools({ tool, cli, toResult, projectOf });
 
   server.registerResource(
     'agent-guide',

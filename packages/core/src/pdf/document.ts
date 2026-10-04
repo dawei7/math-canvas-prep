@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { INK_BANDS, type OutlineEntry, type PageSize, type PageText } from '../model/types.js';
+import { INK_BANDS, INK_MAP_SIDE, type InkMap, type OutlineEntry, type PageSize, type PageText } from '../model/types.js';
 import { McPrepError } from '../rules/issues.js';
 import { cleanTitle, normalizeOutline } from '../rules/outline.js';
 import { findHeaderFooterKeys, groupTextLines, markHeaderFooter, type RawTextItem } from './lines.js';
@@ -18,6 +18,8 @@ export interface TextOptions {
   fonts?: boolean;
   /** Also compute the ink profile (renders the page at low resolution; slower). */
   ink?: boolean;
+  /** Also compute the ink map, a picture of the page for placing an edge between two lines (slower still). */
+  inkMap?: boolean;
 }
 
 /** PostScript names of bold faces: Helvetica-Bold, Arial-BoldMT, MinionPro-Semibold, CMBX12 (TeX), ... */
@@ -38,6 +40,7 @@ export class PdfDocument {
   private readonly textCache = new Map<number, { text: PageText; fonts: boolean }>();
   private readonly sizeCache = new Map<number, PageSize>();
   private readonly inkCache = new Map<number, number[]>();
+  private readonly inkMapCache = new Map<number, InkMap>();
   private headerKeys: Set<string> | undefined;
 
   private constructor(doc: PDFDocumentProxy, bytes: number, sha256: string) {
@@ -161,6 +164,7 @@ export class PdfDocument {
       }
     }
     const items: RawTextItem[] = [];
+    const stretched = new Set<number>();
     for (const item of content.items) {
       if (!('str' in item) || item.str.length === 0) continue;
       const style = content.styles[item.fontName];
@@ -168,6 +172,7 @@ export class PdfDocument {
       const [a, b, c, d, e, f] = pdfjs.Util.transform(viewport.transform, item.transform) as [number, number, number, number, number, number];
       if (a <= 0 || Math.abs(Math.atan2(b, a)) > 0.17) continue;
       const fontSize = Math.hypot(c, d);
+      if (fontSize > 6 * Math.hypot(a, b)) stretched.add(items.length);
       items.push({
         text: item.str,
         left: e,
@@ -178,6 +183,14 @@ export class PdfDocument {
         descent: style?.descent ?? 0,
         ...(bold.has(item.fontName) ? { bold: bold.get(item.fontName) as boolean } : {}),
       });
+    }
+    if (stretched.size > 0) {
+      // A glyph drawn with a text matrix that scales it very differently along and against the line (the unmapped "not
+      // equal" sign of some TeX fonts is set at 120 points in a font that draws it at 12) reports a size that has nothing to
+      // do with the page. It takes the usual size of the page, so that its box does not swallow the rows around it.
+      const usual = items.filter((_item, at) => !stretched.has(at)).map((entry) => entry.fontSize).sort((x, y) => x - y);
+      const typical = usual[Math.floor(usual.length / 2)] ?? 12;
+      for (const at of stretched) items[at] = { ...(items[at] as RawTextItem), fontSize: Math.min((items[at] as RawTextItem).fontSize, typical) };
     }
     const grouped = groupTextLines(items, size);
     const chars = grouped.lines.reduce((sum, line) => sum + line.chars, 0);
@@ -253,10 +266,46 @@ export class PdfDocument {
     return profile;
   }
 
+  /**
+   * Which pixels of the page are dark: the page is drawn so that its longer side is {@link INK_MAP_SIDE} pixels, and a
+   * pixel is dark when it is clearly darker than paper. Edges of frames are placed in white rows of this picture.
+   */
+  async inkMap(index: number): Promise<InkMap> {
+    this.assertPage(index);
+    const cached = this.inkMapCache.get(index);
+    if (cached) return cached;
+    const { createCanvas } = await loadCanvas();
+    const page = await this.rawPage(index);
+    const size = await this.pageSize(index);
+    const viewport = page.getViewport({ scale: INK_MAP_SIDE / Math.max(size.width, size.height) });
+    const width = Math.max(1, Math.ceil(viewport.width));
+    const height = Math.max(1, Math.ceil(viewport.height));
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    await page.render({ canvasContext: context, canvas, viewport } as never).promise;
+    const data = context.getImageData(0, 0, width, height).data;
+    const stride = Math.ceil(width / 8);
+    const bits = new Uint8Array(stride * height);
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const at = (y * width + x) * 4;
+        const luminance = 0.299 * (data[at] as number) + 0.587 * (data[at + 1] as number) + 0.114 * (data[at + 2] as number);
+        if (luminance < 170) bits[y * stride + (x >> 3)] = (bits[y * stride + (x >> 3)] as number) | (0x80 >> (x & 7));
+      }
+    }
+    const map: InkMap = { width, height, bits };
+    this.inkMapCache.set(index, map);
+    return map;
+  }
+
   /** The text lines of a page in reading order, running headers and footers marked. */
   async pageText(index: number, options: TextOptions = {}): Promise<PageText> {
-    const text = markHeaderFooter(await this.rawPageText(index, options), await this.headerFooterKeys());
-    return options.ink === true ? { ...text, ink: await this.inkProfile(index) } : text;
+    let text = markHeaderFooter(await this.rawPageText(index, options), await this.headerFooterKeys());
+    if (options.ink === true) text = { ...text, ink: await this.inkProfile(index) };
+    if (options.inkMap === true) text = { ...text, inkMap: await this.inkMap(index) };
+    return text;
   }
 
   /** Text of every page (marked); for proposals over a whole document. */
@@ -264,8 +313,10 @@ export class PdfDocument {
     const keys = await this.headerFooterKeys();
     const pages: PageText[] = [];
     for (let index = 0; index < this.pageCount; index += 1) {
-      const text = markHeaderFooter(await this.rawPageText(index, options), keys);
-      pages.push(options.ink === true ? { ...text, ink: await this.inkProfile(index) } : text);
+      let text = markHeaderFooter(await this.rawPageText(index, options), keys);
+      if (options.ink === true) text = { ...text, ink: await this.inkProfile(index) };
+      if (options.inkMap === true) text = { ...text, inkMap: await this.inkMap(index) };
+      pages.push(text);
       options.onProgress?.(index + 1, this.pageCount);
     }
     return pages;

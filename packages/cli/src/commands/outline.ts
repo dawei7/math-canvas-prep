@@ -4,7 +4,8 @@ import { McPrepError, deriveOutline, type OutlineEntry } from '@mcprep/core';
 import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
-import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
+import { BOOK_WORD_OPTIONS, runBookDerive } from './audit.js';
+import { GLOBAL_OPTIONS, REPORT_OPTIONS, applyAndReport, reportFlags } from './common.js';
 import { describeProjectOutline, outlineTable, outlineViews } from './outline-edit.js';
 
 const rows = (entries: readonly OutlineEntry[]): string[][] => entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth)]);
@@ -56,13 +57,16 @@ export const outlineDerive: CommandSpec = {
     'Heuristics, with their evidence: a line is a heading when it is set larger than the body text, in bold, numbered like "2.1", or starts with a chapter word; the depth comes from the numbering or from the rank of the font size. Check the result (and edit it) before it goes into a bundle.',
   writes: true,
   options: [
+    { name: 'book', type: 'boolean', description: 'For a book that prints numbered chapters and sections: read the printed contents, the lists on the chapter openers and the headings, and propose chapters and sections with ids (c0, 0.1), labels, tops and where each practice set lies. Use it before `exercises propose`.' },
     { name: 'apply', type: 'boolean', description: 'Store the result as the project\'s outline.' },
     { name: 'min-confidence', type: 'number', value: '<0..1>', description: 'Keep headings at least this likely (default 0.55).' },
-    ...GLOBAL_OPTIONS,
+    ...BOOK_WORD_OPTIONS,
+    ...REPORT_OPTIONS,
   ],
-  examples: ['mcprep outline derive', 'mcprep outline derive --apply'],
-  output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }',
+  examples: ['mcprep outline derive', 'mcprep outline derive --apply', 'mcprep outline derive --book', 'mcprep outline derive --book --apply'],
+  output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }; with --book each entry also has id, label, top, kind, differences and practice, and the result has chapters, sections, numbering, toc and answerKey',
   async run(context) {
+    if (flag(context.options, 'book')) return runBookDerive(context);
     const session = await context.session();
     const pdf = await session.document();
     const pages = await pdf.allPageText({ fonts: true });
@@ -70,8 +74,8 @@ export const outlineDerive: CommandSpec = {
     const proposal = deriveOutline(pages, minConfidence !== undefined ? { minConfidence } : {});
     const text = `${plural(proposal.entries.length, 'heading')} found (body text ${proposal.bodyFontSize} pt):\n${table(proposal.entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth), entry.confidence.toFixed(2), entry.evidence[0] ?? '']), ['page', 'title', 'depth', 'conf', 'why'])}${proposal.notes.length > 0 ? `\n${proposal.notes.join('\n')}` : ''}`;
     if (flag(context.options, 'apply') && proposal.entries.length > 0) {
-      const done = await applyAndReport(context, [{ op: 'outline.set', source: 'derived', entries: proposal.entries.map(({ title, page, depth }) => ({ title, page, depth })) }], 'stored the derived outline in the project');
-      return { ...done, result: { entries: proposal.entries, bodyFontSize: proposal.bodyFontSize, applied: true, notes: proposal.notes }, text: `${text}\n${done.text}` };
+      const done = await applyAndReport(context, [{ op: 'outline.set', source: 'derived', entries: proposal.entries.map(({ title, page, depth }) => ({ title, page, depth })) }], 'stored the derived outline in the project', reportFlags(context.options));
+      return { ...done, result: { entries: proposal.entries, bodyFontSize: proposal.bodyFontSize, applied: (done.result as { applied: boolean }).applied, notes: proposal.notes }, text: `${text}\n${done.text}` };
     }
     return { result: { entries: proposal.entries, bodyFontSize: proposal.bodyFontSize, applied: false, notes: proposal.notes }, text, notes: proposal.notes };
   },

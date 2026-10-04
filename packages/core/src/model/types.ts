@@ -122,6 +122,19 @@ export interface TextLine {
   bold?: boolean;
   /** True for a running header or footer (same text, ignoring digits, in the top or bottom band of several pages). */
   headerFooter?: boolean;
+  /**
+   * Set only for a line that the extraction joined from pieces standing side by side (the rows of a fraction, the sign of
+   * a root, or the rows of two columns whose heights overlap): the text and the box of each piece, so that a reader can
+   * tell what and where each one is. `rect` is the union of them.
+   */
+  parts?: LinePart[];
+}
+
+/** One of the pieces a text line was joined from. */
+export interface LinePart {
+  text: string;
+  chars: number;
+  rect: Rect;
 }
 
 export interface PageSize {
@@ -146,7 +159,23 @@ export interface PageText {
    * width that is dark. Lets proposals include figures that have no text and leave blank answer space out.
    */
   ink?: number[];
+  /**
+   * Set only when requested: which pixels of the page are dark, for placing an edge in the white between two lines of
+   * text (the text layer says where a line is, not where its ink is).
+   */
+  inkMap?: InkMap;
 }
 
 /** Number of horizontal bands of an ink profile. */
 export const INK_BANDS = 400;
+
+/** A page drawn at low resolution, the longer side being about {@link INK_MAP_SIDE} pixels, with one bit per pixel. */
+export interface InkMap {
+  width: number;
+  height: number;
+  /** Row after row, each row padded to whole bytes; the most significant bit is the leftmost pixel; 1 is dark. */
+  bits: Uint8Array;
+}
+
+/** The longer side of an ink map, in pixels. */
+export const INK_MAP_SIDE = 1100;
