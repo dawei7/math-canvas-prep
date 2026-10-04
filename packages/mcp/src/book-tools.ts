@@ -26,7 +26,7 @@ export function registerBookTools({ tool, cli, toResult, projectOf }: ToolApi): 
     {
       title: 'List the authoritative book exercises',
       description:
-        'The authoritative exercises by section (in the order of the outline) and, within a section, in reading order: id, label (the number the book prints), section, reference (SECTION:LABEL, how to name it), page, rect, and the number of context, continuation and solution regions. totals say how many there are in the whole project and how many have a solution. Use without_solution to see which still have no answer attached.',
+        'The authoritative exercises by section (in the order of the outline) and, within a section, in reading order: id, label (the number the book prints), section, reference (SECTION:LABEL, how to name it), page, rect, and the number of context, continuation and solution regions. totals say how many there are in the whole project and how many have a solution. Use without_solution to see which still have no answer attached. With regions=true every exercise also has regions: { context, continues, solution }, each a list of { page, rect }: copy the instruction of a neighbour with add_context (page, rect) or exercises_add (context).',
       inputSchema: {
         project: projectArg,
         section: z.string().optional().describe('Only the exercises filed under this section.'),
@@ -34,13 +34,14 @@ export function registerBookTools({ tool, cli, toResult, projectOf }: ToolApi): 
         page: page.optional().describe('Only exercises that start on this page.'),
         with_solution: z.boolean().optional(),
         without_solution: z.boolean().optional(),
+        regions: z.boolean().optional().describe('Also give, for each exercise, its context, continuation and solution regions as { page, rect } objects.'),
       },
       readOnly: true,
     },
     async (args) =>
       toResult(
         await cli(
-          ['exercises', 'list', ...(args.section ? ['--section', args.section] : []), ...(args.subtree ? ['--subtree'] : []), ...(args.page !== undefined ? ['--page', String(args.page)] : []), ...(args.with_solution ? ['--with-solution'] : []), ...(args.without_solution ? ['--without-solution'] : [])],
+          ['exercises', 'list', ...(args.regions ? ['--regions'] : []), ...(args.section ? ['--section', args.section] : []), ...(args.subtree ? ['--subtree'] : []), ...(args.page !== undefined ? ['--page', String(args.page)] : []), ...(args.with_solution ? ['--with-solution'] : []), ...(args.without_solution ? ['--without-solution'] : [])],
           { project: projectOf(args) },
         ),
       ),

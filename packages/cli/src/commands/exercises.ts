@@ -1,4 +1,4 @@
-import { bookExercisesInOrder, buildSectionTree, describeSection, findFrame, isWithin, type Frame, type Project } from '@mcprep/core';
+import { bookExercisesInOrder, buildSectionTree, describeSection, findFrame, isWithin, type Frame, type Project, type Region } from '@mcprep/core';
 import { flag, pageNumber, stringOption, usage } from '../args.js';
 import { plural, rectText, tableLimited } from '../format.js';
 import type { CommandContext, CommandSpec, OptionSpec } from '../types.js';
@@ -24,6 +24,20 @@ export interface ExerciseSummary {
   context: number;
   continues: number;
   solution: number;
+}
+
+/** A region as the commands take it: `page:left,top,right,bottom` (the form of `context add --page P --rect l,t,r,b` and of `exercises add --context P:l,t,r,b`). */
+const regionText = (region: Region): string => `${region.page}:${rectText(region.rect)}`;
+
+/** The regions of an exercise that are not its own: its instructions, continuations and solutions, as objects (--regions). */
+export interface ExerciseRegions {
+  context: Region[];
+  continues: Region[];
+  solution: Region[];
+}
+
+export function exerciseRegions(frame: Frame): ExerciseRegions {
+  return { context: frame.context ?? [], continues: frame.continues ?? [], solution: frame.solution ?? [] };
 }
 
 export function exerciseSummary(frame: Frame): ExerciseSummary {
@@ -52,10 +66,11 @@ export const exercisesList: CommandSpec = {
     { name: 'page', type: 'string', value: '<n>', description: 'Only exercises that start on this zero-based page.' },
     { name: 'with-solution', type: 'boolean', description: 'Only exercises that have a solution region.' },
     { name: 'without-solution', type: 'boolean', description: 'Only exercises that have no solution region.' },
+    { name: 'regions', type: 'boolean', description: 'Also print, for each exercise, its instruction (context), continuation and solution regions as page:left,top,right,bottom (JSON: the objects under `regions`), to copy the instruction of a neighbour: `context add REF --page P --rect l,t,r,b` or `exercises add ... --context P:l,t,r,b`.' },
     ...GLOBAL_OPTIONS,
   ],
-  examples: ['mcprep exercises list', 'mcprep exercises list --section 1.2 --json', 'mcprep exercises list --without-solution'],
-  output: '{ exercises: [{ id, label, section, reference, page, rect, context, continues, solution }], count, totals: { exercises, withSolution } }; totals are for the whole project, count for the list',
+  examples: ['mcprep exercises list', 'mcprep exercises list --section 1.2 --json', 'mcprep exercises list --without-solution', 'mcprep exercises list --section 1.2 --regions'],
+  output: '{ exercises: [{ id, label, section, reference, page, rect, context, continues, solution, regions? }], count, totals: { exercises, withSolution } }; context, continues and solution are counts; with --regions each exercise also has regions: { context: [{ page, rect }], continues: [...], solution: [...] }; totals are for the whole project, count for the list',
   async run(context) {
     const session = await context.session();
     const project = session.project;
@@ -74,12 +89,25 @@ export const exercisesList: CommandSpec = {
     if (page !== undefined) frames = frames.filter((frame) => frame.page === pageNumber(page));
     if (flag(context.options, 'with-solution')) frames = frames.filter((frame) => (frame.solution?.length ?? 0) > 0);
     if (flag(context.options, 'without-solution')) frames = frames.filter((frame) => (frame.solution?.length ?? 0) === 0);
-    const exercises = frames.map(exerciseSummary);
+    const withRegions = flag(context.options, 'regions');
+    const exercises = frames.map((frame) => (withRegions ? { ...exerciseSummary(frame), regions: exerciseRegions(frame) } : exerciseSummary(frame)));
     const all = bookExercisesInOrder(project.frames, project.outline?.entries);
     const totals = { exercises: all.length, withSolution: all.filter((frame) => (frame.solution?.length ?? 0) > 0).length };
     const titles = new Map((project.outline?.entries ?? []).map((entry) => [entry.id, describeSection(entry)] as const));
     const rows = exercises.map((entry) => [entry.reference, entry.id, String(entry.page), rectText(entry.rect), [entry.context ? `context ${entry.context}` : '', entry.continues ? `continues ${entry.continues}` : '', entry.solution ? `solution ${entry.solution}` : 'no solution'].filter(Boolean).join(', '), titles.get(entry.section) ?? ''].map(String));
     const head = `${plural(exercises.length, 'book exercise')}${exercises.length !== totals.exercises ? ` of ${totals.exercises}` : ''}; ${totals.withSolution} of ${totals.exercises} in the project have a solution.`;
+    if (withRegions && exercises.length > 0) {
+      const lines = frames.slice(0, 200).flatMap((frame) => {
+        const regions = exerciseRegions(frame);
+        const kinds = (['context', 'continues', 'solution'] as const).filter((kind) => regions[kind].length > 0);
+        return [
+          `${frame.section as string}:${frame.label as string}  (frame ${frame.id}, page ${frame.page}, rect ${rectText(frame.rect)})`,
+          ...(kinds.length === 0 ? ['  no context, continuation or solution'] : kinds.map((kind) => `  ${kind}: ${regions[kind].map(regionText).join('  ')}`)),
+        ];
+      });
+      if (frames.length > 200) lines.push(`... and ${frames.length - 200} more (use --json to see all)`);
+      return { result: { exercises, count: exercises.length, totals }, text: `${head}\nRegions are page:left,top,right,bottom: copy one with \`mcprep context add REF --page P --rect l,t,r,b\` or \`mcprep exercises add ... --context P:l,t,r,b\`.\n${lines.join('\n')}` };
+    }
     return { result: { exercises, count: exercises.length, totals }, text: exercises.length === 0 ? `${head}\nAdd one with \`mcprep exercises add --section <id> --label <5a> --page <n> --rect l,t,r,b\`.` : `${head}\n${tableLimited(rows, ['exercise', 'id', 'page', 'rect (left,top,right,bottom)', 'notes', 'section'], 300)}` };
   },
 };
