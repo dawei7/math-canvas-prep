@@ -5,7 +5,7 @@ import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
 import { BOOK_WORD_OPTIONS, runBookDerive } from './audit.js';
-import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
+import { GLOBAL_OPTIONS, REPORT_OPTIONS, applyAndReport, reportFlags } from './common.js';
 import { describeProjectOutline, outlineTable, outlineViews } from './outline-edit.js';
 
 const rows = (entries: readonly OutlineEntry[]): string[][] => entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth)]);
@@ -61,7 +61,7 @@ export const outlineDerive: CommandSpec = {
     { name: 'apply', type: 'boolean', description: 'Store the result as the project\'s outline.' },
     { name: 'min-confidence', type: 'number', value: '<0..1>', description: 'Keep headings at least this likely (default 0.55).' },
     ...BOOK_WORD_OPTIONS,
-    ...GLOBAL_OPTIONS,
+    ...REPORT_OPTIONS,
   ],
   examples: ['mcprep outline derive', 'mcprep outline derive --apply', 'mcprep outline derive --book', 'mcprep outline derive --book --apply'],
   output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }; with --book each entry also has id, label, top, kind, differences and practice, and the result has chapters, sections, numbering, toc and answerKey',
@@ -74,8 +74,8 @@ export const outlineDerive: CommandSpec = {
     const proposal = deriveOutline(pages, minConfidence !== undefined ? { minConfidence } : {});
     const text = `${plural(proposal.entries.length, 'heading')} found (body text ${proposal.bodyFontSize} pt):\n${table(proposal.entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth), entry.confidence.toFixed(2), entry.evidence[0] ?? '']), ['page', 'title', 'depth', 'conf', 'why'])}${proposal.notes.length > 0 ? `\n${proposal.notes.join('\n')}` : ''}`;
     if (flag(context.options, 'apply') && proposal.entries.length > 0) {
-      const done = await applyAndReport(context, [{ op: 'outline.set', source: 'derived', entries: proposal.entries.map(({ title, page, depth }) => ({ title, page, depth })) }], 'stored the derived outline in the project');
-      return { ...done, result: { entries: proposal.entries, bodyFontSize: proposal.bodyFontSize, applied: true, notes: proposal.notes }, text: `${text}\n${done.text}` };
+      const done = await applyAndReport(context, [{ op: 'outline.set', source: 'derived', entries: proposal.entries.map(({ title, page, depth }) => ({ title, page, depth })) }], 'stored the derived outline in the project', reportFlags(context.options));
+      return { ...done, result: { entries: proposal.entries, bodyFontSize: proposal.bodyFontSize, applied: (done.result as { applied: boolean }).applied, notes: proposal.notes }, text: `${text}\n${done.text}` };
     }
     return { result: { entries: proposal.entries, bodyFontSize: proposal.bodyFontSize, applied: false, notes: proposal.notes }, text, notes: proposal.notes };
   },

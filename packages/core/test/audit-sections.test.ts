@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { assignSectionIds } from '../src/book/sections.js';
+import { LIMITS } from '../src/rules/constants.js';
 import { PdfDocument } from '../src/pdf/document.js';
 import type { PageText } from '../src/model/types.js';
 import { readPageNumbers } from '../src/audit/pagenumbers.js';
@@ -154,7 +156,7 @@ describe('sections of the synthetic book', () => {
 
   it('keeps the entries in reading order with a chapter before its first section', () => {
     const order = structure.entries.map((entry) => entry.id);
-    expect(order).toEqual(['c0', '0.1', '0.2', 'c1', '1.1', '1.2', 'answers']);
+    expect(order).toEqual(['c0', '0.1', '0.2', 'c1', '1.1', '1.2', 'Answers']);
     const positions = structure.entries.map((entry) => entry.page + (entry.top ?? 0));
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
@@ -188,7 +190,7 @@ describe('sections of the synthetic book', () => {
 
   it('finds the answer key and lists it as an entry of the contents', () => {
     expect(structure.answerKey?.page).toBe(book.truth.answerKeyPage);
-    const answers = structure.entries.find((entry) => entry.id === 'answers');
+    const answers = structure.entries.find((entry) => entry.id === 'Answers');
     expect(answers?.title).toBe('Answers');
     expect(answers?.page).toBe(book.truth.answerKeyPage);
     expect(answers?.kind).toBe('other');
@@ -232,7 +234,7 @@ describe('sections when the book prints less', () => {
     try {
       const result = deriveSections(await doc.allPageText({ fonts: true }));
       expect(result.answerKey).toBeUndefined();
-      expect(result.entries.some((entry) => entry.id === 'answers')).toBe(false);
+      expect(result.entries.some((entry) => entry.kind === 'other')).toBe(false);
       expect(result.entries.find((entry) => entry.id === '1.2')?.practice?.end.why).toContain('end of the book');
     } finally {
       await doc.close();
@@ -244,7 +246,11 @@ describe('sections when the book prints less', () => {
     try {
       const result = deriveSections(await doc.allPageText({ fonts: true }));
       expect(result.sections + result.chapters).toBe(result.entries.length);
-      expect(result.entries.map((entry) => entry.id)).toEqual(result.entries.map((_entry, index) => `s${index + 1}`));
+      // The ids are the ones the data model gives to entries that have none, and they are valid section ids.
+      const expected = assignSectionIds(result.entries.map(({ title, page, depth }) => ({ title, page, depth }))).entries.map((entry) => entry.id);
+      expect(result.entries.map((entry) => entry.id)).toEqual(expected);
+      expect(new Set(expected).size).toBe(expected.length);
+      for (const id of expected) expect(id, id).toMatch(LIMITS.sectionIdPattern);
       expect(result.notes.join(' ')).toContain('generic heading detection');
     } finally {
       await doc.close();

@@ -1,3 +1,4 @@
+import { deriveSectionId } from '../book/sections.js';
 import type { OutlineEntry, PageText } from '../model/types.js';
 import { deriveOutline } from '../propose/headings.js';
 import { readPageNumbers, type PageNumbering } from './pagenumbers.js';
@@ -28,7 +29,7 @@ export interface PracticePlace extends PlaceOnPage {
 }
 
 export interface BookEntry extends OutlineEntry {
-  /** Always set: "c0" for a chapter, the printed label for a section ("0.1"), `s1`, `s2` ... without labels. */
+  /** Always set: "c0" for a chapter, the printed label for a section ("0.1"), for the other entries what the data model derives from the title ("Answers"). */
   id: string;
   kind: TocKind;
   confidence: number;
@@ -61,13 +62,6 @@ export interface DeriveSectionsOptions {
   /** Also list the unnumbered entries of the table of contents (Answers, Index) as entries of depth 0 (default true). */
   includeBackMatter?: boolean;
 }
-
-const slug = (text: string): string =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 30);
 
 function compareLabels(a: string, b: string): number {
   const left = a.split('.').map(Number);
@@ -298,6 +292,7 @@ export function deriveSections(pages: readonly PageText[], options: DeriveSectio
   const backMatter: BookEntry[] = [];
   if (options.includeBackMatter !== false) {
     const seen = new Set<string>();
+    const usedIds = new Set<string>([...chapterEntries, ...sectionEntries.values()].map((entry) => entry.id));
     for (const entry of toc.entries) {
       if (entry.kind !== 'other' || entry.page === undefined || entry.source !== 'toc') continue;
       const cleaned = normalizeTitle(entry.title, titleOptions).title;
@@ -309,7 +304,7 @@ export function deriveSections(pages: readonly PageText[], options: DeriveSectio
         title: cleaned,
         page,
         depth: 0,
-        id: slug(cleaned) || 'back',
+        id: deriveSectionId({ title: cleaned }, chapterEntries.length + sectionEntries.size + backMatter.length, usedIds),
         ...(isAnswers && answerKey ? { top: round(answerKey.top) } : {}),
         kind: 'other',
         confidence: isAnswers && answerKey ? 0.9 : 0.6,
@@ -352,12 +347,13 @@ export function deriveSections(pages: readonly PageText[], options: DeriveSectio
   if (entries.length === 0) {
     // No numbered structure at all: fall back on generic headings.
     const generic = deriveOutline(pages);
+    const usedIds = new Set<string>();
     generic.entries.forEach((entry, index) => {
       entries.push({
         title: entry.title,
         page: entry.page,
         depth: entry.depth,
-        id: `s${index + 1}`,
+        id: deriveSectionId({ title: entry.title }, index, usedIds),
         kind: entry.depth === 0 ? 'chapter' : 'section',
         confidence: entry.confidence,
         evidence: entry.evidence,
@@ -366,7 +362,7 @@ export function deriveSections(pages: readonly PageText[], options: DeriveSectio
     });
     notes.push(
       generic.entries.length > 0
-        ? 'No numbered chapters or sections were found, so the generic heading detection was used (ids s1, s2 ...); there are no practice ranges, so no exercises can be proposed from it.'
+        ? 'No numbered chapters or sections were found, so the generic heading detection was used (the ids are made from the titles); there are no practice ranges, so no exercises can be proposed from it.'
         : 'No chapters or sections were found.',
     );
   }

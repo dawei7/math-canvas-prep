@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PdfDocument } from '../src/pdf/document.js';
 import type { PageText, Rect, TextLine } from '../src/model/types.js';
-import { exercisesToOperations } from '../src/audit/ops.js';
+import { exercisesToOperations, solutionToOperation } from '../src/audit/ops.js';
+import { bookKey } from '../src/model/authority.js';
 import { proposeExercises } from '../src/audit/exercises.js';
 import { deriveSections, type BookEntry, type BookStructure } from '../src/audit/sections.js';
 import { proposeSolutions, type BookSolutions, type SolutionProposal } from '../src/audit/solutions.js';
@@ -76,12 +77,20 @@ describe('answers of the synthetic book', () => {
   it('puts the solution into the add operation of the exercise it belongs to', () => {
     const exercises = proposeExercises(pages, structure.entries);
     const proposals = exercises.sections.flatMap((section) => section.proposals);
-    const solutions = new Map<string, readonly { page: number; rect: Rect }[]>(answers().map((answer) => [answer.exercise, answer.regions]));
+    const solutions = new Map<string, readonly { page: number; rect: Rect }[]>(answers().map((answer) => [bookKey(answer.section, answer.label), answer.regions]));
     const ops = exercisesToOperations(proposals, solutions);
     expect(ops.length).toBe(proposals.length);
     expect(ops.every((op) => (op.solution?.length ?? 0) >= 1)).toBe(true);
     const five = ops.find((op) => op.section === '1.1' && op.label === '5');
     expect(five?.solution?.[0]?.page).toBeGreaterThanOrEqual(book.truth.answerKeyPage ?? 0);
+  });
+
+  it('turns an answer into a solution.set of the exercise named SECTION:LABEL', () => {
+    const answer = answers().find((candidate) => candidate.section === '1.1' && candidate.label === '5') as SolutionProposal;
+    const op = solutionToOperation('1.1:5', answer.regions);
+    expect(op).toMatchObject({ op: 'solution.set', id: '1.1:5' });
+    expect(op.regions).toHaveLength(answer.regions.length);
+    expect((op.regions[0] as { rect: unknown[] }).rect).toHaveLength(4);
   });
 
   it('reports exercises without an answer and answers without an exercise', () => {

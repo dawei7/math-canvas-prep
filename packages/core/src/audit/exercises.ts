@@ -56,7 +56,7 @@ export interface ExerciseOptions {
 }
 
 export interface ExerciseProposal {
-  /** A deterministic frame id made from the section and the label, so applying twice does not duplicate. */
+  /** A name made from the section and the label, for lists and details files; the frame gets its own id when the proposal is applied (it is named `SECTION:LABEL` there). */
   id: string;
   section: string;
   /** The number as the book prints it ("5", "5a"), without the closing mark. */

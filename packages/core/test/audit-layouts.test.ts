@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { PageText, TextLine } from '../src/model/types.js';
-import { exerciseToOperation, exercisesToOperations } from '../src/audit/ops.js';
+import type { Frame, PageText, Region, TextLine } from '../src/model/types.js';
+import { compareSolution, compareWithProposal, exerciseToOperation, exercisesToOperations, solutionToOperation } from '../src/audit/ops.js';
+import { bookKey } from '../src/model/authority.js';
+import { enlargeToMinimum, roundRect } from '../src/model/rect.js';
 import { proposeExercises, type ExerciseOptions } from '../src/audit/exercises.js';
 import { locateSections, type BookEntry } from '../src/audit/sections.js';
 
@@ -258,14 +260,85 @@ describe('operations', () => {
     const proposal = set.proposals[0];
     expect(proposal).toBeDefined();
     if (!proposal) return;
-    const op = exerciseToOperation(proposal, [{ page: 5, rect: { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 } }]);
-    expect(op).toMatchObject({ op: 'add', kind: 'exercise', authority: 'book', label: '1', section: '1.1', id: proposal.id, ref: proposal.id, page: 0 });
+    const answer: Region = { page: 5, rect: { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 } };
+    const op = exerciseToOperation(proposal, { solution: [answer] });
+    // The frame gets a generated id and is named SECTION:LABEL: the operation carries neither an id nor a ref, and no unit.
+    expect(op).toMatchObject({ op: 'add', authority: 'book', label: '1', section: '1.1', page: 0 });
+    expect(op).not.toHaveProperty('id');
+    expect(op).not.toHaveProperty('ref');
+    expect(op).not.toHaveProperty('replace');
     expect(op.rect).toEqual([proposal.rect.left, proposal.rect.top, proposal.rect.right, proposal.rect.bottom]);
     expect(op.context?.[0]?.rect).toHaveLength(4);
     expect(op.solution).toEqual([{ page: 5, rect: [0.1, 0.2, 0.3, 0.22] }]);
     const all = exercisesToOperations(set.proposals);
-    expect(all.map((entry) => entry.id)).toEqual(set.proposals.map((entry) => entry.id));
+    expect(all.map((entry) => entry.label)).toEqual(set.proposals.map((entry) => entry.label));
     expect(all.every((entry) => entry.solution === undefined)).toBe(true);
+    const keyed = exercisesToOperations(set.proposals, new Map([[bookKey('1.1', '2'), [answer]]]), new Set([bookKey('1.1', '1')]));
+    expect(keyed[0]).toMatchObject({ label: '1', replace: true });
+    expect(keyed[1]).toMatchObject({ label: '2' });
+    expect(keyed[1]?.solution).toHaveLength(1);
+    expect(keyed[1]).not.toHaveProperty('replace');
+  });
+
+  it('replaces the instruction even when there is none, and the solution only when one was found', () => {
+    const { set } = run([page(0, [heading, { text: '1) first', left: 0.143, top: 0.2 }, { text: '2) second', left: 0.143, top: 0.23 }])]);
+    const proposal = set.proposals[0];
+    expect(proposal?.context).toEqual([]);
+    if (!proposal) return;
+    const plain = exerciseToOperation(proposal);
+    expect(plain).not.toHaveProperty('context');
+    const replacing = exerciseToOperation(proposal, { replace: true });
+    expect(replacing).toMatchObject({ replace: true, context: [] });
+    expect(replacing).not.toHaveProperty('solution');
+  });
+
+  it('names the exercise of a solution.set by SECTION:LABEL', () => {
+    const op = solutionToOperation('1.1:5', [{ page: 3, rect: { left: 0.1, top: 0.2, right: 0.4, bottom: 0.25 } }]);
+    expect(op).toEqual({ op: 'solution.set', id: '1.1:5', regions: [{ page: 3, rect: [0.1, 0.2, 0.4, 0.25] }] });
+  });
+
+  describe('comparing a proposal with the frame the project has', () => {
+    const { set } = run([page(0, [heading, { text: 'Solve.', left: 0.143, top: 0.15, bold: true }, { text: '1) first', left: 0.143, top: 0.2 }, { text: '2) second', left: 0.143, top: 0.23 }])]);
+    const proposal = set.proposals[0] as (typeof set.proposals)[number];
+    const answer: Region = { page: 5, rect: { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 } };
+    const stored = (changes: Partial<Frame> = {}): Frame => ({
+      id: 'f1',
+      kind: 'exercise',
+      page: proposal.page,
+      // A stored rectangle is rounded to five digits.
+      rect: { left: Math.round(proposal.rect.left * 1e5) / 1e5, top: Math.round(proposal.rect.top * 1e5) / 1e5, right: Math.round(proposal.rect.right * 1e5) / 1e5, bottom: Math.round(proposal.rect.bottom * 1e5) / 1e5 },
+      authority: 'book',
+      label: proposal.label,
+      section: proposal.section,
+      ...(proposal.context.length > 0 ? { context: proposal.context } : {}),
+      ...changes,
+    });
+
+    it('calls the same frame unchanged, with or without an answer to compare', () => {
+      expect(compareWithProposal(stored(), proposal)).toBe('unchanged');
+      expect(compareWithProposal(stored({ solution: [answer] }), proposal, [answer])).toBe('unchanged');
+      // An answer that was not proposed does not make a frame differ.
+      expect(compareWithProposal(stored({ solution: [answer] }), proposal)).toBe('unchanged');
+    });
+
+    it('asks for the answer when the frame has none, and calls a different answer changed', () => {
+      expect(compareWithProposal(stored(), proposal, [answer])).toBe('needs-solution');
+      expect(compareSolution(stored(), [answer])).toBe('needs-solution');
+      expect(compareWithProposal(stored({ solution: [{ page: 5, rect: { left: 0.1, top: 0.4, right: 0.3, bottom: 0.42 } }] }), proposal, [answer])).toBe('changed');
+    });
+
+    it('calls a frame changed when the rectangle, the page, the continuation or the instruction differ', () => {
+      expect(compareWithProposal(stored({ rect: { ...proposal.rect, bottom: proposal.rect.bottom + 0.02 } }), proposal)).toBe('changed');
+      expect(compareWithProposal(stored({ page: proposal.page + 1 }), proposal)).toBe('changed');
+      expect(compareWithProposal(stored({ continues: [answer] }), proposal)).toBe('changed');
+      expect(compareWithProposal(stored({ context: [answer] }), proposal)).toBe('changed');
+    });
+
+    it('compares a rectangle below the minimum size with what the project stores for it (enlarged)', () => {
+      const thin = { ...proposal, rect: { left: 0.2, top: 0.3, right: 0.5, bottom: 0.304 } };
+      const enlarged = stored({ rect: roundRect(enlargeToMinimum(thin.rect)), context: thin.context });
+      expect(compareWithProposal(enlarged, thin)).toBe('unchanged');
+    });
   });
 });
 

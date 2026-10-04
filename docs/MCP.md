@@ -629,14 +629,16 @@ For a book that prints numbered chapters and sections (a table of contents with 
 
 Arguments:
 
-- `apply` (boolean): Store the proposal as the outline of the project (with ids, labels and tops).
+- `apply` (boolean): Store the proposal as the outline of the project (with ids, labels and tops); it replaces the outline the project has.
 - `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
 - `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
 - `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
 
 ### `exercises_propose`
 
-Offline heuristics (no AI) over the printed text of every practice set (or of the sections you name): the lines that start with a printed number ("5)", "5.", "(5)", "5a)") that form a sequence and align like the others, a frame for each exercise (its text, continuation lines, the second line of a fraction, a figure beside it, lines on the next page), the bold instruction printed above a group as its context (two regions when it crosses a page break), the printed label as the exercise's name and the section. Numbers that are missing, printed twice or put aside are reported in "sections[].gaps/duplicates/rejected/notes": what the book prints is what is proposed. The result carries "operations" (add with authority "book", label, section, context; with solutions=true also the solution regions) that you can pass to apply_operations, or apply=true applies them (exercises that are already in the project are skipped, so applying twice does not duplicate). Needs the outline from outline_derive_book (apply=true) in the project. Look at render_crop images of a sample (the first and last of each section, the figures, an item at a page end, an instruction that crosses a page break) before you apply, and fix what is wrong with update_frame.
+Offline heuristics (no AI) over the printed text of every practice set (or of the sections you name): the lines that start with a printed number ("5)", "5.", "(5)", "5a)") that form a sequence and align like the others, a frame for each exercise (its text, continuation lines, the second line of a fraction, a figure beside it, lines on the next page), the bold instruction printed above a group as its context (two regions when it crosses a page break), the printed label as the exercise's name and the section. Numbers that are missing, printed twice or put aside are reported in "sections[].gaps/duplicates/rejected/notes": what the book prints is what is proposed. The result carries "operations" (add with authority "book", label, section, context; with solutions=true also the solution regions) that you can pass to apply_operations, or apply=true applies them as one atomic batch. Applying again is safe: an exercise is identified by its section and label, so one the project already has the same way is skipped, one that only lacks its answer gets the answer found now, and one that differs from the proposal (you may have corrected the frame) is kept and listed in "changed" unless replace=true overwrites it in place. Needs the outline from outline_derive_book (apply=true) in the project. Look at render_crop images of a sample (the first and last of each section, the figures, an item at a page end, an instruction that crosses a page break) before you apply, and fix what is wrong with update_frame.
 
 Arguments:
 
@@ -650,11 +652,14 @@ Arguments:
 - `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
 - `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
 - `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
-- `apply` (boolean): Apply the proposals to the project now, as one atomic batch.
+- `apply` (boolean): Apply the proposals to the project now, as one atomic batch. Exercises the project already has are skipped (see replace).
+- `replace` (boolean): Overwrite the exercises of the project that differ from the proposal, in place (they keep their ids); without it they are kept and listed in "changed".
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
 
 ### `solutions_propose`
 
-Reads the answer key at the back of the same PDF: it is cut into bands by the small section markers ("2.3") and the headers ("Answers - Slope-Intercept") that run across all columns and over page breaks; inside a band the answers are the lines that start with a printed number, framed with their continuation lines, the second line of a fraction or the graph that stands where the answer is. Each answer is matched by (section, label) to an authoritative exercise of the project; "sections[].withoutAnswer" lists exercises without an answer and "withoutExercise" answers without an exercise. The result carries "operations" (solution.add, one per region); apply=true applies them. An exercise that already has a solution is left alone. The solution is hidden from the learner and used only to grade. Look at render_crop images of a sample of the answer regions, especially graphs and answers of several lines.
+Reads the answer key at the back of the same PDF: it is cut into bands by the small section markers ("2.3") and the headers ("Answers - Slope-Intercept") that run across all columns and over page breaks; inside a band the answers are the lines that start with a printed number, framed with their continuation lines, the second line of a fraction or the graph that stands where the answer is. Each answer is matched by (section, label) to an authoritative exercise of the project; "sections[].withoutAnswer" lists exercises without an answer and "withoutExercise" answers without an exercise. The result carries "operations" (solution.set, one per exercise, named SECTION:LABEL); apply=true applies them as one atomic batch. Applying again is safe: an exercise that already has this solution is skipped, and one whose solution differs (you may have corrected it) is kept and listed in "changed" unless replace=true. The solution is hidden from the learner and used only to grade. Look at render_crop images of a sample of the answer regions, especially graphs and answers of several lines.
 
 Arguments:
 
@@ -665,3 +670,6 @@ Arguments:
 - `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
 - `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
 - `apply` (boolean): Apply the solutions to the project now, as one atomic batch.
+- `replace` (boolean): Overwrite the solution of an exercise that has a different one; without it that exercise is kept and listed in "changed".
+- `dry_run` (boolean): Compute and validate but do not write the project.
+- `force` (boolean): Write even if the change introduces validation errors (almost never what you want).

@@ -1,12 +1,19 @@
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
+  LIMITS,
   McPrepError,
+  bookKey,
+  bookKeyOf,
+  bookReference,
+  compareSolution,
+  compareWithProposal,
   deriveSections,
-  exercisesToOperations,
+  exerciseToOperation,
   locateSections,
   proposeExercises,
   proposeSolutions,
+  solutionToOperation,
   toOutlineEntries,
   type BookEntry,
   type BookExercises,
@@ -25,7 +32,7 @@ import {
 import { flag, numberOption, stringOption, usage } from '../args.js';
 import { plural, table } from '../format.js';
 import type { CommandContext, CommandOutput, CommandSpec, OptionSpec } from '../types.js';
-import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
+import { REPORT_OPTIONS, applyAndReport, reportFlags } from './common.js';
 
 /**
  * The commands that audit a book: `outline derive --book` (chapters and sections from the printed contents and the
@@ -33,8 +40,6 @@ import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
  * `solutions propose` (the answers of the answer key at the back of the same PDF). They propose; nothing is written
  * unless `--apply` is given, and then it goes through the same operations, validation and atomic write as everything else.
  */
-
-const box = (rect: { left: number; top: number; right: number; bottom: number }): [number, number, number, number] => [rect.left, rect.top, rect.right, rect.bottom];
 
 /** The words that make a heading of a book recognisable; the defaults are English, German, French, Spanish and Italian. */
 export const BOOK_WORD_OPTIONS: OptionSpec[] = [
@@ -147,11 +152,17 @@ function chooseSections(entries: readonly BookEntry[], ids: readonly string[]): 
 
 const percent = (confidence: number): string => confidence.toFixed(2);
 
+/** What of a proposal's result an apply adds to it: whether it was written, what was created and replaced, the book totals and the validation. */
+function appliedResult(result: object, done: CommandOutput): object {
+  const report = done.result as { applied: boolean; dryRun: boolean; created: string[]; replaced: string[]; removed: string[]; book: unknown; validation: unknown };
+  return { ...result, applied: report.applied, dryRun: report.dryRun, created: report.created, replaced: report.replaced, removed: report.removed, book: report.book, validation: report.validation };
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // outline derive --book
 
 export async function runBookDerive(context: CommandContext): Promise<CommandOutput> {
-  const { pages } = await load(context);
+  const { session, pages } = await load(context);
   const patterns = patternsFrom(context.options);
   const structure = deriveSections(pages, patterns ? { patterns } : {});
   const rows = structure.entries.map((entry) => [
@@ -185,27 +196,16 @@ export async function runBookDerive(context: CommandContext): Promise<CommandOut
   };
   if (flag(context.options, 'apply') && structure.entries.length > 0) {
     const entries = toOutlineEntries(structure);
-    const done = await applyAndReport(context, [{ op: 'outline.set', source: 'derived', entries } as Operation], 'stored the sections as the outline of the project');
-    return { ...done, result: { ...result, applied: true, ...(done.result as object) }, text: `${text}\n${done.text}`, notes: structure.notes };
+    const had = session.project.outline?.entries ?? [];
+    const replacing = had.length > 0 ? `\nThe outline the project had (${plural(had.length, 'entry', 'entries')}) is replaced; exercises keep their sections as long as the ids are still there.` : '';
+    const done = await applyAndReport(context, [{ op: 'outline.set', source: 'derived', entries } as Operation], 'stored the sections as the outline of the project', reportFlags(context.options));
+    return { ...done, result: appliedResult(result, done), text: `${text}${replacing}\n${done.text}`, notes: structure.notes };
   }
   return { result, text: `${text}\nNothing is stored unless you say --apply (the outline then carries ids and labels, which exercises refer to).`, notes: structure.notes };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // exercises propose
-
-/** The frames of a dry run say whether this build of the tool keeps the fields of authoritative exercises. */
-async function assertAuthoritySupported(session: ProjectSession, operations: readonly Operation[]): Promise<void> {
-  const probe = operations[0] as { id?: string } | undefined;
-  if (!probe?.id) return;
-  const outcome = await session.apply([probe as Operation], { modifiedBy: 'cli', dryRun: true, force: true });
-  const made = outcome.project.frames.find((frame) => frame.id === probe.id);
-  if (made && made.authority !== 'book') {
-    throw new McPrepError('E_UNSUPPORTED', 'This build of Math Canvas Prep cannot write authoritative exercises (the add operation drops authority, label and section).', {
-      hint: 'Use a build that has the authoritative exercise fields, or write the operations with --ops and apply them later.',
-    });
-  }
-}
 
 function sectionRow(section: SectionExercises, withSolutions: BookSolutions | undefined): string[] {
   const solved = withSolutions?.sections.find((entry) => entry.section === section.section);
@@ -220,11 +220,77 @@ function sectionRow(section: SectionExercises, withSolutions: BookSolutions | un
   ];
 }
 
+/** What the proposals mean for the book exercises the project already has: nothing is added twice, nothing a person fixed is overwritten. */
+interface ExercisePlan {
+  operations: Operation[];
+  /** Exercises the project does not have yet. */
+  added: number;
+  /** In the project already, exactly as proposed. */
+  unchanged: number;
+  /** In the project already, and given the answer that was found now. */
+  solutionsAdded: number;
+  /** `SECTION:LABEL` of the exercises the project has that differ from the proposal (kept, unless `--replace`). */
+  changed: string[];
+  /** Of those, how many this run overwrites. */
+  replaced: number;
+  /** `SECTION:LABEL` of exercises the project has in the proposed sections that the proposal does not contain. */
+  notProposed: string[];
+  /** Proposals that cannot become operations (a label the data model does not allow), with the reason. */
+  refused: string[];
+}
+
+function planExercises(frames: readonly Frame[], proposals: readonly ExerciseProposal[], sections: ReadonlySet<string>, solutions: ReadonlyMap<string, readonly Region[]>, replace: boolean): ExercisePlan {
+  const existing = new Map<string, Frame>();
+  for (const frame of frames) {
+    const key = bookKeyOf(frame);
+    if (key !== undefined) existing.set(key, frame);
+  }
+  const plan: ExercisePlan = { operations: [], added: 0, unchanged: 0, solutionsAdded: 0, changed: [], replaced: 0, notProposed: [], refused: [] };
+  const seen = new Set<string>();
+  for (const proposal of proposals) {
+    const key = bookKey(proposal.section, proposal.label);
+    const reference = bookReference(proposal.section, proposal.label);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!LIMITS.labelPattern.test(proposal.label)) {
+      plan.refused.push(`${reference}: the number "${proposal.label}" is not a label the bundle allows (1 to ${LIMITS.labelMax} letters, digits, spaces and . _ - ( ) /, starting with a letter or digit)`);
+      continue;
+    }
+    const answer = solutions.get(key);
+    const solution = answer !== undefined && answer.length <= LIMITS.maxSolutionRegions ? answer : undefined;
+    if (answer !== undefined && solution === undefined) plan.refused.push(`${reference}: its answer would need ${answer.length} regions, at most ${LIMITS.maxSolutionRegions} are allowed (the exercise is proposed without it)`);
+    const frame = existing.get(key);
+    if (!frame) {
+      plan.operations.push(exerciseToOperation(proposal, solution ? { solution } : {}) as Operation);
+      plan.added += 1;
+      continue;
+    }
+    const state = compareWithProposal(frame, proposal, solution);
+    if (state === 'unchanged') plan.unchanged += 1;
+    else if (state === 'needs-solution') {
+      plan.operations.push(solutionToOperation(reference, solution as readonly Region[]));
+      plan.solutionsAdded += 1;
+    } else {
+      plan.changed.push(reference);
+      if (replace) {
+        plan.operations.push(exerciseToOperation(proposal, { ...(solution ? { solution } : {}), replace: true }) as Operation);
+        plan.replaced += 1;
+      }
+    }
+  }
+  for (const [key, frame] of existing) {
+    if (!seen.has(key) && frame.section !== undefined && sections.has(frame.section)) plan.notProposed.push(bookReference(frame.section, frame.label as string));
+  }
+  return plan;
+}
+
+const listed = (references: readonly string[], most = 12): string => (references.length > most ? `${references.slice(0, most).join(', ')}, ... (${references.length})` : references.join(', '));
+
 export const exercisesPropose: CommandSpec = {
   name: 'exercises propose',
   summary: 'Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).',
   description:
-    'For every section with a practice set (found from the outline of the project, or derived now): the lines that start with a printed number ("5)", "5.", "(5)", "5a)") that form a sequence and align like the others, a frame for each exercise (its own text, the continuation lines, the second line of a fraction, the figure that stands beside it, the lines on the next page), the bold instruction printed above a group of exercises as its context (two regions when it crosses a page break), and the evidence. Numbers that are missing, printed twice or put aside are reported, not hidden: what the book prints is what is proposed, and a difference from what you expected is a finding to look at. Look at the crops (`render --page`/`crop`) of a sample before you apply. `--ops` writes the operations (add with authority "book", label, section, context) for `frames apply`; `--apply` applies them (exercises already in the project, found by their deterministic id, are skipped, so applying twice does not duplicate); `--solutions` also reads the answer key and puts the solution regions into the same operations.',
+    'For every section with a practice set (found from the outline of the project, or derived now): the lines that start with a printed number ("5)", "5.", "(5)", "5a)") that form a sequence and align like the others, a frame for each exercise (its own text, the continuation lines, the second line of a fraction, the figure that stands beside it, the lines on the next page), the bold instruction printed above a group of exercises as its context (two regions when it crosses a page break), and the evidence. Numbers that are missing, printed twice or put aside are reported, not hidden: what the book prints is what is proposed, and a difference from what you expected is a finding to look at. Look at the crops (`render --page`/`crop`) of a sample before you apply. `--ops` writes the operations (add with authority "book", label, section, context) for `frames apply`. `--apply` applies them as one atomic batch and can be repeated: an exercise is identified by its section and label, so one the project already has the same way is skipped, one that only lacks its answer gets the answer found now, and one that differs (a person may have corrected the frame) is kept and listed under "changed" unless you say `--replace`, which overwrites it in place (it keeps its id). `--solutions` also reads the answer key and puts the solution regions into the same operations.',
   writes: true,
   options: [
     { name: 'section', type: 'string', value: '<0.1,0.2>', description: 'Only these sections (ids or labels); default all.' },
@@ -235,12 +301,13 @@ export const exercisesPropose: CommandSpec = {
     ...BOOK_WORD_OPTIONS,
     { name: 'ops', type: 'string', value: '<file>', description: 'Write the operations as a JSON batch (for `frames apply`).' },
     { name: 'details', type: 'string', value: '<file>', description: 'Write everything (every proposal with its evidence, the instructions, the rejected numbers) as JSON.' },
-    { name: 'apply', type: 'boolean', description: 'Apply the proposals to the project now (one atomic batch).' },
-    ...GLOBAL_OPTIONS,
+    { name: 'apply', type: 'boolean', description: 'Apply the proposals to the project now (one atomic batch). Exercises the project already has are skipped (see --replace).' },
+    { name: 'replace', type: 'boolean', description: 'With --apply (or --ops): overwrite the exercises of the project that differ from the proposal, in place (they keep their ids); without it they are kept and listed.' },
+    ...REPORT_OPTIONS,
   ],
-  examples: ['mcprep exercises propose', 'mcprep exercises propose --section 0.1,0.2 --ops batch.json', 'mcprep exercises propose --solutions --apply'],
+  examples: ['mcprep exercises propose', 'mcprep exercises propose --section 0.1,0.2 --ops batch.json', 'mcprep exercises propose --solutions --apply', 'mcprep exercises propose --section 1.7 --replace --apply'],
   output:
-    '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution }, proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), skipped: string[], notes, applied }',
+    '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution, added, unchanged, solutionsAdded, changed, replaced }, changed: string[] (SECTION:LABEL of exercises of the project that differ from the proposal), notProposed: string[], refused: string[], proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has the fields of every command that changes the project (created, replaced, counts, book, validation)',
   async run(context) {
     const first = await load(context);
     const patterns = patternsFrom(context.options);
@@ -271,34 +338,57 @@ export const exercisesPropose: CommandSpec = {
       });
     }
     const solutionMap = new Map<string, readonly Region[]>();
-    for (const answer of solutions?.sections.flatMap((section) => section.answers) ?? []) solutionMap.set(answer.exercise, answer.regions);
-    const existing = new Set(session.project.frames.map((frame) => frame.id));
-    const fresh = proposals.filter((proposal) => !existing.has(proposal.id));
-    const skipped = proposals.filter((proposal) => existing.has(proposal.id)).map((proposal) => proposal.id);
-    const operations = exercisesToOperations(fresh, solutionMap);
+    for (const answer of solutions?.sections.flatMap((section) => section.answers) ?? []) solutionMap.set(bookKey(answer.section, answer.label), answer.regions);
+    const replace = flag(context.options, 'replace');
+    const plan = planExercises(session.project.frames, proposals, new Set(exercises.sections.map((section) => section.section)), solutionMap, replace);
+    const operations = plan.operations;
     const opsFile = stringOption(context.options, 'ops');
     if (opsFile !== undefined) await writeFile(resolve(context.io.cwd, opsFile), `${JSON.stringify({ operations }, null, 2)}\n`);
     const detailsFile = stringOption(context.options, 'details');
     const summaries = exercises.sections.map((section) => summarize(section, solutions));
-    const counts = { sections: exercises.sections.length, exercises: proposals.length, withSolution: solutionMap.size };
-    const notes = [...sections.notes, ...exercises.notes, ...(solutions?.notes ?? [])];
+    const withSolution = proposals.filter((proposal) => solutionMap.has(bookKey(proposal.section, proposal.label))).length;
+    const counts = {
+      sections: exercises.sections.length,
+      exercises: proposals.length,
+      withSolution,
+      added: plan.added,
+      unchanged: plan.unchanged,
+      solutionsAdded: plan.solutionsAdded,
+      changed: plan.changed.length,
+      replaced: plan.replaced,
+    };
+    const notes = [...sections.notes, ...exercises.notes, ...(solutions?.notes ?? []), ...plan.refused];
     const result = {
       source: sections.source,
       sections: summaries,
       counts,
+      changed: plan.changed,
+      notProposed: plan.notProposed,
+      refused: plan.refused,
       ...(proposals.length <= 300 ? { proposals } : { proposalsOmitted: proposals.length }),
       ...(operations.length <= 300 ? { operations } : { operationsOmitted: operations.length }),
-      skipped,
       notes,
       applied: false,
     };
     if (detailsFile !== undefined) await writeFile(resolve(context.io.cwd, detailsFile), `${JSON.stringify({ ...result, proposals, solutions: solutions ?? null, sectionsDetail: exercises.sections }, null, 1)}\n`);
     const anomalies = exercises.sections.flatMap((section) => section.notes.map((note) => `${section.section}: ${note}`));
-    const head = `${plural(proposals.length, 'exercise')} proposed in ${plural(exercises.sections.length, 'section')}${wantSolutions ? `, ${plural(solutionMap.size, 'with a solution', 'with a solution')}` : ''}${skipped.length > 0 ? `; ${plural(skipped.length, 'is', 'are')} already in the project and left out` : ''}. Nothing is written unless you say --apply.`;
+    const inProject = plan.unchanged + plan.solutionsAdded + plan.changed.length;
+    const head = [
+      `${plural(proposals.length, 'exercise')} proposed in ${plural(exercises.sections.length, 'section')}${wantSolutions ? `, ${withSolution} with a solution` : ''}.`,
+      inProject > 0
+        ? `The project has ${inProject} of them already: ${plan.unchanged} the same${plan.solutionsAdded > 0 ? `, ${plan.solutionsAdded} to get their solution` : ''}${plan.changed.length > 0 ? `, ${plan.changed.length} different (${replace ? 'to be replaced' : 'kept as they are; --replace overwrites them'})` : ''}; ${plan.added} are new.`
+        : '',
+      'Nothing is written unless you say --apply.',
+    ]
+      .filter(Boolean)
+      .join(' ');
     const text = [
       head,
       table(exercises.sections.map((section) => sectionRow(section, solutions)), ['section', 'items', 'numbers', 'pages', 'instr', ...(solutions ? ['answers'] : []), 'title']),
       ...(anomalies.length > 0 ? ['To look at:', ...anomalies.slice(0, 40).map((line) => `  - ${line}`), ...(anomalies.length > 40 ? [`  ... and ${anomalies.length - 40} more (JSON: sections[].notes)`] : [])] : []),
+      ...(plan.changed.length > 0 ? [`Different from the project's own frames${replace ? ' (replaced)' : ' (kept)'}: ${listed(plan.changed)}.`] : []),
+      ...(plan.notProposed.length > 0 ? [`In the project but not in this proposal (left as they are): ${listed(plan.notProposed)}.`] : []),
+      ...(plan.refused.length > 0 ? ['Left out:', ...plan.refused.slice(0, 12).map((line) => `  - ${line}`)] : []),
       ...(sections.notes.length > 0 ? sections.notes.map((note) => note) : []),
       ...(opsFile !== undefined ? [`Wrote ${plural(operations.length, 'operation')} to ${opsFile}; apply them with \`mcprep frames apply ${opsFile}\`.`] : []),
       ...(detailsFile !== undefined ? [`Wrote the details to ${detailsFile}.`] : []),
@@ -309,10 +399,14 @@ export const exercisesPropose: CommandSpec = {
           hint: 'Store the sections first: `mcprep outline derive --book --apply` (look at them, edit if needed), then run this again.',
         });
       }
-      if (operations.length === 0) return { result: { ...result, applied: false }, text: `${text}\nNothing to apply.`, notes };
-      await assertAuthoritySupported(session, operations as Operation[]);
-      const done = await applyAndReport(context, operations as Operation[], `applied ${plural(operations.length, 'exercise')}`);
-      return { ...done, result: { ...result, applied: true, ...(done.result as object) }, text: `${text}\n${done.text}`, notes };
+      if (operations.length === 0) return { result: { ...result, applied: false }, text: `${text}\nNothing to apply: the project has these exercises already.`, notes };
+      const parts = [
+        plan.added > 0 ? `added ${plural(plan.added, 'book exercise')}` : '',
+        plan.solutionsAdded > 0 ? `gave ${plural(plan.solutionsAdded, 'exercise')} their solution` : '',
+        plan.replaced > 0 ? `replaced ${plural(plan.replaced, 'book exercise')}` : '',
+      ].filter(Boolean);
+      const done = await applyAndReport(context, operations, parts.join(', '), reportFlags(context.options));
+      return { ...done, result: appliedResult(result, done), text: `${text}\n${done.text}`, notes };
     }
     return { result, text, notes };
   },
@@ -356,19 +450,20 @@ export const solutionsPropose: CommandSpec = {
   name: 'solutions propose',
   summary: 'Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.',
   description:
-    'The answer key is cut into bands by the section markers and headers (a band runs across all columns and over page breaks); inside a band the answers are the lines that start with a printed number, framed with their continuation lines, the second line of a fraction or the graph that stands where the answer is. Each answer is matched by (section, label) to an authoritative exercise of the project; exercises without an answer and answers without an exercise are reported. `--ops` writes `solution.add` operations (one per region) for `frames apply`; `--apply` applies them. An exercise that already has a solution is left alone. The solution is hidden: it is never shown with the exercise, never sent to a tutor, used only to grade.',
+    'The answer key is cut into bands by the section markers and headers (a band runs across all columns and over page breaks); inside a band the answers are the lines that start with a printed number, framed with their continuation lines, the second line of a fraction or the graph that stands where the answer is. Each answer is matched by (section, label) to an authoritative exercise of the project; exercises without an answer and answers without an exercise are reported. `--ops` writes `solution.set` operations (one per exercise, named SECTION:LABEL) for `frames apply`; `--apply` applies them as one atomic batch. It can be repeated: an exercise that already has this solution is skipped, and one whose solution differs (a person may have corrected it) is kept and listed under "changed" unless you say `--replace`. The solution is hidden: it is never shown with the exercise, never sent to a tutor, used only to grade.',
   writes: true,
   options: [
     { name: 'ops', type: 'string', value: '<file>', description: 'Write the operations as a JSON batch (for `frames apply`).' },
     { name: 'details', type: 'string', value: '<file>', description: 'Write everything (every answer with its evidence, the sequences, the headers) as JSON.' },
     { name: 'apply', type: 'boolean', description: 'Apply the solutions to the project now (one atomic batch).' },
+    { name: 'replace', type: 'boolean', description: 'Overwrite the solution of an exercise that has a different one; without it that exercise is kept and listed.' },
     ITEM_PATTERN_OPTION,
     ...BOOK_WORD_OPTIONS,
-    ...GLOBAL_OPTIONS,
+    ...REPORT_OPTIONS,
   ],
-  examples: ['mcprep solutions propose', 'mcprep solutions propose --ops solutions.json', 'mcprep solutions propose --apply'],
+  examples: ['mcprep solutions propose', 'mcprep solutions propose --ops solutions.json', 'mcprep solutions propose --apply', 'mcprep solutions propose --replace --apply'],
   output:
-    '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise }, operations? (when there are at most 300; else operationsOmitted: n and the --ops file), skipped: string[], notes, applied }',
+    '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise, added, unchanged, changed }, changed: string[] (SECTION:LABEL of exercises whose solution differs from the proposal), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has dryRun, created, replaced, removed, book and validation',
   async run(context) {
     const first = await load(context);
     const patterns = patternsFrom(context.options);
@@ -377,25 +472,38 @@ export const solutionsPropose: CommandSpec = {
     const frames = first.session.project.frames.filter((frame): frame is Frame & { section: string; label: string } => frame.authority === 'book' && frame.section !== undefined && frame.label !== undefined);
     const needInk = new Set<number>();
     if (sections.answerKey) for (let page = sections.answerKey.page; page < first.pages.length; page += 1) needInk.add(page);
-    const { session, pages } = needInk.size > 0 ? await withInk(first, needInk) : first;
+    const { pages } = needInk.size > 0 ? await withInk(first, needInk) : first;
     const solutions = proposeSolutions(pages, sections.entries, frames.map((frame) => ({ section: frame.section, label: frame.label })), {
       ...(sections.answerKey ? { answerKey: sections.answerKey } : {}),
       ...(patterns ? { patterns } : {}),
       ...(itemPatterns ? { itemPatterns } : {}),
     });
-    const byKey = new Map(frames.map((frame) => [`${frame.section}\u0000${frame.label}`, frame]));
+    const byKey = new Map(frames.map((frame) => [bookKey(frame.section, frame.label), frame]));
+    const replace = flag(context.options, 'replace');
     const operations: Operation[] = [];
-    const skipped: string[] = [];
+    const changed: string[] = [];
+    const refused: string[] = [];
     let matched = 0;
+    let added = 0;
+    let unchanged = 0;
     for (const answer of solutions.sections.flatMap((section) => section.answers)) {
-      const frame = byKey.get(`${answer.section}\u0000${answer.label}`);
+      const frame = byKey.get(bookKey(answer.section, answer.label));
       if (!frame) continue;
       matched += 1;
-      if (frame.solution && frame.solution.length > 0) {
-        skipped.push(frame.id);
+      const reference = bookReference(answer.section, answer.label);
+      if (answer.regions.length > LIMITS.maxSolutionRegions) {
+        refused.push(`${reference}: its answer would need ${answer.regions.length} regions, at most ${LIMITS.maxSolutionRegions} are allowed`);
         continue;
       }
-      for (const region of answer.regions) operations.push({ op: 'solution.add', id: frame.id, page: region.page, rect: box(region.rect) } as unknown as Operation);
+      const state = compareSolution(frame, answer.regions);
+      if (state === 'unchanged') unchanged += 1;
+      else if (state === 'needs-solution') {
+        operations.push(solutionToOperation(reference, answer.regions));
+        added += 1;
+      } else {
+        changed.push(reference);
+        if (replace) operations.push(solutionToOperation(reference, answer.regions));
+      }
     }
     const opsFile = stringOption(context.options, 'ops');
     if (opsFile !== undefined) await writeFile(resolve(context.io.cwd, opsFile), `${JSON.stringify({ operations }, null, 2)}\n`);
@@ -403,8 +511,8 @@ export const solutionsPropose: CommandSpec = {
     if (detailsFile !== undefined) await writeFile(resolve(context.io.cwd, detailsFile), `${JSON.stringify(solutions, null, 1)}\n`);
     const withoutAnswer = solutions.sections.reduce((sum, section) => sum + section.withoutAnswer.length, 0);
     const withoutExercise = solutions.sections.reduce((sum, section) => sum + section.withoutExercise.length, 0);
-    const counts = { exercises: frames.length, answers: solutions.sections.reduce((sum, section) => sum + section.answers.length, 0), matched, withoutAnswer, withoutExercise };
-    const notes = [...(frames.length === 0 ? ['The project has no authoritative exercises yet: propose them first (`mcprep exercises propose --apply`), or use `exercises propose --solutions` to do both at once.'] : []), ...solutions.notes];
+    const counts = { exercises: frames.length, answers: solutions.sections.reduce((sum, section) => sum + section.answers.length, 0), matched, withoutAnswer, withoutExercise, added, unchanged, changed: changed.length };
+    const notes = [...(frames.length === 0 ? ['The project has no authoritative exercises yet: propose them first (`mcprep exercises propose --apply`), or use `exercises propose --solutions` to do both at once.'] : []), ...solutions.notes, ...refused];
     const result = {
       sections: solutions.sections.map((section) => ({
         section: section.section,
@@ -421,33 +529,28 @@ export const solutionsPropose: CommandSpec = {
         notes: section.notes,
       })),
       counts,
+      changed,
       ...(operations.length <= 300 ? { operations } : { operationsOmitted: operations.length }),
-      skipped,
       notes,
       applied: false,
     };
     const anomalies = solutions.sections.flatMap((section) => section.notes.map((note) => `${section.section}: ${note}`));
     const text = [
-      `${plural(counts.answers, 'answer')} found in the answer key (pages ${solutions.key?.firstPage ?? '?'}-${solutions.key?.lastPage ?? '?'}); ${plural(matched, 'is', 'are')} matched to an exercise of the project, ${plural(withoutAnswer, 'exercise')} without an answer, ${plural(withoutExercise, 'answer')} without an exercise${skipped.length > 0 ? `, ${plural(skipped.length, 'exercise')} already ${skipped.length === 1 ? 'has' : 'have'} a solution` : ''}. Nothing is written unless you say --apply.`,
+      `${plural(counts.answers, 'answer')} found in the answer key (pages ${solutions.key?.firstPage ?? '?'}-${solutions.key?.lastPage ?? '?'}); ${plural(matched, 'is', 'are')} matched to an exercise of the project (${added} to be added${unchanged > 0 ? `, ${unchanged} there already` : ''}${changed.length > 0 ? `, ${changed.length} different: ${replace ? 'to be replaced' : 'kept, --replace overwrites them'}` : ''}), ${plural(withoutAnswer, 'exercise')} without an answer, ${plural(withoutExercise, 'answer')} without an exercise. Nothing is written unless you say --apply.`,
       table(
         solutions.sections.map((section) => [section.section, String(section.answers.length), section.first !== undefined ? `${section.first}..${section.last as string}` : '', String(section.withoutAnswer.length), String(section.withoutExercise.length), section.title]),
         ['section', 'answers', 'numbers', 'no answer', 'no exercise', 'title'],
       ),
       ...(anomalies.length > 0 ? ['To look at:', ...anomalies.slice(0, 40).map((line) => `  - ${line}`), ...(anomalies.length > 40 ? [`  ... and ${anomalies.length - 40} more (JSON: sections[].notes)`] : [])] : []),
+      ...(changed.length > 0 ? [`Solutions that differ from the project's${replace ? ' (replaced)' : ' (kept)'}: ${listed(changed)}.`] : []),
       ...notes.filter((note) => !solutions.notes.includes(note)).map((note) => note),
       ...solutions.notes,
       ...(opsFile !== undefined ? [`Wrote ${plural(operations.length, 'operation')} to ${opsFile}; apply them with \`mcprep frames apply ${opsFile}\`.`] : []),
     ].join('\n');
     if (flag(context.options, 'apply')) {
       if (operations.length === 0) return { result, text: `${text}\nNothing to apply.`, notes };
-      const probe = operations[0] as unknown as { id: string };
-      const outcome = await session.apply([probe as unknown as Operation], { modifiedBy: 'cli', dryRun: true, force: true });
-      const target = outcome.project.frames.find((frame) => frame.id === probe.id);
-      if (!target || (target.solution?.length ?? 0) === 0) {
-        throw new McPrepError('E_UNSUPPORTED', 'This build of Math Canvas Prep cannot write solution regions (no solution.add operation).', { hint: 'Use a build with solution context, or write the operations with --ops and apply them later.' });
-      }
-      const done = await applyAndReport(context, operations, `applied ${plural(operations.length, 'solution region')}`);
-      return { ...done, result: { ...result, applied: true, ...(done.result as object) }, text: `${text}\n${done.text}`, notes };
+      const done = await applyAndReport(context, operations, `gave ${plural(operations.length, 'exercise')} their solution`, reportFlags(context.options));
+      return { ...done, result: appliedResult(result, done), text: `${text}\n${done.text}`, notes };
     }
     return { result, text, notes };
   },
