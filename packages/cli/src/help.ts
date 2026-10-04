@@ -8,7 +8,7 @@ export const EXIT_CODES: [number, string][] = [
   [1, 'internal error (a bug: please report it)'],
   [2, 'usage error: unknown command or option, missing argument, a value that is not a number'],
   [3, 'a file cannot be used: project, PDF or bundle missing, unreadable or damaged; the PDF is not the one the project was made for; another program holds the lock'],
-  [4, 'the request was understood but the data is not acceptable: validation errors (validate, export), a change that would introduce errors, a page or frame that does not exist, a rectangle that is not a valid region, a bundle the importer would reject (import-check)'],
+  [4, 'the request was understood but the data is not acceptable: validation errors (validate, export), a change that would introduce errors, a page or frame that does not exist, a rectangle that is not a valid region, a bundle the importer would reject (import-check), a finding that `exercises verify --fail-on` names (an error by default)'],
 ];
 
 export function optionLabel(option: OptionSpec): string {

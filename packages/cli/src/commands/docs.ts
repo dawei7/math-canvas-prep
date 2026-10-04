@@ -4,7 +4,7 @@ import type { CommandSpec } from '../types.js';
 
 export const schema: CommandSpec = {
   name: 'schema',
-  summary: 'Print a JSON Schema: bundle-manifest, frames, outline or project.',
+  summary: `Print a JSON Schema: ${SCHEMA_NAMES.join(', ')}.`,
   noProject: true,
   args: [{ name: 'name', description: `One of ${SCHEMA_NAMES.join(', ')}. Without a name the available schemas are listed.` }],
   options: [{ name: 'json', type: 'boolean', description: 'Wrap the output in the usual JSON document.' }, { name: 'help', short: 'h', type: 'boolean', description: 'Show help.' }],

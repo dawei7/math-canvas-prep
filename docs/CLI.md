@@ -59,7 +59,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 | 1 | internal error (a bug: please report it) |
 | 2 | usage error: unknown command or option, missing argument, a value that is not a number |
 | 3 | a file cannot be used: project, PDF or bundle missing, unreadable or damaged; the PDF is not the one the project was made for; another program holds the lock |
-| 4 | the request was understood but the data is not acceptable: validation errors (validate, export), a change that would introduce errors, a page or frame that does not exist, a rectangle that is not a valid region, a bundle the importer would reject (import-check) |
+| 4 | the request was understood but the data is not acceptable: validation errors (validate, export), a change that would introduce errors, a page or frame that does not exist, a rectangle that is not a valid region, a bundle the importer would reject (import-check), a finding that `exercises verify --fail-on` names (an error by default) |
 
 ## Commands
 
@@ -115,7 +115,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`export`](#export): Write the project as a .mcbundle: the PDF plus its frames and outline, ready for the Android app's library.
 - [`inspect-bundle`](#inspect-bundle): Look inside a .mcbundle: manifest, entries, frames with their labels, outline, problems.
 - [`import-check`](#import-check): Do exactly what the Android importer does with a bundle, step by step, and say whether it would accept it.
-- [`schema`](#schema): Print a JSON Schema: bundle-manifest, frames, outline or project.
+- [`schema`](#schema): Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample.
 - [`guide`](#guide): Print the guide for AI agents that mark a PDF with this tool.
 
 ## init
@@ -1812,7 +1812,7 @@ With `--json`, `result` is: `{ wouldImport: boolean, rejection?: Issue, steps: [
 
 ## schema
 
-Print a JSON Schema: bundle-manifest, frames, outline or project.
+Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample.
 
 ```
 mcprep schema [name] [options]
