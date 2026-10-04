@@ -1,5 +1,5 @@
-import { countFrames } from '@mcprep/core/pure';
 import { useStore } from '../hooks.js';
+import { frameIndex } from '../logic/model.js';
 import type { Store } from '../logic/store.js';
 
 export function Welcome({ store }: { store: Store }): preact.JSX.Element {
@@ -42,7 +42,8 @@ export function ExportDialog({ store }: { store: Store }): preact.JSX.Element | 
   const state = useStore(store);
   const { exporting, validation, project, doc } = state;
   if (!exporting.open || !project || !validation) return null;
-  const counts = countFrames(project.frames);
+  const index = frameIndex(project.frames);
+  const counts = index.counts;
   const api = window.mcprep;
   const outcome = exporting.outcome;
   return (
@@ -156,12 +157,16 @@ export function Notices({ store }: { store: Store }): preact.JSX.Element | null 
 
 export function StatusBar({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
-  const counts = countFrames(state.project?.frames ?? []);
+  const index = frameIndex(state.project?.frames ?? []);
+  const counts = index.counts;
   const recentAgent = Date.now() - state.agentAt < 20_000;
   return (
     <footer class="statusbar">
       <span>{state.project?.meta.title}</span>
-      <span class="muted">{counts.exercise} exercises · {counts.question} questions · {counts.bookmark} bookmarks</span>
+      <span class="muted">
+        {counts.exercise} exercises · {counts.question} questions · {counts.bookmark} bookmarks
+        {index.book.length > 0 ? ` · ${index.book.length} book exercises` : ''}
+      </span>
       <span class={`save-state ${state.saveError ? 'bad' : state.dirty ? 'dirty' : 'clean'}`}>
         {state.saveError ? `Save failed: ${state.saveError}` : state.saving ? 'Saving...' : state.dirty ? 'Unsaved changes' : 'Saved'}
       </span>

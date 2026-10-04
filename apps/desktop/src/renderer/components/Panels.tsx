@@ -1,7 +1,11 @@
-import { KIND_COLORS, countFrames, linesInRect, numberFrames, sortInReadingOrder, type Frame, type Issue, type OutlineEntry } from '@mcprep/core/pure';
+import { KIND_COLORS, isAuthoritative, linesInRect, type Frame, type Issue, type OutlineEntry } from '@mcprep/core/pure';
 import { useStore } from '../hooks.js';
+import { frameColor } from '../logic/colors.js';
 import { sectionCounts } from '../logic/contents.js';
+import { guiFix } from '../logic/errors.js';
+import { frameIndex, labelOf } from '../logic/model.js';
 import type { Store, Tab } from '../logic/store.js';
+import { Inspector } from './Inspector.js';
 import { Info } from './Toolbar.js';
 
 const KIND_SYMBOL = { exercise: '✏', question: '?', bookmark: '🔖' } as const;
@@ -21,19 +25,21 @@ function Counts({ exercise, question, bookmark }: { exercise: number; question: 
 function FramesPanel({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
   const frames = state.project?.frames ?? [];
-  const labels = numberFrames(frames);
-  const counts = countFrames(frames);
-  const ordered = sortInReadingOrder(frames);
+  const index = frameIndex(frames);
+  const counts = index.counts;
+  const ordered = [...index.ordinary, ...index.book];
   const snippet = (frame: Frame): string => {
     const lines = state.texts[frame.page]?.lines;
     return lines ? (linesInRect(lines, frame.rect).find((line) => line.headerFooter !== true)?.text.slice(0, 44) ?? '') : '';
   };
+  const selectedUnit = store.selected()?.unit;
   const seen = new Set<string>();
   const rows: preact.JSX.Element[] = [];
   for (const frame of ordered) {
-    const info = labels.get(frame.id);
-    const label = info?.label ?? frame.id;
-    const color = KIND_COLORS[frame.kind];
+    const info = index.numbers.get(frame.id);
+    const label = labelOf(index, frame);
+    const color = frameColor(frame);
+    const book = isAuthoritative(frame);
     const isPart = frame.unit !== undefined;
     if (isPart && !seen.has(frame.unit as string)) {
       seen.add(frame.unit as string);
@@ -45,11 +51,12 @@ function FramesPanel({ store }: { store: Store }): preact.JSX.Element {
       );
     }
     rows.push(
-      <li key={frame.id} class={`row ${isPart ? 'part' : ''} ${state.selection === frame.id || (isPart && store.selected()?.unit === frame.unit) ? 'selected' : ''}`} onClick={() => store.select(frame.id, { jump: true })}>
-        <span class="chip" style={{ background: color }}>{label}</span>
+      <li key={frame.id} class={`row ${isPart ? 'part' : ''} ${state.selection === frame.id || (isPart && selectedUnit === frame.unit) ? 'selected' : ''}`} onClick={() => store.select(frame.id, { jump: true })}>
+        <span class={`chip ${book ? 'book' : ''}`} style={{ background: color }}>{label}</span>
         <span class="row-text">{snippet(frame) || frame.kind}</span>
         <span class="muted">p{frame.page + 1}</span>
         {frame.context ? <span class="mini" title="Has context">📄{frame.context.length}</span> : null}
+        {frame.solution ? <span class="mini" title="Has a hidden solution">🔑{frame.solution.length}</span> : null}
         {frame.continues ? <span class="mini" title="Continues">↪{frame.continues.length}</span> : null}
         <button
           class="row-delete"
@@ -68,6 +75,7 @@ function FramesPanel({ store }: { store: Store }): preact.JSX.Element {
     <div class="panel-body">
       <div class="panel-head">
         <Counts exercise={counts.exercise} question={counts.question} bookmark={counts.bookmark} />
+        {index.book.length > 0 ? <span class="count book" title="Book exercises">📖 {index.book.length}</span> : null}
       </div>
       {frames.length === 0 ? <p class="empty">No frames yet. Pick a tool, drag around an exercise, or use Propose.</p> : <ul class="rows">{rows}</ul>}
     </div>
@@ -192,7 +200,7 @@ function ChecksPanel({ store }: { store: Store }): preact.JSX.Element {
             <span class="severity">{issue.severity === 'error' ? '✕' : issue.severity === 'warning' ? '!' : '↻'}</span>
             <span class="issue-text">
               {issue.message}
-              {issue.fix ? <em> {issue.fix}</em> : null}
+              {guiFix(issue) ? <em> {guiFix(issue)}</em> : null}
             </span>
             {issue.frameId ? <span class="muted">{issue.frameId}</span> : null}
           </li>
@@ -252,12 +260,13 @@ export function SidePanel({ store }: { store: Store }): preact.JSX.Element {
   const warnings = state.validation?.warnings.length ?? 0;
   const tabs: { id: Tab; label: string; badge?: string; bad?: boolean }[] = [
     { id: 'frames', label: 'Frames', badge: String(state.project?.frames.length ?? 0) },
-    { id: 'contents', label: 'Contents', badge: String((state.project?.outline?.entries ?? state.doc?.pdfOutline ?? []).length) },
+    { id: 'sections', label: 'Sections', badge: String((state.project?.outline?.entries ?? state.doc?.pdfOutline ?? []).length) },
     { id: 'checks', label: 'Checks', badge: errors > 0 ? String(errors) : warnings > 0 ? String(warnings) : '✓', bad: errors > 0 },
     { id: 'propose', label: 'Propose', badge: state.proposals ? String(store.pendingProposals().length) : undefined },
   ];
   return (
     <aside class="side">
+      <Inspector store={store} />
       <div class="tabs" role="tablist">
         {tabs.map((tab) => (
           <button key={tab.id} role="tab" aria-selected={state.tab === tab.id} class={`tab ${state.tab === tab.id ? 'active' : ''}`} onClick={() => store.setTab(tab.id)}>
@@ -267,7 +276,7 @@ export function SidePanel({ store }: { store: Store }): preact.JSX.Element {
         ))}
       </div>
       {state.tab === 'frames' ? <FramesPanel store={store} /> : null}
-      {state.tab === 'contents' ? <ContentsPanel store={store} /> : null}
+      {state.tab === 'sections' ? <ContentsPanel store={store} /> : null}
       {state.tab === 'checks' ? <ChecksPanel store={store} /> : null}
       {state.tab === 'propose' ? <ProposePanel store={store} /> : null}
     </aside>

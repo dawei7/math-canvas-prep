@@ -93,9 +93,9 @@ describe.skipIf(!available)('the desktop app', () => {
     expect(await win.locator('.chip text').allTextContents()).toEqual(expect.arrayContaining(['E1', 'E2', 'E2.1', 'E2.2', 'E2.3']));
     expect(await win.locator('.statusbar').innerText()).toContain('5 exercises');
     await win.waitForSelector('.thumbs .thumb');
-    expect(await win.locator('.rail button.round').count()).toBe(8);
+    expect(await win.locator('.rail button.round').count()).toBe(10);
     expect(await win.locator('.thumbs .thumb').count()).toBe(3);
-    expect(await win.locator('.tab').allInnerTexts()).toEqual(expect.arrayContaining([expect.stringContaining('Frames'), expect.stringContaining('Contents'), expect.stringContaining('Checks'), expect.stringContaining('Propose')]));
+    expect(await win.locator('.tab').allInnerTexts()).toEqual(expect.arrayContaining([expect.stringContaining('Frames'), expect.stringContaining('Sections'), expect.stringContaining('Checks'), expect.stringContaining('Propose')]));
   });
 
   it('is locked down: no Node, no network, no navigation, a fixed API and a strict policy', async () => {
@@ -118,7 +118,7 @@ describe.skipIf(!available)('the desktop app', () => {
     expect(facts['fetch']).toBe('blocked');
     expect(String(facts['csp'])).toContain("default-src 'none'");
     expect(String(facts['csp'])).not.toContain("'unsafe-eval'");
-    expect(facts['api']).toEqual(['chooseAndOpenPdf', 'chooseAndOpenProject', 'copyToFolder', 'deriveOutline', 'onDiskChange', 'onMenu', 'openPath', 'pageText', 'pathForFile', 'propose', 'readPdf', 'ready', 'recent', 'reloadProject', 'reveal', 'saveProject', 'setDirty', 'exportBundle'].sort());
+    expect(facts['api']).toEqual(['chooseAndOpenPdf', 'chooseAndOpenProject', 'copyToFolder', 'deriveOutline', 'onDiskChange', 'onMenu', 'openPath', 'pageText', 'pathForFile', 'propose', 'readPdf', 'ready', 'recent', 'reloadProject', 'reveal', 'saveProject', 'setDirty', 'exportBundle', 'exportBookSummary'].sort());
   });
 
   it('draws an exercise with the mouse, snaps it to the lines, and undoes and redoes it', async () => {
@@ -257,7 +257,7 @@ describe.skipIf(!available)('the desktop app', () => {
   it('lists the frames, the contents with counts, the checks and lets the contents be edited', async () => {
     await win.locator('.tab', { hasText: 'Frames' }).click();
     expect(await win.locator('.rows .row').count()).toBeGreaterThan(8);
-    await win.locator('.tab', { hasText: 'Contents' }).click();
+    await win.locator('.tab', { hasText: 'Sections' }).click();
     expect(await win.locator('.outline-row').count()).toBe(4);
     expect(await win.locator('.outline-row').first().innerText()).toMatch(/\d/);
     await win.getByText('Edit PDF bookmarks').click();

@@ -4,16 +4,18 @@ import { basename, dirname, extname, join } from 'node:path';
 import {
   McPrepError,
   ProjectSession,
+  buildBookSummary,
   deriveOutline,
   proposeFrames,
   readProjectFile,
   withProjectLock,
+  writeFileAtomic,
   writeProjectFile,
   type PageText,
   type Project,
   type ProposalSet,
 } from '@mcprep/core';
-import type { DerivedHeading, DiskChange, ExportOutcome, OpenOutcome, ProposeRequest, SaveOutcome } from '../shared/api.js';
+import type { BookSummaryOutcome, DerivedHeading, DiskChange, ExportOutcome, OpenOutcome, ProposeRequest, SaveOutcome } from '../shared/api.js';
 
 const PROJECT_SUFFIX = '.mcprep.json';
 
@@ -148,6 +150,15 @@ export class DocumentService {
         frames: done.write.counts.frames,
         outlineEntries: done.write.counts.outlineEntries,
         issues: done.write.issues.filter((issue) => issue.severity !== 'error').map((issue) => ({ severity: issue.severity, code: issue.code, message: issue.message, ...(issue.frameId !== undefined ? { frameId: issue.frameId } : {}) })),
+        check: {
+          wouldImport: done.check?.ok ?? true,
+          features: done.check?.features ?? done.write.manifest.features ?? [],
+          frames: done.check?.frames?.length ?? done.write.counts.frames,
+          outlineEntries: done.check?.outline?.length ?? done.write.counts.outlineEntries,
+          warnings: done.check?.warnings.length ?? 0,
+          repairs: done.check?.repairs.length ?? 0,
+          steps: (done.check?.steps ?? []).map((step) => ({ step: step.step, name: step.name, status: step.status, detail: step.detail })),
+        },
       };
     } catch (error) {
       if (error instanceof McPrepError) {
@@ -160,6 +171,39 @@ export class DocumentService {
         };
       }
       return { ok: false, code: 'E_INTERNAL', message: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  defaultSummaryPath(): string {
+    const session = this.current();
+    return join(dirname(session.projectPath), `${basename(session.pdfPath, extname(session.pdfPath))}.book.json`);
+  }
+
+  /**
+   * Writes the plain JSON summary of the book: what it is, its sections with the number of book exercises (and solutions)
+   * in each, and the exercises of each section. The same facts, from the same code, as `mcprep book export --exercises`.
+   */
+  async exportBookSummary(outPath: string): Promise<BookSummaryOutcome> {
+    try {
+      const session = this.current();
+      await session.refresh();
+      const project = session.project;
+      const summary = buildBookSummary({
+        title: project.meta.title,
+        folder: project.meta.folder,
+        info: project.meta,
+        pageCount: project.pdf.pageCount,
+        sha256: project.pdf.sha256,
+        bytes: project.pdf.bytes,
+        frames: project.frames,
+        outline: project.outline?.entries,
+        exercises: true,
+      });
+      const text = `${JSON.stringify(summary, null, 2)}\n`;
+      await writeFileAtomic(outPath, text);
+      return { ok: true, path: outPath, bytes: Buffer.byteLength(text), sections: summary.totals.sections, exercises: summary.totals.exercises };
+    } catch (error) {
+      return { ok: false, message: error instanceof McPrepError ? (error.hint ? `${error.message} ${error.hint}` : error.message) : error instanceof Error ? error.message : String(error) };
     }
   }
 

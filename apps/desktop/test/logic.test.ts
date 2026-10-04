@@ -1,9 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { PdfDocument, newProject, proposeFrames, type Frame, type PageText, type Project } from '@mcprep/core';
-import type { Api, OpenedDocument, SaveOutcome } from '../src/shared/api.js';
+import { PdfDocument, newProject, type Frame, type PageText, type Project } from '@mcprep/core';
+import type { Api, OpenedDocument } from '../src/shared/api.js';
 import { describeChange, sectionCounts, summarizeChange } from '../src/renderer/logic/contents.js';
 import { HANDLES, frameAtTap, fromScreen, handlePositions, middleCut, rectFromCorners, resizeRect, toScreen, unitArea } from '../src/renderer/logic/geometry.js';
 import { Store, sameContent } from '../src/renderer/logic/store.js';
+import { fakeApi as fakeApiFor, openedDocument } from './helpers/fake-api.js';
 
 let sample: Uint8Array;
 let texts: PageText[];
@@ -22,45 +23,9 @@ afterEach(() => {
 
 const baseProject = (): Project => newProject({ pdf: { path: 'sheet.pdf', sha256: 'a'.repeat(64), bytes: 5446, pageCount: 3 }, title: 'Sheet', now: new Date('2026-10-03T12:00:00Z') });
 
-function fakeApi(overrides: Partial<Api> = {}): Api & { saved: Project[] } {
-  const saved: Project[] = [];
-  const api: Api = {
-    chooseAndOpenPdf: () => Promise.resolve(null),
-    chooseAndOpenProject: () => Promise.resolve(null),
-    openPath: () => Promise.resolve({ ok: false, message: 'no' }),
-    pathForFile: () => '',
-    recent: () => Promise.resolve([{ path: 'x.mcprep.json', title: 'X', openedAt: '2026-10-03T12:00:00Z' }]),
-    readPdf: () => Promise.resolve(sample),
-    pageText: (page) => Promise.resolve(texts[page] as PageText),
-    propose: () => Promise.resolve(proposeFrames(texts)),
-    deriveOutline: () => Promise.resolve([{ title: 'Calculus Sheet 1', page: 0, depth: 0, confidence: 0.9, evidence: ['large'] }]),
-    saveProject: (project, expected) => {
-      saved.push(project);
-      const written: Project = { ...project, revision: expected + 1, updatedAt: '2026-10-03T13:00:00Z', modifiedBy: 'desktop' };
-      return Promise.resolve<SaveOutcome>({ ok: true, project: written });
-    },
-    reloadProject: () => Promise.resolve(baseProject()),
-    exportBundle: () => Promise.resolve({ ok: true, path: 'C:/out/sheet.mcbundle', bytes: 100, frames: 3, outlineEntries: 0, issues: [] }),
-    copyToFolder: () => Promise.resolve('D:/tablet/sheet.mcbundle'),
-    reveal: () => Promise.resolve(),
-    onDiskChange: () => () => undefined,
-    onMenu: () => () => undefined,
-    setDirty: () => undefined,
-    ready: () => undefined,
-    ...overrides,
-  };
-  return Object.assign(api, { saved });
-}
+const fakeApi = (overrides: Partial<Api> = {}): ReturnType<typeof fakeApiFor> => fakeApiFor({ pdf: () => sample, texts: () => texts, fresh: baseProject }, overrides);
 
-function opened(project: Project = baseProject()): OpenedDocument {
-  return {
-    projectPath: 'C:/work/sheet.mcprep.json',
-    pdfPath: 'C:/work/sheet.pdf',
-    project,
-    pageSizes: [0, 1, 2].map(() => ({ width: 595, height: 842, rotation: 0 })),
-    pdfOutline: [{ title: 'Differentiation', page: 0, depth: 0 }],
-  };
-}
+const opened = (project: Project = baseProject()): OpenedDocument => openedDocument(project);
 
 async function started(api = fakeApi()): Promise<{ store: Store; api: ReturnType<typeof fakeApi> }> {
   const store = new Store(api);

@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { useOutsideClick, useStore } from '../hooks.js';
+import { BOOK_COLOR, SOLUTION_COLOR } from '../logic/colors.js';
 import type { Store, Tool } from '../logic/store.js';
 
 interface ToolSpec {
@@ -13,9 +14,11 @@ interface ToolSpec {
 
 export const TOOLS: ToolSpec[] = [
   { tool: 'select', symbol: '⬚', label: 'Select', info: 'Click a frame to select it. Drag to move it, drag a handle to resize it.', color: '#475569', key: 'V' },
-  { tool: 'exercise', symbol: '✏', label: 'Exercise', info: 'Drag around one exercise. Click a line for a one-line frame.', color: '#4f46e5', key: 'E' },
-  { tool: 'parts', symbol: '▤', label: 'Parts', info: 'Drag around an exercise with parts: slicers cut it. Click a frame to cut it.', color: '#4f46e5', key: 'P' },
-  { tool: 'context', symbol: '📄', label: 'Context', info: 'Select an exercise, then drag around its instruction.', color: '#64748b', key: 'C' },
+  { tool: 'exercise', symbol: '✏', label: 'Exercise', info: 'Drag around one exercise you frame for yourself (E1, E2, ...). Click a line for a one-line frame. It can be cut into parts.', color: '#4f46e5', key: 'E' },
+  { tool: 'book', symbol: '📖', label: 'Book exercise', info: 'Drag around one exercise as the book prints it, then give its printed number (5, 5a, A.3) and its section. It is a single exercise: 5a and 5b are two exercises, and the statement they share is their context.', color: BOOK_COLOR, key: 'A' },
+  { tool: 'parts', symbol: '▤', label: 'Parts', info: 'Drag around an exercise with parts: slicers cut it. Click a frame to cut it. Not for book exercises: the parts of a printed exercise are separate book exercises.', color: '#4f46e5', key: 'P' },
+  { tool: 'context', symbol: '📄', label: 'Context', info: 'Select an exercise (book or ordinary), then drag around its instruction. The learner sees it with the exercise.', color: '#64748b', key: 'C' },
+  { tool: 'solution', symbol: '🔑', label: 'Solution', info: 'Select an exercise, go to the answer key (any page of this PDF) and drag around its answer. It is hidden from the learner and only used to grade.', color: SOLUTION_COLOR, key: 'L' },
   { tool: 'continues', symbol: '↪', label: 'Continue', info: 'Select a frame, then drag where it goes on (next column or page).', color: '#4f46e5', key: 'N' },
   { tool: 'question', symbol: '?', label: 'Question', info: 'Drag around what you want to ask the tutor about.', color: '#0d9488', key: 'Q' },
   { tool: 'bookmark', symbol: '🔖', label: 'Bookmark', info: 'Drag around a definition or theorem to keep.', color: '#7c3aed', key: 'B' },

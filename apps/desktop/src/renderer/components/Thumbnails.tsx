@@ -1,6 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useEffect, useRef } from 'preact/hooks';
 import { useStore } from '../hooks.js';
+import { frameIndex } from '../logic/model.js';
 import type { Store } from '../logic/store.js';
 import { drawPage } from '../pdf.js';
 
@@ -42,8 +43,7 @@ function Thumb({ pdf, page, current, count, onSelect }: { pdf: PDFDocumentProxy;
 export function Thumbnails({ store, pdf }: { store: Store; pdf: PDFDocumentProxy | null }): preact.JSX.Element {
   const state = useStore(store);
   const pages = state.doc?.pageSizes.length ?? 0;
-  const counts = new Map<number, number>();
-  for (const frame of state.project?.frames ?? []) counts.set(frame.page, (counts.get(frame.page) ?? 0) + 1);
+  const counts = frameIndex(state.project?.frames ?? []).perPage;
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
     list.current?.querySelector('.thumb.current')?.scrollIntoView({ block: 'nearest' });

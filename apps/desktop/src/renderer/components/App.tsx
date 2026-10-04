@@ -9,7 +9,7 @@ import { SidePanel } from './Panels.js';
 import { Thumbnails } from './Thumbnails.js';
 import { ToolRail, TopBar } from './Toolbar.js';
 
-const KEY_TOOLS: Record<string, Tool> = { v: 'select', e: 'exercise', p: 'parts', c: 'context', n: 'continues', q: 'question', b: 'bookmark' };
+const KEY_TOOLS: Record<string, Tool> = { v: 'select', e: 'exercise', a: 'book', p: 'parts', c: 'context', l: 'solution', n: 'continues', q: 'question', b: 'bookmark' };
 
 export function App({ store }: { store: Store }): preact.JSX.Element {
   const state = useStore(store);
@@ -75,7 +75,7 @@ export function App({ store }: { store: Store }): preact.JSX.Element {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
       if (!store.state.project) return;
       const mod = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
@@ -100,6 +100,8 @@ export function App({ store }: { store: Store }): preact.JSX.Element {
         }
       } else if (!mod && key === 'escape') {
         if (store.state.exporting.open) store.closeExport();
+        else if (store.state.draft) store.cancelDraft();
+        else if (store.state.picking !== null) store.pickHeading(null);
         else if (store.state.tool !== 'select') store.setTool('select');
         else store.select(null);
       } else if (!mod && key === 'arrowright') store.setPage(store.state.page + 1);

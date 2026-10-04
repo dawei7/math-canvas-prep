@@ -20,6 +20,7 @@ const api: Api = {
   saveProject: (project, expectedRevision) => invoke('saveProject', project, expectedRevision),
   reloadProject: () => invoke('reloadProject'),
   exportBundle: (options) => invoke('exportBundle', options),
+  exportBookSummary: () => invoke('exportBookSummary'),
   copyToFolder: (path) => invoke('copyToFolder', path),
   reveal: (path) => invoke('reveal', path),
   onDiskChange: (listener) => {

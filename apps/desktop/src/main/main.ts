@@ -193,6 +193,12 @@ function registerIpc(): void {
     if (picked.canceled || picked.filePath === undefined) return null;
     return service.exportBundle(picked.filePath, options.outline);
   });
+  handle('exportBookSummary', async () => {
+    if (!mainWindow) return null;
+    const picked = await dialog.showSaveDialog(mainWindow, { title: 'Export the book summary', defaultPath: service.defaultSummaryPath(), filters: [{ name: 'Book summary (JSON)', extensions: ['json'] }] });
+    if (picked.canceled || picked.filePath === undefined) return null;
+    return service.exportBookSummary(picked.filePath);
+  });
   handle('copyToFolder', async (path: string) => {
     if (!mainWindow) return null;
     const picked = await dialog.showOpenDialog(mainWindow, { title: 'Copy the bundle to a folder', properties: ['openDirectory', 'createDirectory'] });

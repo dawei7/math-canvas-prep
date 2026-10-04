@@ -35,9 +35,24 @@ export interface ProposeRequest {
   graphics?: boolean;
 }
 
+/** What the importer check (the same steps the Android app takes) found in the bundle that was just written. */
+export interface ImporterCheck {
+  wouldImport: boolean;
+  /** The optional parts of the format the bundle says it uses (`sections`, `authority`, `solution`). */
+  features: string[];
+  frames: number;
+  outlineEntries: number;
+  warnings: number;
+  repairs: number;
+  steps: { step: number; name: string; status: string; detail: string }[];
+}
+
 export type ExportOutcome =
-  | { ok: true; path: string; bytes: number; frames: number; outlineEntries: number; issues: { severity: string; code: string; message: string; frameId?: string }[] }
+  | { ok: true; path: string; bytes: number; frames: number; outlineEntries: number; issues: { severity: string; code: string; message: string; frameId?: string }[]; check: ImporterCheck }
   | { ok: false; code: string; message: string; hint?: string; issues?: { severity: string; code: string; message: string; frameId?: string; fix?: string }[] };
+
+/** The result of writing the plain JSON summary of the book (sections with their exercise counts). */
+export type BookSummaryOutcome = { ok: true; path: string; bytes: number; sections: number; exercises: number } | { ok: false; message: string };
 
 export interface DerivedHeading extends OutlineEntry {
   confidence: number;
@@ -71,6 +86,8 @@ export interface Api {
   reloadProject(): Promise<Project>;
   /** Exports the saved project; asks where to write unless `outPath` is given. Null when cancelled. */
   exportBundle(options: { outline: 'project' | 'pdf' | 'none' }): Promise<ExportOutcome | null>;
+  /** Writes the book summary (JSON) of the saved project; asks where to write it. Null when cancelled. */
+  exportBookSummary(): Promise<BookSummaryOutcome | null>;
   /** Copies a file into a folder the person chooses; returns the new path or null. */
   copyToFolder(path: string): Promise<string | null>;
   reveal(path: string): Promise<void>;
