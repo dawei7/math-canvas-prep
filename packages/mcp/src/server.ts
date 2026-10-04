@@ -5,7 +5,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { run } from '@mcprep/cli';
 import { VERSION, readAgentGuide } from '@mcprep/core';
 import { z } from 'zod';
-import { dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
+import { capLists, dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
 import { BOOK_INSTRUCTIONS, registerBookTools } from './book-tools.js';
 
 /**
@@ -66,7 +66,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
       const failure = { ok: false, exitCode: done.code, error: envelope.error, ...(envelope.result ? { result: envelope.result } : {}) };
       return { isError: true, content: [text(failure)], structuredContent: failure };
     }
-    const body = { ...(envelope.result ?? {}), ...(envelope.warnings && envelope.warnings.length > 0 ? { warnings: envelope.warnings } : {}), ...(envelope.notes && envelope.notes.length > 0 ? { notes: envelope.notes } : {}) };
+    const body = capLists({ ...(envelope.result ?? {}), ...(envelope.warnings && envelope.warnings.length > 0 ? { warnings: envelope.warnings } : {}), ...(envelope.notes && envelope.notes.length > 0 ? { notes: envelope.notes } : {}) });
     // validate and import_check report "not ok" through their exit code but are not tool failures.
     return { content: [text(body), ...extraContent], structuredContent: body };
   }

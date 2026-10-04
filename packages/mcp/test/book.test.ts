@@ -206,3 +206,27 @@ describe('a whole audit through the tools', () => {
     expect(inspected).toMatchObject({ ok: true, summary: { totals: { exercises: 10, sections: 7 } } });
   });
 });
+
+describe('a result that would flood a model', () => {
+  it('cuts the long lists, says how many were left out, and keeps the ids and the counts whole', async () => {
+    const created = await call('create_project', { pdf: join(dir, 'book.pdf'), project: join(dir, 'large.mcprep.json'), title: 'Large' });
+    expect(created.isError).toBeUndefined();
+    await call('set_outline', { entries: [{ title: 'Everything', page: 0, depth: 0, id: 'all' }] });
+    const operations = Array.from({ length: 600 }, (_unused, i) => ({ op: 'add', authority: 'book', label: String(i + 1), section: 'all', page: i % 3, rect: [0.1, 0.05 + (i % 30) * 0.03, 0.9, 0.05 + (i % 30) * 0.03 + 0.025] }));
+    const applied = await call('apply_operations', { operations, force: true });
+    expect(applied.isError).toBeUndefined();
+    const body = data(applied);
+    expect((body['frames'] as unknown[]).length).toBe(500);
+    expect(body['framesOmitted']).toBe(100);
+    expect((body['created'] as string[]).length).toBe(600);
+    expect((body['steps'] as unknown[]).length).toBe(500);
+    expect(body['stepsOmitted']).toBe(100);
+    expect(body['book']).toMatchObject({ exercises: 600 });
+    const list = data(await call('exercises_list'));
+    expect((list['exercises'] as unknown[]).length).toBe(500);
+    expect(list).toMatchObject({ exercisesOmitted: 100, count: 600, totals: { exercises: 600 } });
+    const section = data(await call('list_frames', { section: 'all', page: 1 }));
+    expect((section['frames'] as unknown[]).length).toBe(200);
+    expect(section).not.toHaveProperty('framesOmitted');
+  });
+});

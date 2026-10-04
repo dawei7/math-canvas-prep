@@ -649,7 +649,7 @@ Options:
 - `--label <5a>`: With --authority book: the number exactly as the book prints it, without the closing "." or ")" (5, 12, 5a, A.3).
 - `--section <id>`: With --authority book: the id of the outline entry (section) the exercise belongs to (`mcprep outline` lists them).
 - `--solution <page:l,t,r,b>`: A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 8. Exercises only.
-- `--replace`: With --authority book: if the exercise (same section and label) already exists, overwrite it in place (page, rect and continuation; context and solution when given) instead of failing.
+- `--replace`: With --authority book: if the exercise (same section and label) already exists, overwrite it in place, keeping its id, instead of failing: page, rect and continuation are replaced; context and solution are replaced when you give them and kept otherwise.
 - `--dry-run`: Compute and validate the change, but do not write the project.
 - `--force`: Write the change even if it introduces validation errors.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
@@ -1121,7 +1121,7 @@ Options:
 - `--continues <page:l,t,r,b>`: A further region of the same exercise, e.g. on the next page; repeatable, up to 8.
 - `--solution <page:l,t,r,b>`: Where the answer is printed in this PDF (the answer key at the back, say): hidden from the learner, used only to grade; repeatable, up to 8.
 - `--no-enlarge`: Refuse a rect below the minimum size instead of enlarging it.
-- `--replace`: If the exercise (same section and label) already exists, overwrite it in place instead of failing: page, rect and continuation are replaced; context and solution when given (an empty list is not possible here: use `solution clear` / `context remove`).
+- `--replace`: If the exercise (same section and label) already exists, overwrite it in place instead of failing, keeping its id: page, rect and continuation are replaced (none given: none left); context and solution are replaced when you give them and kept otherwise (clear them with `context remove` and `solution clear`).
 - `--dry-run`: Compute and validate the change, but do not write the project.
 - `--force`: Write the change even if it introduces validation errors.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.

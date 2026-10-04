@@ -141,6 +141,13 @@ describe('applying the same batch twice', () => {
     expect(changed.frames).toHaveLength(1);
   });
 
+  it('adds the exercise when there is nothing to replace', () => {
+    const result = applyOperations(bookProject(), [add({ replace: true })], ctx);
+    expect(result.created).toEqual(['f1']);
+    expect(result.replaced).toBeUndefined();
+    expect(result.project.frames).toHaveLength(1);
+  });
+
   it('keeps the id it has and says so when the operation offers another', () => {
     const project = apply(bookProject(), add());
     const result = applyOperation(project, add({ replace: true, id: 'mine' }), ctx);

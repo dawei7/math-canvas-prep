@@ -16,6 +16,10 @@ How to mark a PDF well is in the [agent guide](AGENT_GUIDE.md). The server offer
 displayed page with the origin at the top-left, positional labels that are never stored, the workflow, and how a book is audited:
 two kinds of exercise, labels as printed, sections, context versus hidden solution regions).
 
+Long lists in a result (`frames`, `steps`, `exercises`, `solutions`, `warnings`) are cut after 500 entries so that a book of thousands of
+exercises does not flood a model's context; a field such as `framesOmitted` says how many were left out. Errors, the lists of created ids
+and the counts are never cut, and the command line (`--json`) prints everything.
+
 The server makes no network calls and sends nothing anywhere. It writes nothing but protocol messages to standard output.
 
 ## Run it

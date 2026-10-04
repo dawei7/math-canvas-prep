@@ -29,6 +29,31 @@ export const flags = (args: { snap?: boolean | undefined; dryRun?: boolean | und
 
 type Json = Record<string, unknown>;
 
+/** Lists in a result that are cut when they are longer than {@link LIST_LIMIT}: a book has thousands of exercises, a model's context does not. */
+const LONG_LISTS = ['frames', 'steps', 'exercises', 'solutions', 'warnings'] as const;
+export const LIST_LIMIT = 500;
+
+/**
+ * The result with its long lists cut to the first {@link LIST_LIMIT} entries; `<name>Omitted` says how many were left out
+ * (so the client knows and can ask for less: a section, a page). Errors are never cut. The `created`, `replaced` and
+ * `removed` id lists and the counts stay whole.
+ */
+export function capLists(body: Json): Json {
+  let out = body;
+  const cut = (holder: Json, key: string): Json => {
+    const value = holder[key];
+    if (!Array.isArray(value) || value.length <= LIST_LIMIT) return holder;
+    return { ...holder, [key]: value.slice(0, LIST_LIMIT), [`${key}Omitted`]: value.length - LIST_LIMIT };
+  };
+  for (const key of LONG_LISTS) out = cut(out, key);
+  const validation = out['validation'];
+  if (typeof validation === 'object' && validation !== null && !Array.isArray(validation)) {
+    const cutValidation = cut(validation as Json, 'warnings');
+    if (cutValidation !== validation) out = { ...out, validation: cutValidation };
+  }
+  return out;
+}
+
 /** What running a command line in process gave back: the exit code and the JSON document it printed. */
 export interface CliResult {
   code: number;

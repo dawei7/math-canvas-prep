@@ -269,6 +269,8 @@ Mixed documents are common (typeset pages and scanned pages): `propose` works on
   through a line of text), `includes-header-footer`, `context-overlaps-frame`, `unit-single`, `no-frames`. Fix them unless you
   have a reason.
 
+The extra rules about book exercises, sections and solutions (and their codes) are in 14.6.
+
 A command that would introduce an error is refused (`E_REJECTED`, exit code 4) and writes nothing; `--force` writes anyway (do not,
 unless you intend to fix it in the next command). `--dry-run` previews any change.
 
@@ -302,6 +304,7 @@ removed. The result lists repairs and warnings. Then tell the user, briefly:
 - Do not edit the PDF, and do not copy the PDF into other places than the bundle. Do not upload anything.
 - Do not mark questions the user did not ask for.
 - Do not export with errors by forcing: fix them.
+- Auditing a whole book as an authority has rules of its own (labels as printed, no parts, sections, hidden solutions): 14.7.
 
 ## 12. Recipes
 
@@ -326,7 +329,9 @@ exercise that continues on the next page and a definition as a bookmark.
 ```
 
 Operations: `add`, `update`, `delete`, `move`, `split`, `merge`, `dividers`, `area`, `context.add`, `context.remove`, `context.set`,
-`continues.add`, `continues.remove`, `outline.set`, `outline.add`, `outline.clear`, `meta.set`. Their fields are the options of the
+`continues.add`, `continues.remove`, `outline.set`, `outline.add`, `outline.clear`, `meta.set`, and for books (chapter 14)
+`authority.mark`, `authority.unmark`, `label.set`, `section.set`, `solution.add`, `solution.remove`, `solution.set`,
+`outline.update`, `outline.delete`, `outline.ids`. Their fields are the options of the
 matching commands (`mcprep help frames split`, ...). Apply with `mcprep frames apply batch.json` (or `-` for standard input);
 `--dry-run` first if you like.
 
