@@ -1,11 +1,11 @@
-import { KIND_COLORS, isAuthoritative, linesInRect, type Frame, type Issue, type OutlineEntry } from '@mcprep/core/pure';
+import { KIND_COLORS, isAuthoritative, linesInRect, type Frame, type Issue } from '@mcprep/core/pure';
 import { useStore } from '../hooks.js';
 import { frameColor } from '../logic/colors.js';
-import { sectionCounts } from '../logic/contents.js';
 import { guiFix } from '../logic/errors.js';
 import { frameIndex, labelOf } from '../logic/model.js';
 import type { Store, Tab } from '../logic/store.js';
 import { Inspector } from './Inspector.js';
+import { SectionsPanel } from './SectionsPanel.js';
 import { Info } from './Toolbar.js';
 
 const KIND_SYMBOL = { exercise: '✏', question: '?', bookmark: '🔖' } as const;
@@ -78,100 +78,6 @@ function FramesPanel({ store }: { store: Store }): preact.JSX.Element {
         {index.book.length > 0 ? <span class="count book" title="Book exercises">📖 {index.book.length}</span> : null}
       </div>
       {frames.length === 0 ? <p class="empty">No frames yet. Pick a tool, drag around an exercise, or use Propose.</p> : <ul class="rows">{rows}</ul>}
-    </div>
-  );
-}
-
-// ----------------------------------------------------------------------------------------------------- contents
-
-function ContentsPanel({ store }: { store: Store }): preact.JSX.Element {
-  const state = useStore(store);
-  const project = state.project;
-  const doc = state.doc;
-  if (!project || !doc) return <div class="panel-body" />;
-  const own = project.outline;
-  const entries: OutlineEntry[] = own?.entries ?? doc.pdfOutline ?? [];
-  const sections = sectionCounts(entries, project.frames, doc.pageSizes.length);
-  const edit = (next: OutlineEntry[]): void => store.setOutline(next, 'manual');
-  const update = (index: number, change: Partial<OutlineEntry>): void => edit(entries.map((entry, i) => (i === index ? { ...entry, ...change } : entry)));
-  const move = (index: number, by: number): void => {
-    const target = index + by;
-    if (target < 0 || target >= entries.length) return;
-    const next = [...entries];
-    const [item] = next.splice(index, 1);
-    next.splice(target, 0, item as OutlineEntry);
-    edit(next);
-  };
-  return (
-    <div class="panel-body">
-      <div class="panel-head column">
-        <span class="muted">
-          {own ? `The bundle carries this contents (${own.source}).` : doc.pdfOutline ? 'The bundle carries no contents of its own: the app reads the PDF\'s bookmarks (shown below).' : 'The PDF has no bookmarks and there is no contents yet.'}
-        </span>
-        <div class="button-row">
-          {doc.pdfOutline ? <button class="text-button small" onClick={() => store.setOutline(doc.pdfOutline ?? [], 'pdf')}>{own ? 'Reset to PDF' : 'Edit PDF bookmarks'}</button> : null}
-          <button class="text-button small" onClick={() => void store.deriveContents()}>Find headings</button>
-          <button class="text-button small" disabled={!own} onClick={() => store.clearOutline()}>Use the PDF's</button>
-          <button class="text-button small" onClick={() => edit([...entries, { title: 'New section', page: state.page, depth: 0 }])}>Add</button>
-        </div>
-      </div>
-      {state.busy ? <p class="muted pad">{state.busy}</p> : null}
-      {entries.length === 0 ? null : (
-        <ul class="rows outline">
-          {entries.map((entry, index) => {
-            const counts = (sections[index] as ReturnType<typeof sectionCounts>[number]).counts;
-            return (
-              <li key={index} class="row outline-row" style={{ paddingLeft: `${8 + entry.depth * 16}px` }}>
-                <button class="mini-button" disabled={entry.depth === 0} onClick={() => update(index, { depth: entry.depth - 1 })} aria-label="Less indent" title="Less indent">◂</button>
-                <button class="mini-button" disabled={entry.depth >= 8} onClick={() => update(index, { depth: entry.depth + 1 })} aria-label="More indent" title="More indent">▸</button>
-                <input
-                  class="title-input"
-                  value={entry.title}
-                  aria-label="Title"
-                  onChange={(event) => update(index, { title: (event.target as HTMLInputElement).value })}
-                  onKeyDown={(event) => event.stopPropagation()}
-                />
-                <input
-                  class="page-field"
-                  value={String(entry.page + 1)}
-                  aria-label="Page"
-                  title="Page"
-                  onChange={(event) => {
-                    const page = Number.parseInt((event.target as HTMLInputElement).value, 10);
-                    if (Number.isFinite(page)) update(index, { page: Math.min(Math.max(page - 1, 0), doc.pageSizes.length - 1) });
-                  }}
-                  onKeyDown={(event) => event.stopPropagation()}
-                />
-                <button class="mini-button" onClick={() => store.setPage(entry.page)} title="Show the page" aria-label="Go to page">↗</button>
-                <Counts exercise={counts.exercise} question={counts.question} bookmark={counts.bookmark} />
-                <button class="mini-button" onClick={() => move(index, -1)} aria-label="Move up" title="Move up">▲</button>
-                <button class="mini-button" onClick={() => move(index, 1)} aria-label="Move down" title="Move down">▼</button>
-                <button class="row-delete" onClick={() => edit(entries.filter((_unused, i) => i !== index))} aria-label="Remove entry">×</button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {state.derived ? (
-        <div class="derived">
-          <div class="panel-head">
-            <strong>Headings found ({state.derived.length})</strong>
-            <button class="text-button small primary" disabled={state.derived.length === 0} onClick={() => store.setOutline(state.derived?.map(({ title, page, depth }) => ({ title, page, depth })) ?? [], 'derived')}>
-              Use these
-            </button>
-          </div>
-          <ul class="rows">
-            {state.derived.map((heading, index) => (
-              <li key={index} class="row" style={{ paddingLeft: `${8 + heading.depth * 16}px` }}>
-                <span class="row-text">{heading.title}</span>
-                <span class="muted">p{heading.page + 1}</span>
-                <span class="muted">{Math.round(heading.confidence * 100)}%</span>
-                <Info text={heading.evidence.join('. ')} label={heading.title} />
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -260,7 +166,7 @@ export function SidePanel({ store }: { store: Store }): preact.JSX.Element {
   const warnings = state.validation?.warnings.length ?? 0;
   const tabs: { id: Tab; label: string; badge?: string; bad?: boolean }[] = [
     { id: 'frames', label: 'Frames', badge: String(state.project?.frames.length ?? 0) },
-    { id: 'sections', label: 'Sections', badge: String((state.project?.outline?.entries ?? state.doc?.pdfOutline ?? []).length) },
+    { id: 'sections', label: 'Sections', badge: String((state.project?.outline?.entries ?? []).length) },
     { id: 'checks', label: 'Checks', badge: errors > 0 ? String(errors) : warnings > 0 ? String(warnings) : '✓', bad: errors > 0 },
     { id: 'propose', label: 'Propose', badge: state.proposals ? String(store.pendingProposals().length) : undefined },
   ];
@@ -276,7 +182,7 @@ export function SidePanel({ store }: { store: Store }): preact.JSX.Element {
         ))}
       </div>
       {state.tab === 'frames' ? <FramesPanel store={store} /> : null}
-      {state.tab === 'sections' ? <ContentsPanel store={store} /> : null}
+      {state.tab === 'sections' ? <SectionsPanel store={store} /> : null}
       {state.tab === 'checks' ? <ChecksPanel store={store} /> : null}
       {state.tab === 'propose' ? <ProposePanel store={store} /> : null}
     </aside>

@@ -123,18 +123,21 @@ function BookFields({ store, frame }: { store: Store; frame: Frame }): preact.JS
  */
 export function Inspector({ store }: { store: Store }): preact.JSX.Element | null {
   const state = useStore(store);
+  const project = state.project;
+  const frame = state.selection === null || !project ? undefined : frameIndex(project.frames).byId.get(state.selection);
+  // One card per selected frame: what was open in the card of the last one does not carry over.
+  return frame ? <InspectorCard key={frame.id} store={store} frameId={frame.id} /> : null;
+}
+
+function InspectorCard({ store, frameId }: { store: Store; frameId: string }): preact.JSX.Element | null {
+  const state = useStore(store);
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const project = state.project;
   const index = frameIndex(project?.frames ?? []);
-  const frame = state.selection === null ? undefined : index.byId.get(state.selection);
+  const frame = index.byId.get(frameId);
   const owner = frame !== undefined && frame.unit !== undefined ? (index.units.get(frame.unit)?.[0] ?? frame) : frame;
   const pagesKey = frame === undefined ? '' : [...(owner?.context ?? []), ...(frame.solution ?? []), ...(frame.continues ?? [])].map((region) => region.page).join(',');
-
-  useEffect(() => {
-    setMarking(false);
-    setError(null);
-  }, [state.selection]);
 
   useEffect(() => {
     if (pagesKey !== '') void store.ensureTexts(pagesKey.split(',').map(Number));

@@ -1012,7 +1012,7 @@ button:disabled {
   font-size: 12px;
 }
 
-.field > span {
+.field > span:first-child {
   flex: none;
   width: 92px;
   color: var(--muted);
@@ -1057,7 +1057,7 @@ button:disabled {
   z-index: 12;
 }
 
-.draft-form .field > span {
+.draft-form .field > span:first-child {
   width: 84px;
 }
 
@@ -1156,4 +1156,224 @@ button:disabled {
   left: auto;
   right: -6px;
   width: 240px;
+}
+
+/* ------------------------------------------------------------------ virtual lists */
+
+.panel-body.fill {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.panel-body.fill > .panel-head,
+.panel-body.fill > .section-editor,
+.panel-body.fill > .derived {
+  flex: none;
+}
+
+.panel-body.fill > .derived {
+  max-height: 34%;
+  overflow-y: auto;
+}
+
+.vlist {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.vlist-inner {
+  position: relative;
+}
+
+.vrow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  overflow: hidden;
+}
+
+.vrow:hover {
+  background: var(--panel-2);
+}
+
+.mono {
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 11px;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+  font-size: 12px;
+}
+
+.warn-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.warn-line.bad {
+  color: var(--bad);
+}
+
+.warn-line.note {
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------- sections */
+
+.commit-input {
+  flex: 1;
+  min-width: 0;
+  height: 25px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+}
+
+.commit-input.mono {
+  font-family: Consolas, 'Cascadia Mono', monospace;
+  font-size: 12px;
+}
+
+.commit-input.narrow {
+  flex: none;
+  width: 84px;
+}
+
+.commit-input.search {
+  flex: 1;
+}
+
+.inline-label {
+  flex: none;
+  color: var(--muted);
+}
+
+.section-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border-bottom: 2px solid var(--line);
+  background: color-mix(in srgb, #f59e0b 6%, var(--panel));
+  max-height: 55%;
+  overflow-y: auto;
+}
+
+.delete-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line));
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.delete-panel p {
+  margin: 0;
+}
+
+.section-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding-right: 10px;
+  cursor: pointer;
+}
+
+.section-row.selected {
+  background: color-mix(in srgb, #f59e0b 16%, var(--panel));
+}
+
+.section-row.has-problem .problem {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.chevron {
+  flex: none;
+  width: 18px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.section-chip {
+  flex: none;
+  min-width: 0;
+  max-width: 78px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #b45309;
+  border-radius: 4px;
+}
+
+.section-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.section-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.section-sub {
+  display: flex;
+  gap: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.section-counts {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-size: 12px;
+}
+
+.coverage.full {
+  color: var(--ok);
+}
+
+.coverage.partial {
+  color: var(--warn);
+}
+
+.coverage.none {
+  color: var(--muted);
+}
+
+/* The headings of the sections on the page that is showing, while the Sections list is open. */
+.section-mark line {
+  vector-effect: non-scaling-stroke;
+}
+
+.section-mark text {
+  font: 600 10px 'Segoe UI', system-ui, sans-serif;
+  fill: #fff;
 }

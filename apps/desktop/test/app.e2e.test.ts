@@ -254,14 +254,16 @@ describe.skipIf(!available)('the desktop app', () => {
     await tool('Select');
   });
 
-  it('lists the frames, the contents with counts, the checks and lets the contents be edited', async () => {
+  it('lists the frames, the sections (the bookmarks of the PDF, with ids), the checks and lets a section be edited', async () => {
     await win.locator('.tab', { hasText: 'Frames' }).click();
     expect(await win.locator('.rows .row').count()).toBeGreaterThan(8);
     await win.locator('.tab', { hasText: 'Sections' }).click();
-    expect(await win.locator('.outline-row').count()).toBe(4);
-    expect(await win.locator('.outline-row').first().innerText()).toMatch(/\d/);
-    await win.getByText('Edit PDF bookmarks').click();
-    const title = win.locator('.outline-row .title-input').first();
+    await win.getByRole('button', { name: "Use the PDF's bookmarks" }).click();
+    await win.waitForSelector('.section-row');
+    expect(await win.locator('.section-row').count()).toBe(4);
+    expect(await win.locator('.section-row').first().innerText()).toMatch(/\d/);
+    await win.locator('.section-row').first().click();
+    const title = win.locator('.section-editor input[aria-label="Title"]');
     await title.fill('Renamed chapter');
     await title.press('Enter');
     await win.waitForFunction(() => (window as unknown as { __store: { state: { project: { outline?: { entries: { title: string }[] } } } } }).__store.state.project.outline?.entries[0]?.title === 'Renamed chapter');

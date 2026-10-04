@@ -328,6 +328,8 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
     );
   };
 
+  // Where the sections start on this page, while the Sections list is open: a dotted line at the heading.
+  const sectionMarks = state.tab === 'sections' ? store.book().entries.flatMap((entry, at) => (entry.page === state.page ? [{ entry, at }] : [])) : [];
   const standalone = content.frames.filter((frame) => frame.unit === undefined);
   const unitsOnPage = [...new Set(content.frames.filter((frame) => frame.unit !== undefined).map((frame) => frame.unit as string))];
   const chips = placeChips(
@@ -629,6 +631,21 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
                   {...(own && state.tool === 'select' ? { remove: () => store.removeRegion('solution', region.frame.id, region.index) } : {})}
                 />
                 {placed ? <ChipShape chip={placed} label={`S ${labelOf(index, region.frame)}`} color={SOLUTION_COLOR} title="Solution: hidden from the learner" interactive={regionClickable} onDown={(event) => { event.stopPropagation(); store.select(region.frame.id); }} /> : null}
+              </g>
+            );
+          })}
+          {sectionMarks.map(({ entry, at }) => {
+            const y = (entry.top ?? 0) * box.height;
+            const name = `${entry.label ?? ''} ${entry.id !== undefined ? `(${entry.id})` : '(no id)'}`.trim();
+            const width = name.length * 6.2 + 12;
+            const strong = state.sectionSelection === at;
+            return (
+              <g class={`section-mark ${strong ? 'selected' : ''}`} key={`section-${at}`} data-index={at} style={{ pointerEvents: 'none' }}>
+                <line x1={0} x2={box.width} y1={y} y2={y} stroke="#f59e0b" stroke-width={strong ? 2.5 : 1.5} stroke-dasharray="2 4" />
+                <rect x={box.width - width - 4} y={y - 17} width={width} height={16} rx={3} fill="#f59e0b" />
+                <text x={box.width - width / 2 - 4} y={y - 8.5} text-anchor="middle" dominant-baseline="middle">
+                  {name}
+                </text>
               </g>
             );
           })}

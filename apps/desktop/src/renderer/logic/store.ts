@@ -805,12 +805,12 @@ export class Store {
     this.set({ collapsedSections });
   }
 
-  /** Where the next section goes: after the entry and everything below it (a sibling), else at the end. */
-  private insertionPoint(after: number | undefined): { at: number; depth: number } {
+  /** Where the next section goes: after the entry and everything below it (a sibling, or its last child), else at the end. */
+  private insertionPoint(after: number | undefined, child: boolean): { at: number; depth: number } {
     const model = this.book();
     const node = after === undefined ? undefined : model.tree.nodes[after];
     if (!node) return { at: model.entries.length, depth: 0 };
-    return { at: node.subtreeEnd, depth: node.depth };
+    return { at: node.subtreeEnd, depth: child ? node.depth + 1 : node.depth };
   }
 
   /** The operation that makes the PDF's own bookmarks the project's outline, when it has none: editing starts from them. */
@@ -819,10 +819,10 @@ export class Store {
     return !project?.outline && doc?.pdfOutline ? [{ op: 'outline.set', entries: doc.pdfOutline, source: 'pdf' }] : [];
   }
 
-  /** Adds a section after the given one (a sibling), at the page shown. */
-  addSection(options: { title?: string; after?: number; label?: string; id?: string } = {}): ApplyResult & { index?: number } {
+  /** Adds a section after the given one (a sibling, or with `child` a subsection at the end of it), at the page shown. */
+  addSection(options: { title?: string; after?: number; child?: boolean; label?: string; id?: string } = {}): ApplyResult & { index?: number } {
     const adopt = this.adoptFirst();
-    const { at, depth } = adopt.length > 0 ? { at: (this.state.doc?.pdfOutline ?? []).length, depth: 0 } : this.insertionPoint(options.after);
+    const { at, depth } = adopt.length > 0 ? { at: (this.state.doc?.pdfOutline ?? []).length, depth: 0 } : this.insertionPoint(options.after, options.child === true);
     const operation: Operation = { op: 'outline.add', title: options.title ?? 'New section', page: this.state.page, depth, at, ...(options.label !== undefined ? { label: options.label } : {}), ...(options.id !== undefined ? { id: options.id } : {}) };
     const result = this.apply([...adopt, operation], { quiet: true });
     if (!result.ok) {
@@ -840,7 +840,10 @@ export class Store {
     if (patch.id !== undefined) operation.newId = patch.id;
     if (patch.page !== undefined) operation.page = patch.page;
     if (patch.top !== undefined) operation.top = patch.top;
-    return this.apply([operation], { quiet: true });
+    const result = this.apply([operation], { quiet: true });
+    // Renaming an id takes the exercises of the section along: say how many.
+    if (result.ok && result.notes[0] !== undefined) this.notify('info', result.notes[0]);
+    return result;
   }
 
   /** Makes a section (and everything below it) one level deeper (+1) or shallower (-1), keeping the shape of its subtree. */

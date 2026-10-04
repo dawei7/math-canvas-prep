@@ -25,7 +25,7 @@ export function plainError(error: unknown): string {
     case 'E_SECTION':
       return 'Choose the section the exercise belongs to: an entry of the Sections list that has an id.';
     case 'E_SECTION_IN_USE':
-      return `${message.replace(/;.*$/, '.')} Move them to another section first, or delete them.`;
+      return `${message.replace(/ \([^)]*\)(?=;)/, '').replace(/;.*$/, '.')} Move them to another section first, or delete them.`;
     case 'E_DUPLICATE_EXERCISE':
       return `${message} Choose another number.`;
     case 'E_NO_SECTION':

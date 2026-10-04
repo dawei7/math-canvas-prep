@@ -365,6 +365,152 @@ describe.skipIf(!available)('auditing a book in the desktop app', () => {
     for (const label of ['1', '2', '3a']) expect(text).toContain(`"label":"${label}"`);
   });
 
+  it('lists the sections as a tree: printed number, title, id, page, the book exercises under each and how many have a solution', async () => {
+    const win = (running as Running).win;
+    await gotoPage(win, 0);
+    await tool(win, 'Select');
+    await win.keyboard.press('Escape');
+    await win.locator('.tab', { hasText: 'Sections' }).click();
+    expect(await win.locator('.section-row').count()).toBe(6);
+    expect(await win.locator('.tab.active .badge').innerText()).toBe('6');
+    const one = win.locator('.section-row', { hasText: 'id 1.1' });
+    const text = await one.innerText();
+    expect(text).toContain('1.1');
+    expect(text).toContain('Adding integers');
+    expect(text).toContain('p1');
+    expect(await one.locator('.count.book').innerText()).toBe('📖 4');
+    expect(await one.locator('.coverage').innerText()).toBe('🔑 3/4');
+    // A chapter counts what is below it: none of its own, five in all, three with a solution.
+    const chapter = win.locator('.section-row', { hasText: 'id c1' });
+    expect(await chapter.locator('.count.book').innerText()).toBe('📖 0 (5)');
+    expect(await chapter.locator('.coverage').innerText()).toBe('🔑 3/5');
+    expect(await win.locator('.section-chip').first().innerText()).toBe('Chapter 1');
+    // What is still to do: sections without exercises, and exercises without a solution.
+    expect(await win.locator('.warn-line.note').first().innerText()).toContain('3 of 6 sections have no exercises yet');
+    await win.locator('.sections-panel select[aria-label="Which sections to show"]').selectOption('empty');
+    expect(await win.locator('.section-row').count()).toBe(3);
+    await win.locator('.sections-panel select[aria-label="Which sections to show"]').selectOption('unsolved');
+    expect((await win.locator('.section-row .section-sub').allInnerTexts()).map((entry) => entry.split('\n')[0])).toEqual(['id 1.1', 'id 1.2']);
+    await win.locator('.sections-panel select[aria-label="Which sections to show"]').selectOption('all');
+    // A folded chapter hides its sections.
+    await chapter.getByRole('button', { name: 'Fold' }).click();
+    expect(await win.locator('.section-row').count()).toBe(4);
+    await chapter.getByRole('button', { name: 'Unfold' }).click();
+    expect(await win.locator('.section-row').count()).toBe(6);
+  });
+
+  it('goes to the heading of a section when its row is clicked, and marks the headings on the page', async () => {
+    const win = (running as Running).win;
+    await win.locator('.section-row', { hasText: 'id 2.1' }).click();
+    await win.waitForFunction(() => document.querySelector('.page')?.getAttribute('data-page') === '2');
+    expect(await stateOf(win, (s) => s['sectionSelection'])).toBe(4);
+    expect(await win.locator('.section-mark').count()).toBe(2);
+    expect(await win.locator('.section-mark.selected text').textContent()).toBe('2.1 (2.1)');
+    expect(await win.locator('.section-editor input[aria-label="Title"]').inputValue()).toBe('2.1 Equivalent fractions');
+    await win.locator('.section-row', { hasText: 'id answers' }).click();
+    await win.waitForFunction(() => document.querySelector('.page')?.getAttribute('data-page') === '3');
+  });
+
+  it('adds, edits, makes deeper and shallower, moves and deletes a section, saying in plain words what cannot be done', async () => {
+    const win = (running as Running).win;
+    await win.locator('.section-row', { hasText: 'id 2.1' }).click();
+    await win.getByRole('button', { name: 'Add a section', exact: true }).click();
+    await win.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Title');
+    await win.keyboard.type('Review');
+    await win.keyboard.press('Enter');
+    let entries = await stateOf(win, (s) => (s['project'] as { outline: { entries: { title: string; depth: number; id?: string; page: number }[] } }).outline.entries);
+    expect(entries.map((entry) => entry.title)).toEqual(['Chapter 1 Integers', '1.1 Adding integers', '1.2 Subtracting integers', 'Chapter 2 Fractions', '2.1 Equivalent fractions', 'Review', 'Answers']);
+    expect(entries[5]).toMatchObject({ depth: 1, page: 2 });
+    expect(entries[5]?.id).toBeUndefined();
+    // A section without an id cannot hold exercises: the list says so and offers ids.
+    expect(await win.locator('.warn-line', { hasText: 'has no id' }).innerText()).toContain('1 section has no id');
+    await win.locator('.section-editor input[aria-label="Printed number"]').fill('R');
+    await win.locator('.section-editor input[aria-label="Printed number"]').press('Enter');
+    await win.locator('.sections-panel').getByRole('button', { name: 'Give ids (1)' }).click();
+    entries = await stateOf(win, (s) => (s['project'] as { outline: { entries: { title: string; depth: number; id?: string; page: number }[] } }).outline.entries);
+    expect(entries[5]?.id).toBe('R');
+    // An id that another section has is refused, in plain words, and nothing changes.
+    await win.locator('.section-editor input[aria-label="Id"]').fill('c1');
+    await win.locator('.section-editor input[aria-label="Id"]').press('Enter');
+    expect(await win.locator('.section-editor .form-error').innerText()).toContain('already the id of another outline entry');
+    expect(await win.locator('.section-editor .form-error').innerText()).not.toMatch(/mcprep|`/);
+    await win.locator('.section-editor input[aria-label="Id"]').fill('review');
+    await win.locator('.section-editor input[aria-label="Id"]').press('Enter');
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { project: { outline: { entries: { id?: string }[] } } } } }).__store.state.project.outline.entries[5]?.id === 'review');
+    expect(await win.locator('.section-editor .form-error').count()).toBe(0);
+    // Where it starts: page 3, a third of the way down.
+    await win.locator('.section-editor input[aria-label="Page"]').fill('3');
+    await win.locator('.section-editor input[aria-label="Page"]').press('Enter');
+    await win.locator('.section-editor input[aria-label="Top of the heading"]').fill('0.33');
+    await win.locator('.section-editor input[aria-label="Top of the heading"]').press('Enter');
+    await win.locator('.section-editor input[aria-label="Top of the heading"]').fill('7');
+    await win.locator('.section-editor input[aria-label="Top of the heading"]').press('Enter');
+    expect(await win.locator('.section-editor .form-error').innerText()).toContain('from 0');
+    await win.locator('.section-editor input[aria-label="Top of the heading"]').fill('0.33');
+    await win.locator('.section-editor input[aria-label="Top of the heading"]').press('Enter');
+    entries = await stateOf(win, (s) => (s['project'] as { outline: { entries: { title: string; depth: number; id?: string; page: number; top?: number; label?: string }[] } }).outline.entries);
+    expect(entries[5]).toMatchObject({ title: 'Review', id: 'review', label: 'R', page: 2, top: 0.33 });
+    // One level shallower and back: with everything below it.
+    await win.locator('.section-editor').getByRole('button', { name: 'Outdent' }).click();
+    expect(((await stateOf(win, (s) => (s['project'] as { outline: { entries: { depth: number }[] } }).outline.entries))[5] as { depth: number }).depth).toBe(0);
+    expect(await win.locator('.section-editor').getByRole('button', { name: 'Outdent' }).isDisabled()).toBe(true);
+    await win.locator('.section-editor').getByRole('button', { name: 'Indent' }).click();
+    expect(((await stateOf(win, (s) => (s['project'] as { outline: { entries: { depth: number }[] } }).outline.entries))[5] as { depth: number }).depth).toBe(1);
+    // Moved up past its sibling, and down again.
+    await win.locator('.section-editor').getByRole('button', { name: 'Move up' }).click();
+    expect(((await stateOf(win, (s) => (s['project'] as { outline: { entries: { id?: string }[] } }).outline.entries))[4] as { id?: string }).id).toBe('review');
+    await win.locator('.section-editor').getByRole('button', { name: 'Move down' }).click();
+    // Deleted: it holds no exercise, so nothing has to move.
+    await win.locator('.section-editor').getByRole('button', { name: 'Delete...' }).click();
+    await win.locator('.delete-panel').getByRole('button', { name: 'Delete the section' }).click();
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { project: { outline: { entries: unknown[] } } } } }).__store.state.project.outline.entries.length === 6);
+    expect(await win.locator('.section-row').count()).toBe(6);
+    expect(await win.locator('.section-editor').count()).toBe(0);
+  });
+
+  it('moves the exercises of a section to another before it is deleted, and one undo brings it all back', async () => {
+    const win = (running as Running).win;
+    await win.locator('.section-row', { hasText: 'id 1.2' }).click();
+    await win.locator('.section-editor').getByRole('button', { name: 'Delete...' }).click();
+    const panel = win.locator('.delete-panel');
+    expect(await panel.innerText()).toContain('1 book exercise is filed here');
+    expect(await panel.getByRole('button', { name: 'Delete the section' }).isDisabled()).toBe(true);
+    await panel.locator('select').selectOption('2.1');
+    await panel.getByRole('button', { name: 'Delete the section' }).click();
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { project: { outline: { entries: unknown[] } } } } }).__store.state.project.outline.entries.length === 5);
+    const moved = (await framesOf(win)).find((frame) => frame.page === 1 && frame.authority === 'book');
+    expect(moved).toMatchObject({ section: '2.1', label: '1' });
+    await win.keyboard.press('Control+z');
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { project: { outline: { entries: unknown[] } } } } }).__store.state.project.outline.entries.length === 6);
+    expect((await framesOf(win)).find((frame) => frame.page === 1 && frame.authority === 'book')).toMatchObject({ section: '1.2', label: '1' });
+  });
+
+  it('sets where a heading is from a click on the page', async () => {
+    const win = (running as Running).win;
+    await win.locator('.section-row', { hasText: 'id 2.1' }).click();
+    await win.locator('.section-editor').getByRole('button', { name: 'Pick the heading on the page' }).click();
+    expect(await win.locator('.tool-hint').innerText()).toContain('Click the heading of');
+    await win.waitForFunction(() => document.querySelector('.page')?.getAttribute('data-page') === '2');
+    // The heading "2.1  Equivalent fractions" is printed 230 points down on an 842 point page.
+    await click(win, 0.3, 227 / 842);
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { picking: unknown } } }).__store.state.picking === null);
+    const top = ((await stateOf(win, (s) => (s['project'] as { outline: { entries: { id?: string; top?: number }[] } }).outline.entries)).find((entry) => entry.id === '2.1') as { top: number }).top;
+    expect(top).toBeGreaterThan(0.24);
+    expect(top).toBeLessThan(0.28);
+    expect(await win.locator('.tool-hint').count()).toBe(0);
+  });
+
+  it('writes the sections with their ids, printed numbers and heading positions into the project file', async () => {
+    const win = (running as Running).win;
+    await win.keyboard.press('Control+s');
+    await win.waitForFunction(() => (window as unknown as { __store: { state: { dirty: boolean } } }).__store.state.dirty === false);
+    const disk = JSON.parse(readFileSync(join(work, 'book.mcprep.json'), 'utf8')) as { outline: { source: string; entries: { id?: string; label?: string; top?: number }[] } };
+    expect(disk.outline.source).toBe('manual');
+    expect(disk.outline.entries.map((entry) => entry.id)).toEqual(['c1', '1.1', '1.2', 'c2', '2.1', 'answers']);
+    expect(disk.outline.entries.every((entry) => entry.top !== undefined)).toBe(true);
+    expect(JSON.parse(cli('validate', '--json')) as { ok: boolean }).toMatchObject({ ok: true });
+  });
+
   it('raised no errors in the page while all of this happened', () => {
     expect((running as Running).errors.filter((message) => !message.includes('Content Security Policy'))).toEqual([]);
   });
