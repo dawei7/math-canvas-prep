@@ -1,4 +1,4 @@
-import { proposeFrames, type PageText, type Project } from '@mcprep/core';
+import { deriveSections, proposeFrames, type PageText, type Project } from '@mcprep/core';
 import type { Api, OpenedDocument, SaveOutcome } from '../../src/shared/api.js';
 
 /**
@@ -19,7 +19,9 @@ export function fakeApi(
     readPdf: () => Promise.resolve(source.pdf()),
     pageText: (page) => Promise.resolve(source.texts()[page] as PageText),
     propose: () => Promise.resolve(proposeFrames(source.texts())),
-    deriveOutline: () => Promise.resolve([{ title: 'Calculus Sheet 1', page: 0, depth: 0, confidence: 0.9, evidence: ['large'] }]),
+    deriveSections: () => Promise.resolve({ ok: true, result: deriveSections(source.texts()) }),
+    cancelAudit: () => Promise.resolve(),
+    onProgress: () => () => undefined,
     saveProject: (project, expected) => {
       saved.push(project);
       const written: Project = { ...project, revision: expected + 1, updatedAt: '2026-10-03T13:00:00Z', modifiedBy: 'desktop' };

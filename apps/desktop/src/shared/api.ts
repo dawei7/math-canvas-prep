@@ -1,4 +1,4 @@
-import type { OutlineEntry, PageSize, PageText, Project, ProposalSet } from '@mcprep/core/pure';
+import type { BookStructure, OutlineEntry, PageSize, PageText, Project, ProposalSet } from '@mcprep/core/pure';
 
 /**
  * The whole surface between the renderer (the editor's user interface, which has no Node access) and the main process
@@ -54,10 +54,16 @@ export type ExportOutcome =
 /** The result of writing the plain JSON summary of the book (sections with their exercise counts). */
 export type BookSummaryOutcome = { ok: true; path: string; bytes: number; sections: number; exercises: number } | { ok: false; message: string };
 
-export interface DerivedHeading extends OutlineEntry {
-  confidence: number;
-  evidence: string[];
+/** One step of a long job (reading the pages, looking for the sections), for the progress bar. */
+export interface AuditProgress {
+  /** What is being done, in a few words ("Reading the text of the pages"). */
+  phase: string;
+  done: number;
+  total: number;
 }
+
+/** The result of a long job: what it found, or why it did not (`cancelled`: the person stopped it). */
+export type AuditOutcome<T> = { ok: true; result: T } | { ok: false; cancelled: boolean; message: string };
 
 export interface DiskChange {
   /** The project as it is on disk now. */
@@ -79,7 +85,15 @@ export interface Api {
   readPdf(): Promise<Uint8Array>;
   pageText(page: number): Promise<PageText>;
   propose(request: ProposeRequest): Promise<ProposalSet>;
-  deriveOutline(): Promise<DerivedHeading[]>;
+  /**
+   * Finds the chapters and sections of the open book from its printed contents and headings (offline). It reads the text
+   * of every page, so it takes seconds on a big book; `onProgress` reports it and `cancelAudit` stops it.
+   */
+  deriveSections(): Promise<AuditOutcome<BookStructure>>;
+  /** Stops the long job that is running (reading the pages, deriving the sections, proposing exercises). */
+  cancelAudit(): Promise<void>;
+  /** Progress of the long job that is running. */
+  onProgress(listener: (progress: AuditProgress) => void): () => void;
 
   saveProject(project: Project, expectedRevision: number): Promise<SaveOutcome>;
   /** Reads the project from disk again (to take the other side's version). */

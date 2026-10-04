@@ -8,6 +8,7 @@ import {
   proposalSetToOperations,
   proposalToOperations,
   validateProject,
+  type BookStructure,
   type Frame,
   type FrameProposal,
   type Issue,
@@ -20,12 +21,14 @@ import {
   type ProposalSet,
   type Rect,
 } from '@mcprep/core/pure';
-import type { Api, BookSummaryOutcome, DerivedHeading, DiskChange, ExportOutcome, OpenedDocument, RecentEntry } from '../../shared/api.js';
+import type { Api, AuditOutcome, AuditProgress, BookSummaryOutcome, DiskChange, ExportOutcome, OpenedDocument, RecentEntry } from '../../shared/api.js';
 import { checkBookLabel, suggestFor, suggestLabel } from './book.js';
 import { describeChange, summarizeChange } from './contents.js';
+import { compareOutline, defaultSelection, describeOutcome, resolveDerive, type DeriveFilter, type DeriveOutcome, type DerivePlan } from './derive.js';
 import { plainError, NO_PARTS_REASON } from './errors.js';
 import { middleCut } from './geometry.js';
 import { bookModel, frameIndex, type BookModel } from './model.js';
+import { Progress } from './progress.js';
 
 export type Tool = 'select' | 'exercise' | 'book' | 'parts' | 'context' | 'continues' | 'solution' | 'question' | 'bookmark';
 export type Tab = 'frames' | 'sections' | 'checks' | 'propose';
@@ -36,6 +39,25 @@ export type FramesFilter = 'all' | 'ordinary' | 'book';
 export type SectionFilter = 'all' | 'empty' | 'unsolved' | 'problems';
 /** The three kinds of region an exercise can carry besides its own: what continues it, the instruction, the hidden answer. */
 export type RegionKind = 'continues' | 'context' | 'solution';
+
+/** The long jobs that read the whole book in the main process (one at a time). */
+export type AuditJob = 'sections' | 'exercises' | 'solutions';
+
+/** The sections found in the printed text of the book, looked at before any of them is taken. */
+export interface DeriveReview {
+  structure: BookStructure;
+  /** The ids of the derived entries the person takes. */
+  selected: Record<string, true>;
+  /** Keep the sections of the project that the derived list does not have, also those without exercises (matters when the whole list is taken). */
+  keepOthers: boolean;
+  /** For a section of the project that has exercises and no counterpart in the derived list: the section its exercises move to. */
+  moves: Record<string, string>;
+  filter: DeriveFilter;
+  /** The derived entry whose evidence is shown. */
+  focus: string | null;
+  /** Why the last attempt to apply failed, in plain words. */
+  error: string | null;
+}
 
 export interface Notice {
   id: number;
@@ -96,7 +118,9 @@ export interface State {
   proposalsBusy: boolean;
   /** Proposals the person has already accepted or rejected. */
   decided: Record<string, 'accepted' | 'rejected'>;
-  derived: DerivedHeading[] | null;
+  /** The long job that is running in the main process, and whether the person asked it to stop. */
+  audit: { job: AuditJob | null; stopping: boolean };
+  derive: DeriveReview | null;
   notice: Notice | null;
   /** The time of the last change made by another program (for the quiet indicator). */
   agentAt: number;
@@ -150,7 +174,8 @@ const initial = (): State => ({
   proposals: null,
   proposalsBusy: false,
   decided: {},
-  derived: null,
+  audit: { job: null, stopping: false },
+  derive: null,
   notice: null,
   agentAt: 0,
   saving: false,
@@ -224,6 +249,11 @@ export class Store {
   private baseContent = '';
   /** The errors of a version of the project already checked: the checks that read text only add warnings. */
   private validated: { project: Project; errors: Issue[] } | undefined;
+  /** Progress of the long job: outside the state, so that its bar redraws ten times a second and nothing else does. */
+  readonly progress = new Progress();
+  private auditSeq = 0;
+  private planCache: { structure: BookStructure; entries: readonly OutlineEntry[]; groups: BookModel['groups']; plan: DerivePlan } | undefined;
+  private outcomeCache: { review: DeriveReview; plan: DerivePlan; outcome: DeriveOutcome } | undefined;
 
   constructor(
     private readonly api: Api,
@@ -291,7 +321,7 @@ export class Store {
       texts: {},
       proposals: null,
       decided: {},
-      derived: null,
+      derive: null,
       conflict: null,
       saveError: null,
       welcomeError: null,
@@ -936,20 +966,205 @@ export class Store {
     return this.apply([{ op: 'meta.set', ...fields }], { quiet: true });
   }
 
-  // ------------------------------------------------------------------------------------------------------ contents
+  // ------------------------------------------------------------------------------------------- long jobs and derive
 
-  async deriveContents(): Promise<void> {
-    this.set({ busy: 'Looking for headings...' });
-    try {
-      this.set({ derived: await this.api.deriveOutline(), busy: null });
-    } catch (error) {
-      this.set({ busy: null });
-      this.notify('error', `Could not derive the contents: ${error instanceof Error ? error.message : String(error)}`);
+  /** Starts a long job; null (with a notice) while another one is running. The token ends it again. */
+  private beginAudit(job: AuditJob): number | null {
+    if (this.state.audit.job !== null) {
+      this.notify('info', 'A search is still running: wait for it, or stop it first.');
+      return null;
     }
+    this.auditSeq += 1;
+    this.progress.set(null);
+    this.set({ audit: { job, stopping: false } });
+    return this.auditSeq;
   }
 
-  setOutline(entries: OutlineEntry[], source: 'manual' | 'derived' | 'pdf' = 'manual'): void {
-    this.apply([{ op: 'outline.set', entries, source }]);
+  /** The job is over (done, stopped or failed): the bar goes, with the patch to the state that goes with it. */
+  private finishAudit(token: number, patch: Partial<State> = {}): void {
+    if (token !== this.auditSeq) return;
+    this.progress.set(null);
+    this.set({ ...patch, audit: { job: null, stopping: false } });
+  }
+
+  /** The main process reports how far the long job is. */
+  reportProgress(progress: AuditProgress): void {
+    if (this.state.audit.job !== null) this.progress.set(progress);
+  }
+
+  /** Asks the long job to stop; it does so at the next page. Nothing is changed by a job that was stopped. */
+  cancelAudit(): void {
+    const { audit } = this.state;
+    if (audit.job === null || audit.stopping) return;
+    this.set({ audit: { ...audit, stopping: true } });
+    void this.api.cancelAudit();
+  }
+
+  /** Finds the chapters and sections from what the book prints, then shows them for review: nothing is applied yet. */
+  async deriveSections(): Promise<void> {
+    const doc = this.state.doc;
+    if (!doc) return;
+    const token = this.beginAudit('sections');
+    if (token === null) return;
+    let outcome: AuditOutcome<BookStructure>;
+    try {
+      outcome = await this.api.deriveSections();
+    } catch (error) {
+      outcome = { ok: false, cancelled: false, message: error instanceof Error ? error.message : String(error) };
+    }
+    if (this.state.doc !== doc) {
+      // Another document was opened meanwhile: the answer is about the one that is gone.
+      this.finishAudit(token);
+      return;
+    }
+    if (!outcome.ok) {
+      this.finishAudit(token);
+      if (outcome.cancelled) this.notify('info', 'Stopped. Nothing was changed.');
+      else this.notify('error', `The sections could not be derived: ${outcome.message}`);
+      return;
+    }
+    const structure = outcome.result;
+    const plan = compareOutline({ structure, entries: this.sections(), groups: this.book().groups });
+    this.finishAudit(token, {
+      tab: 'sections',
+      derive: {
+        structure,
+        selected: Object.fromEntries([...defaultSelection(plan)].map((id) => [id, true as const])),
+        keepOthers: false,
+        moves: {},
+        filter: plan.counts.new + plan.counts.changed > 0 ? 'changes' : 'all',
+        focus: null,
+        error: null,
+      },
+    });
+  }
+
+  /** The derived sections compared with the project's own (computed once while neither changes). */
+  derivePlan(): DerivePlan | null {
+    const review = this.state.derive;
+    const project = this.state.project;
+    if (!review || !project) return null;
+    const entries = this.sections();
+    const { groups } = this.book();
+    const cached = this.planCache;
+    if (cached && cached.structure === review.structure && cached.entries === entries && cached.groups === groups) return cached.plan;
+    const plan = compareOutline({ structure: review.structure, entries, groups });
+    this.planCache = { structure: review.structure, entries, groups, plan };
+    return plan;
+  }
+
+  /** What applying the derived sections would do with the choices made so far. */
+  deriveOutcome(): DeriveOutcome | null {
+    const review = this.state.derive;
+    const plan = this.derivePlan();
+    if (!review || !plan) return null;
+    const cached = this.outcomeCache;
+    if (cached && cached.review === review && cached.plan === plan) return cached.outcome;
+    const outcome = resolveDerive({ structure: review.structure, entries: this.sections(), groups: this.book().groups }, plan, { selected: new Set(Object.keys(review.selected)), keepOthers: review.keepOthers, moves: review.moves });
+    this.outcomeCache = { review, plan, outcome };
+    return outcome;
+  }
+
+  private reviewing(patch: (review: DeriveReview) => Partial<DeriveReview>): void {
+    const review = this.state.derive;
+    if (review) this.set({ derive: { ...review, error: null, ...patch(review) } });
+  }
+
+  setDerived(id: string, on: boolean): void {
+    this.reviewing((review) => {
+      const selected = { ...review.selected };
+      if (on) selected[id] = true;
+      else delete selected[id];
+      return { selected };
+    });
+  }
+
+  /** Takes all derived entries, none, the new ones, or the new and the changed ones. */
+  selectDerived(which: 'all' | 'none' | 'new' | 'changes'): void {
+    const plan = this.derivePlan();
+    if (!plan) return;
+    const rows = which === 'none' ? [] : which === 'all' ? plan.rows : plan.rows.filter((row) => (which === 'new' ? row.status === 'new' : row.status !== 'same'));
+    this.reviewing(() => ({ selected: Object.fromEntries(rows.map((row) => [row.entry.id, true as const])) }));
+  }
+
+  setDeriveFilter(filter: DeriveFilter): void {
+    this.reviewing(() => ({ filter }));
+  }
+
+  setKeepOthers(keepOthers: boolean): void {
+    this.reviewing(() => ({ keepOthers }));
+  }
+
+  /** Shows the evidence for a derived entry and its heading on the page. */
+  focusDerived(id: string | null): void {
+    this.reviewing(() => ({ focus: id }));
+    const row = id === null ? undefined : this.derivePlan()?.rows.find((entry) => entry.entry.id === id);
+    if (row) this.showPlace(row.entry.page, row.entry.top);
+  }
+
+  /** The exercises of a section of the project move to this derived section when the sections are applied (null: they stay where they are, and so does the section). */
+  moveSectionTo(id: string, target: string | null): void {
+    this.reviewing((review) => {
+      const moves = { ...review.moves };
+      const selected = { ...review.selected };
+      if (target === null) delete moves[id];
+      else {
+        moves[id] = target;
+        selected[target] = true; // the target must be among the sections the project gets
+      }
+      return { moves, selected };
+    });
+  }
+
+  /** For every section of the project with exercises that looks like a derived one (same printed number or title): move its exercises there. */
+  moveToSuggested(): void {
+    const plan = this.derivePlan();
+    if (!plan) return;
+    this.reviewing((review) => {
+      const moves = { ...review.moves };
+      const selected = { ...review.selected };
+      for (const row of plan.yours) {
+        if (row.exercises === 0 || row.entry.id === undefined || row.suggested === undefined) continue;
+        moves[row.entry.id] = row.suggested;
+        selected[row.suggested] = true;
+      }
+      return { moves, selected };
+    });
+  }
+
+  discardDerive(): void {
+    this.set({ derive: null });
+  }
+
+  /** Takes the sections: all of them, or the ones that are selected. One undoable step; the exercises keep a section that exists. */
+  applyDerive(which: 'all' | 'selected'): ApplyResult {
+    if (which === 'all') this.selectDerived('all');
+    const review = this.state.derive;
+    const outcome = this.deriveOutcome();
+    if (!review || !outcome) return fail('There are no derived sections to take.');
+    if (outcome.nothing) {
+      this.reviewing(() => ({ error: 'Nothing would change: the sections of the book already are these.' }));
+      return fail('Nothing would change.');
+    }
+    const result = this.setOutline(outcome.entries, 'derived', { moves: outcome.moves, quiet: true });
+    if (!result.ok) {
+      this.reviewing(() => ({ error: result.error ?? 'The sections could not be applied.' }));
+      return result;
+    }
+    this.set({ derive: null, sectionSelection: null });
+    this.notify('success', describeOutcome(outcome));
+    return result;
+  }
+
+  // ------------------------------------------------------------------------------------------------------ contents
+
+  /**
+   * Makes these entries the project's sections (every entry replaced). `moves` file exercises under another section in the same
+   * step, before the old sections go: the exercises of a section the new list no longer has must go somewhere, or the change is refused.
+   */
+  setOutline(entries: OutlineEntry[], source: 'manual' | 'derived' | 'pdf' = 'manual', options: { moves?: readonly { id: string; section: string }[]; quiet?: boolean } = {}): ApplyResult {
+    const moves: Operation[] = (options.moves ?? []).map(({ id, section }) => ({ op: 'section.set', id, section }));
+    return this.apply([...moves, { op: 'outline.set', entries, source }], options.quiet === true ? { quiet: true, select: null } : {});
   }
 
   clearOutline(): void {

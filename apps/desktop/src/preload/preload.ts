@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import type { Api, DiskChange } from '../shared/api.js';
+import type { Api, AuditProgress, DiskChange } from '../shared/api.js';
 
 /**
  * The only bridge between the editor and the rest of the machine: a fixed set of named calls. The renderer cannot send
@@ -16,7 +16,8 @@ const api: Api = {
   readPdf: () => invoke('readPdf'),
   pageText: (page) => invoke('pageText', page),
   propose: (request) => invoke('propose', request),
-  deriveOutline: () => invoke('deriveOutline'),
+  deriveSections: () => invoke('deriveSections'),
+  cancelAudit: () => invoke('cancelAudit'),
   saveProject: (project, expectedRevision) => invoke('saveProject', project, expectedRevision),
   reloadProject: () => invoke('reloadProject'),
   exportBundle: (options) => invoke('exportBundle', options),
@@ -27,6 +28,11 @@ const api: Api = {
     const handler = (_event: unknown, change: DiskChange): void => listener(change);
     ipcRenderer.on('mcprep:diskChange', handler);
     return () => ipcRenderer.removeListener('mcprep:diskChange', handler);
+  },
+  onProgress: (listener) => {
+    const handler = (_event: unknown, progress: AuditProgress): void => listener(progress);
+    ipcRenderer.on('mcprep:progress', handler);
+    return () => ipcRenderer.removeListener('mcprep:progress', handler);
   },
   onMenu: (listener) => {
     const handler = (_event: unknown, command: string): void => listener(command);

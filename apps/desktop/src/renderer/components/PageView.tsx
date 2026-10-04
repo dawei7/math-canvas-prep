@@ -330,6 +330,8 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
 
   // Where the sections start on this page, while the Sections list is open: a dotted line at the heading.
   const sectionMarks = state.tab === 'sections' ? store.book().entries.flatMap((entry, at) => (entry.page === state.page ? [{ entry, at }] : [])) : [];
+  // And, while the sections the search found are being reviewed, where each of them starts (drawn from the left, in the accent colour).
+  const deriveMarks = state.tab === 'sections' && state.derive !== null ? (store.derivePlan()?.rows ?? []).filter((row) => row.entry.page === state.page) : [];
   const standalone = content.frames.filter((frame) => frame.unit === undefined);
   const unitsOnPage = [...new Set(content.frames.filter((frame) => frame.unit !== undefined).map((frame) => frame.unit as string))];
   const chips = placeChips(
@@ -644,6 +646,23 @@ export function PageView({ store, pdf }: { store: Store; pdf: PDFDocumentProxy |
                 <line x1={0} x2={box.width} y1={y} y2={y} stroke="#f59e0b" stroke-width={strong ? 2.5 : 1.5} stroke-dasharray="2 4" />
                 <rect x={box.width - width - 4} y={y - 17} width={width} height={16} rx={3} fill="#f59e0b" />
                 <text x={box.width - width / 2 - 4} y={y - 8.5} text-anchor="middle" dominant-baseline="middle">
+                  {name}
+                </text>
+              </g>
+            );
+          })}
+          {deriveMarks.map((row) => {
+            const entry = row.entry;
+            const y = (entry.top ?? 0) * box.height;
+            const name = entry.label ?? entry.id;
+            const width = name.length * 6.2 + 12;
+            const strong = state.derive?.focus === entry.id;
+            const off = state.derive?.selected[entry.id] !== true;
+            return (
+              <g class={`derive-mark ${strong ? 'selected' : ''} ${off ? 'off' : ''}`} key={`derive-${entry.id}`} data-id={entry.id} style={{ pointerEvents: 'none' }}>
+                <line x1={0} x2={box.width} y1={y} y2={y} stroke="#4f46e5" stroke-width={strong ? 2.5 : 1.5} stroke-dasharray="7 4" stroke-opacity={off ? 0.45 : 1} />
+                <rect x={4} y={y - 17} width={width} height={16} rx={3} fill="#4f46e5" fill-opacity={off ? 0.55 : 1} />
+                <text x={4 + width / 2} y={y - 8.5} text-anchor="middle" dominant-baseline="middle">
                   {name}
                 </text>
               </g>

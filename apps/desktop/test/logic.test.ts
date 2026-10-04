@@ -369,10 +369,8 @@ describe('the store: proposals, contents and export', () => {
     expect(store.state.project?.frames).toHaveLength(0);
   });
 
-  it('derives headings, stores a hand-edited outline and clears it again', async () => {
+  it('stores a hand-edited outline and clears it again', async () => {
     const { store } = await started();
-    await store.deriveContents();
-    expect(store.state.derived?.[0]?.title).toBe('Calculus Sheet 1');
     store.setOutline([{ title: ' 1 Sets ', page: 0, depth: 0 }, { title: '1.1 Sub', page: 1, depth: 1 }], 'derived');
     expect(store.state.project?.outline).toEqual({ source: 'derived', entries: [{ title: '1 Sets', page: 0, depth: 0 }, { title: '1.1 Sub', page: 1, depth: 1 }] });
     store.clearOutline();

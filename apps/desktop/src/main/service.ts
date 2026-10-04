@@ -5,17 +5,19 @@ import {
   McPrepError,
   ProjectSession,
   buildBookSummary,
-  deriveOutline,
   proposeFrames,
   readProjectFile,
   withProjectLock,
   writeFileAtomic,
   writeProjectFile,
+  type BookStructure,
   type PageText,
+  type PdfDocument,
   type Project,
   type ProposalSet,
 } from '@mcprep/core';
-import type { BookSummaryOutcome, DerivedHeading, DiskChange, ExportOutcome, OpenOutcome, ProposeRequest, SaveOutcome } from '../shared/api.js';
+import type { AuditOutcome, AuditProgress, BookSummaryOutcome, DiskChange, ExportOutcome, OpenOutcome, ProposeRequest, SaveOutcome } from '../shared/api.js';
+import { AuditCancelled, AuditProblem, runDerive, type AuditHooks } from './audit.js';
 
 const PROJECT_SUFFIX = '.mcprep.json';
 
@@ -40,7 +42,10 @@ export class DocumentService {
   private knownRevision = -1;
   private knownSignature = '';
   private knownStamp = '';
+  /** The long job that is running (reading a whole book), if any: only one at a time. */
+  private job: { cancelled: boolean } | undefined;
   onDiskChange: ((change: DiskChange) => void) | undefined;
+  onProgress: ((progress: AuditProgress) => void) | undefined;
 
   get projectPath(): string | undefined {
     return this.session?.projectPath;
@@ -76,6 +81,7 @@ export class DocumentService {
   }
 
   async close(): Promise<void> {
+    this.cancelAudit();
     this.unwatch();
     await this.session?.close();
     this.session = undefined;
@@ -102,9 +108,49 @@ export class DocumentService {
     return proposeFrames(texts, request.minConfidence !== undefined ? { minConfidence: request.minConfidence } : {});
   }
 
-  async deriveOutline(): Promise<DerivedHeading[]> {
-    const pdf = await this.current().document();
-    return deriveOutline(await pdf.allPageText({ fonts: true })).entries;
+  /** The chapters and sections of the book, from its printed contents and headings. Reports its progress; can be stopped. */
+  deriveSections(): Promise<AuditOutcome<BookStructure>> {
+    return this.runAudit((pdf, hooks) => runDerive(pdf, hooks));
+  }
+
+  /** Stops the long job that is running, at the next page or step. */
+  cancelAudit(): void {
+    if (this.job) this.job.cancelled = true;
+  }
+
+  /**
+   * Runs a long job on the open document with the hooks that report its progress (at most about ten times a second) and stop
+   * it. One job at a time; opening another document stops it.
+   */
+  private async runAudit<T>(work: (pdf: PdfDocument, hooks: AuditHooks) => Promise<T>): Promise<AuditOutcome<T>> {
+    if (this.job) return { ok: false, cancelled: false, message: 'Another search is still running: wait for it, or stop it first.' };
+    const job = { cancelled: false };
+    this.job = job;
+    let last = 0;
+    const hooks: AuditHooks = {
+      report: (phase, done, total) => {
+        const now = Date.now();
+        if (done !== 0 && done !== total && now - last < 90) return;
+        last = now;
+        this.onProgress?.({ phase, done, total });
+      },
+      check: () => {
+        if (job.cancelled) throw new AuditCancelled();
+      },
+    };
+    try {
+      const pdf = await this.current().document();
+      const result = await work(pdf, hooks);
+      hooks.check();
+      return { ok: true, result };
+    } catch (error) {
+      if (error instanceof AuditCancelled || job.cancelled) return { ok: false, cancelled: true, message: 'Stopped.' };
+      if (error instanceof AuditProblem) return { ok: false, cancelled: false, message: error.message };
+      const failed = errorOutcome(error);
+      return { ok: false, cancelled: false, message: failed.message };
+    } finally {
+      if (this.job === job) this.job = undefined;
+    }
   }
 
   async save(project: Project, expectedRevision: number): Promise<SaveOutcome> {

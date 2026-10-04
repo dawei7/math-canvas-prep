@@ -65,11 +65,13 @@ export function App({ store }: { store: Store }): preact.JSX.Element {
       else if (command === 'theme') store.setTheme(store.state.theme === 'dark' ? 'light' : 'dark');
     });
     const offDisk = api.onDiskChange((change) => store.onDiskChange(change));
+    const offProgress = api.onProgress((progress) => store.reportProgress(progress));
     void store.loadRecent();
     api.ready();
     return () => {
       offMenu();
       offDisk();
+      offProgress();
     };
   }, [store]);
 

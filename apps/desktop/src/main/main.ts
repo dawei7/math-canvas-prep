@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
 import { access, mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
-import { basename, extname, join, normalize, resolve, sep } from 'node:path';
+import { createRequire } from 'node:module';
+import { basename, dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { BrowserWindow, Menu, app, dialog, ipcMain, net, protocol, session, shell, type MenuItemConstructorOptions } from 'electron';
 import { configurePdfRuntime } from '@mcprep/core';
@@ -184,7 +186,8 @@ function registerIpc(): void {
   handle('readPdf', async () => new Uint8Array(await service.readPdf()));
   handle('pageText', (page: number) => service.pageText(Number(page)));
   handle('propose', (request: Parameters<DocumentService['propose']>[0]) => service.propose(request));
-  handle('deriveOutline', () => service.deriveOutline());
+  handle('deriveSections', () => service.deriveSections());
+  handle('cancelAudit', () => service.cancelAudit());
   handle('saveProject', (project: Parameters<DocumentService['save']>[0], expected: number) => service.save(project, Number(expected)));
   handle('reloadProject', () => service.reload());
   handle('exportBundle', async (options: { outline: 'project' | 'pdf' | 'none' }) => {
@@ -220,6 +223,7 @@ function registerIpc(): void {
     mainWindow?.setDocumentEdited(dirty);
   });
   service.onDiskChange = (change) => send('mcprep:diskChange', change);
+  service.onProgress = (progress) => send('mcprep:progress', progress);
 }
 
 function buildMenu(): void {
@@ -263,10 +267,23 @@ function buildMenu(): void {
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 
+/**
+ * Where pdf.js keeps its fonts and cmaps. In the application folder (also when packaged); when run from the repository, npm
+ * keeps one copy for all packages above the application folder. Without the fonts pdf.js measures the text with other
+ * metrics, and the lines of a page (and so every proposal and every snapped frame) differ from what the command line sees.
+ */
+function pdfjsFolder(): string {
+  const own = join(app.getAppPath(), 'node_modules', 'pdfjs-dist');
+  if (existsSync(join(own, 'standard_fonts'))) return own;
+  try {
+    return dirname(createRequire(join(app.getAppPath(), 'package.json')).resolve('pdfjs-dist/package.json'));
+  } catch {
+    return own;
+  }
+}
+
 app.whenReady().then(() => {
-  // pdf.js needs its fonts and cmaps: next to the pdfjs-dist package, also inside the packaged application.
-  const root = join(app.getAppPath(), 'node_modules', 'pdfjs-dist');
-  configurePdfRuntime({ pdfjsRoot: root });
+  configurePdfRuntime({ pdfjsRoot: pdfjsFolder() });
   secure();
   serveRenderer();
   registerIpc();

@@ -1,24 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { describeSection, type OutlineEntry } from '@mcprep/core/pure';
+import { describeSection } from '@mcprep/core/pure';
 import { useStore } from '../hooks.js';
 import { sectionCounts } from '../logic/contents.js';
 import { frameIndex, sectionChoices, type BookModel } from '../logic/model.js';
-import { buildSectionRows, canMove, canShiftDepth, exercisesUnder, idsUnder, sectionWarnings, suggestSectionId, type SectionRow } from '../logic/sections.js';
+import { buildSectionRows, canMove, canShiftDepth, exercisesUnder, idsUnder, sectionWarnings, suggestSectionId, titleWithoutLabel, type SectionRow } from '../logic/sections.js';
 import type { SectionFilter, Store } from '../logic/store.js';
+import { AuditBar, DeriveReviewPanel } from './DeriveReview.js';
 import { Info } from './Toolbar.js';
 import { VirtualList } from './VirtualList.js';
 
 const ROW_HEIGHT = 46;
-
-/** The title without the number that the label already shows ("1.2 Subtracting" with the label "1.2"). */
-function titleWithoutLabel(entry: OutlineEntry): string {
-  const label = entry.label?.trim();
-  if (label !== undefined && label !== '' && entry.title.toLowerCase().startsWith(label.toLowerCase())) {
-    const rest = entry.title.slice(label.length).replace(/^[\s.:)-]+/, '');
-    if (rest !== '') return rest;
-  }
-  return entry.title;
-}
 
 /**
  * An input that changes its entry when the person leaves it (or presses Enter), and takes back what was typed on Escape. It
@@ -331,15 +322,6 @@ function SectionRowView({ store, row, selected, ordinary }: { store: Store; row:
   );
 }
 
-/**
- * RESERVED FOR "DERIVE SECTIONS" (PHASE B). The button that finds the chapters and sections from the printed text, and the
- * list of what it found with the evidence, go here. Nothing is shown until it exists; see the note at the end of
- * logic/sections.ts for what plugs in where.
- */
-function DeriveSectionsSlot(_props: { store: Store }): null {
-  return null;
-}
-
 const FILTERS: { id: SectionFilter; label: string }[] = [
   { id: 'all', label: 'All sections' },
   { id: 'empty', label: 'Without exercises' },
@@ -372,6 +354,15 @@ export function SectionsPanel({ store }: { store: Store }): preact.JSX.Element {
   const pdfCount = doc.pdfOutline?.length ?? 0;
   const solved = index.bookWithSolution;
 
+  // The sections the search found, for review, take the place of the list until they are taken or discarded.
+  if (state.derive !== null) {
+    return (
+      <div class="panel-body fill sections-panel">
+        <DeriveReviewPanel store={store} />
+      </div>
+    );
+  }
+
   return (
     <div class="panel-body fill sections-panel">
       <div class="panel-head column">
@@ -399,14 +390,19 @@ export function SectionsPanel({ store }: { store: Store }): preact.JSX.Element {
               {own ? "Reset to the PDF's bookmarks" : "Use the PDF's bookmarks"}
             </button>
           ) : null}
-          <button class="text-button small" title="Look for headings in the printed text (offline)" onClick={() => void store.deriveContents()}>
-            Find headings
+          <button
+            class="text-button small"
+            disabled={state.audit.job !== null}
+            title="Read the whole book and find its chapters and sections from the printed contents and headings (offline). You look at what it found before anything is changed."
+            onClick={() => void store.deriveSections()}
+          >
+            Derive sections
           </button>
           <button class="text-button small" disabled={!own} title="Remove the sections: the bundle then carries no contents of its own and the app reads the PDF's" onClick={() => store.clearOutline()}>
             Use the PDF's contents
           </button>
-          <DeriveSectionsSlot store={store} />
         </div>
+        <AuditBar store={store} />
         {warnings.duplicateIds.length > 0 ? (
           <p class="warn-line bad" role="alert">
             ✕ Two sections have the id {warnings.duplicateIds.map((id) => `"${id}"`).join(', ')}: only the first can hold exercises. Change one of them.
@@ -473,26 +469,6 @@ export function SectionsPanel({ store }: { store: Store }): preact.JSX.Element {
         ) : (
           <p class="empty">No section matches.</p>
         )
-      ) : null}
-      {state.derived ? (
-        <div class="derived">
-          <div class="panel-head">
-            <strong>Headings found ({state.derived.length})</strong>
-            <button class="text-button small primary" disabled={state.derived.length === 0} onClick={() => store.setOutline(state.derived?.map(({ title, page, depth }) => ({ title, page, depth })) ?? [], 'derived')}>
-              Use these
-            </button>
-          </div>
-          <ul class="rows derived-list">
-            {state.derived.map((heading, at) => (
-              <li key={at} class="row" style={{ paddingLeft: `${8 + heading.depth * 16}px` }}>
-                <span class="row-text">{heading.title}</span>
-                <span class="muted">p{heading.page + 1}</span>
-                <span class="muted">{Math.round(heading.confidence * 100)}%</span>
-                <Info text={heading.evidence.join('. ')} label={heading.title} />
-              </li>
-            ))}
-          </ul>
-        </div>
       ) : null}
     </div>
   );

@@ -29,6 +29,16 @@ export interface SectionRow {
 
 export const sectionKey = (entry: OutlineEntry, index: number): string => (entry.id !== undefined ? entry.id : `#${index}`);
 
+/** The title without the number that the label already shows ("1.2 Subtracting" with the label "1.2"). */
+export function titleWithoutLabel(entry: OutlineEntry): string {
+  const label = entry.label?.trim();
+  if (label !== undefined && label !== '' && entry.title.toLowerCase().startsWith(label.toLowerCase())) {
+    const rest = entry.title.slice(label.length).replace(/^[\s.:)-]+/, '');
+    if (rest !== '') return rest;
+  }
+  return entry.title;
+}
+
 export interface SectionWarnings {
   /** Ids that two entries share (an error: only the first can hold exercises). */
   duplicateIds: string[];
@@ -148,18 +158,6 @@ export function exercisesUnder(model: BookModel, ids: readonly string[]): number
   return count;
 }
 
-// ---------------------------------------------------------------------------------------------------------------------
-// DERIVE SECTIONS (PHASE B, helper H2's heuristics)
-//
-// Reserved place. "Derive sections" will find the chapters and sections of the book from the printed text (offline, with
-// the evidence for each) and propose them with ids, printed labels and the position of each heading. Nothing is built yet,
-// and the window shows no button for it. When the heuristics arrive they plug in here and nowhere else:
-//
-//   1. the main process:   `DocumentService.deriveSections()` (service.ts) runs the core function on `allPageText` and
-//                          returns entries with `id`, `label`, `top`, a confidence and the evidence, like `deriveOutline`
-//                          returns `DerivedHeading`s today (`Api.deriveOutline`);
-//   2. the store:          `Store.deriveContents()` keeps the result in `state.derived`; `Store.setOutline(entries, 'derived')`
-//                          applies it (`outline.set` replaces every entry, so the entries must carry the ids that exercises
-//                          already name; `Store.giveSectionIds()` fills the missing ones);
-//   3. the window:         `DeriveSectionsSlot` in components/SectionsPanel.tsx shows the button and the proposed list.
-// ---------------------------------------------------------------------------------------------------------------------
+// Deriving the sections from the printed text of the book (the heuristics of the core, run in the main process by
+// `DocumentService.deriveSections`) is in logic/derive.ts (what is new, different, the same; what applying does to the
+// outline and to the exercises filed under it), `Store.deriveSections` and components/DeriveReview.tsx.
