@@ -3,6 +3,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import {
   McPrepError,
   PdfDocument,
+  findFrame,
   linesInRect,
   overlayBoxes,
   parseRect,
@@ -21,6 +22,7 @@ import type { CommandContext, CommandSpec, OptionSpec } from '../types.js';
 import { GLOBAL_OPTIONS } from './common.js';
 
 const PDF_OPTION: OptionSpec = { name: 'pdf', type: 'string', value: '<file>', description: 'Work on this PDF directly, without a project (no frames, no numbering).' };
+const SOLUTIONS_OPTION: OptionSpec = { name: 'solutions', type: 'boolean', description: 'With --frames: also draw the solution regions (dashed, "sol 5a"): look at the answer key to check them. They are hidden from the learner; this is for whoever audits the book.' };
 
 interface Opened {
   doc: PdfDocument;
@@ -124,14 +126,14 @@ export const render: CommandSpec = {
   description:
     'The image is what a model should look at to read coordinates (--grid) and to check the marking (--frames). The grid labels are page fractions with the origin at the top-left.',
   args: [{ name: 'page', description: 'Zero-based page.', required: true }],
-  options: [...IMAGE_OPTIONS, PDF_OPTION, ...GLOBAL_OPTIONS],
-  examples: ['mcprep render 3 --grid 0.1', 'mcprep render 3 --frames --grid 0.05 --out check/page3.png'],
+  options: [...IMAGE_OPTIONS, SOLUTIONS_OPTION, PDF_OPTION, ...GLOBAL_OPTIONS],
+  examples: ['mcprep render 3 --grid 0.1', 'mcprep render 3 --frames --grid 0.05 --out check/page3.png', 'mcprep render 211 --frames --solutions'],
   output: '{ page, path, width, height, scale, view: { left, top, right, bottom }, grid?, frames: number }',
   async run(context) {
     const opened = await open(context);
     try {
       const page = pageNumber(context.args[0] as string);
-      const boxes = flag(context.options, 'frames') && opened.project ? overlayBoxes(opened.project.frames, page) : [];
+      const boxes = flag(context.options, 'frames') && opened.project ? overlayBoxes(opened.project.frames, page, { solutions: flag(context.options, 'solutions') }) : [];
       const image = await renderPage(opened.doc, page, imageOptions(context, boxes));
       const path = await outputPath(stringOption(context.options, 'out'), context.io.cwd, opened.cache, `page-${page}.png`);
       await save(path, image.png);
@@ -148,15 +150,15 @@ export const render: CommandSpec = {
 
 function regionOf(frame: Frame, which: string, frames: readonly Frame[]): { page: number; rect: Rect; label: string } {
   if (which === 'main') return { page: frame.page, rect: frame.rect, label: frame.id };
-  const match = /^(continues|context):(\d+)$/.exec(which);
-  if (!match) throw usage(`--region must be main, continues:N or context:N, not "${which}".`);
+  const match = /^(continues|context|solution):(\d+)$/.exec(which);
+  if (!match) throw usage(`--region must be main, continues:N, context:N or solution:N, not "${which}".`);
   const index = Number(match[2]);
   let owner = frame;
   if (match[1] === 'context' && frame.unit !== undefined) {
     // The context of a unit is kept on its first part.
     owner = frames.filter((item) => item.unit === frame.unit).sort((a, b) => a.page - b.page || a.rect.top - b.rect.top)[0] ?? frame;
   }
-  const list = match[1] === 'continues' ? owner.continues : owner.context;
+  const list = match[1] === 'continues' ? owner.continues : match[1] === 'solution' ? owner.solution : owner.context;
   const region = list?.[index];
   if (!region) throw new McPrepError('E_NO_REGION', `${owner.id} has no ${match[1] as string} region ${index}.`, { hint: `It has ${list?.length ?? 0}.` });
   return { page: region.page, rect: region.rect, label: `${frame.id}-${match[1] as string}${index}` };
@@ -166,19 +168,21 @@ export const crop: CommandSpec = {
   name: 'crop',
   summary: 'Render one frame, or any rectangle of a page, to a PNG: the way to check a frame by looking at it.',
   description:
-    'Give a frame id, or --page and --rect. With a grid the labels are still page coordinates, so a crop can be read in page fractions. --all writes a crop of every frame (and its continuation and context regions) in one go.',
-  args: [{ name: 'frame', description: 'A frame id (omit it when you give --page and --rect, or --all).' }],
+    'Give a frame id (or SECTION:LABEL for a book exercise), or --page and --rect. With a grid the labels are still page coordinates, so a crop can be read in page fractions. --all writes a crop of every frame (and its continuation, context and solution regions) in one go; --section limits it to the book exercises of one section. Check the solution regions of a book exercise by looking at them: --region solution:0.',
+  args: [{ name: 'frame', description: 'A frame id, or SECTION:LABEL of a book exercise (omit it when you give --page and --rect, or --all).' }],
   options: [
     { name: 'page', type: 'string', value: '<n>', description: 'Zero-based page (with --rect).' },
     { name: 'rect', type: 'string', value: '<l,t,r,b>', description: 'The rectangle to crop, as page fractions.' },
-    { name: 'region', type: 'string', value: 'main|continues:N|context:N', description: 'Which region of the frame (default main).' },
+    { name: 'region', type: 'string', value: 'main|continues:N|context:N|solution:N', description: 'Which region of the frame (default main).' },
     { name: 'all', type: 'boolean', description: 'Crop every frame of the project.' },
+    { name: 'section', type: 'string', value: '<id>', description: 'With --all: only the book exercises filed under this section.' },
     { name: 'padding', type: 'number', value: '<fraction>', description: 'Page fraction to include around the rectangle (default 0.01).' },
     ...IMAGE_OPTIONS,
+    SOLUTIONS_OPTION,
     PDF_OPTION,
     ...GLOBAL_OPTIONS,
   ],
-  examples: ['mcprep crop f3', 'mcprep crop f3 --region context:0 --grid 0.05', 'mcprep crop --page 2 --rect 0.1,0.3,0.9,0.5 --grid 0.05', 'mcprep crop --all --out check/'],
+  examples: ['mcprep crop f3', 'mcprep crop f3 --region context:0 --grid 0.05', 'mcprep crop 1.2:5a --region solution:0', 'mcprep crop --page 2 --rect 0.1,0.3,0.9,0.5 --grid 0.05', 'mcprep crop --all --out check/', 'mcprep crop --all --section 1.2'],
   output: '{ crops: [{ frame?, region, page, rect, path, width, height, scale, view }] }',
   async run(context) {
     const opened = await open(context);
@@ -186,7 +190,7 @@ export const crop: CommandSpec = {
       const out = stringOption(context.options, 'out');
       const crops: Record<string, unknown>[] = [];
       const make = async (target: { page: number; rect: Rect; label: string }, frameId: string | undefined, region: string): Promise<void> => {
-        const boxes = flag(context.options, 'frames') && opened.project ? overlayBoxes(opened.project.frames, target.page) : [];
+        const boxes = flag(context.options, 'frames') && opened.project ? overlayBoxes(opened.project.frames, target.page, { solutions: flag(context.options, 'solutions') }) : [];
         const image = await renderRegion(opened.doc, target.page, target.rect, imageOptions(context, boxes));
         const path = await outputPath(context.options['all'] === true && out !== undefined && !/[\\/]$/.test(out) ? `${out}/` : out, context.io.cwd, opened.cache, `crop-${target.label}.png`);
         await save(path, image.png);
@@ -194,15 +198,19 @@ export const crop: CommandSpec = {
       };
       if (context.options['all'] === true) {
         if (!opened.project) throw usage('--all needs a project.');
-        for (const frame of [...opened.project.frames].sort((a, b) => a.page - b.page || a.rect.top - b.rect.top)) {
+        const section = stringOption(context.options, 'section');
+        const chosen = [...opened.project.frames].filter((frame) => section === undefined || (frame.authority === 'book' && frame.section === section)).sort((a, b) => a.page - b.page || a.rect.top - b.rect.top);
+        if (section !== undefined && chosen.length === 0) throw new McPrepError('E_NO_FRAME', `No book exercise is filed under the section "${section}".`, { hint: 'List the exercises with `mcprep exercises list`.' });
+        for (const frame of chosen) {
           await make(regionOf(frame, 'main', opened.project.frames), frame.id, 'main');
           for (let i = 0; i < (frame.continues?.length ?? 0); i += 1) await make(regionOf(frame, `continues:${i}`, opened.project.frames), frame.id, `continues:${i}`);
           if (frame.unit === undefined) for (let i = 0; i < (frame.context?.length ?? 0); i += 1) await make(regionOf(frame, `context:${i}`, opened.project.frames), frame.id, `context:${i}`);
+          for (let i = 0; i < (frame.solution?.length ?? 0); i += 1) await make(regionOf(frame, `solution:${i}`, opened.project.frames), frame.id, `solution:${i}`);
         }
       } else if (context.args[0] !== undefined) {
         if (!opened.project) throw usage('A frame id needs a project; use --page and --rect for a plain PDF.');
-        const frame = opened.project.frames.find((item) => item.id === context.args[0]);
-        if (!frame) throw new McPrepError('E_NO_FRAME', `There is no frame with the id "${context.args[0]}".`, { hint: 'List the ids with `mcprep frames list`.' });
+        const frame = findFrame(opened.project, context.args[0]);
+        if (!frame) throw new McPrepError('E_NO_FRAME', `There is no frame "${context.args[0]}".`, { hint: 'List the ids with `mcprep frames list`; a book exercise is also named SECTION:LABEL (`mcprep exercises list`).' });
         const region = stringOption(context.options, 'region') ?? 'main';
         await make(regionOf(frame, region, opened.project.frames), frame.id, region);
       } else {

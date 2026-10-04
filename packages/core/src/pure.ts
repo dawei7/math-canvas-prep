@@ -18,6 +18,7 @@ export * from './rules/document.js';
 export * from './rules/info.js';
 export * from './rules/book.js';
 export * from './book/sections.js';
+export * from './book/summary.js';
 export * from './geometry/snap.js';
 export * from './pdf/lines.js';
 export * from './propose/index.js';

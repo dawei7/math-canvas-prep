@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/book-summary.schema.json",
+  "title": "The summary of an audited book (mcprep book show --json, mcprep book export)",
+  "description": "What a book is, how it is divided into sections and how many authoritative exercises (and solutions) each section holds. Plain JSON, camelCase; pages are zero-based; `top` is a fraction of the page height from the top. The same summary is made from a project and from a bundle. Documented in docs/PROJECT_FILE.md.",
+  "type": "object",
+  "required": ["format", "version", "generator", "document", "sections", "totals"],
+  "properties": {
+    "format": { "const": "math-canvas-book-summary" },
+    "version": { "const": 1 },
+    "generator": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": { "name": { "type": "string" }, "version": { "type": "string" } },
+      "additionalProperties": false
+    },
+    "document": {
+      "type": "object",
+      "required": ["title", "pageCount"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "folder": { "type": "string" },
+        "pageCount": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Of the PDF the summary was made for." },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "author": { "type": "string", "maxLength": 200 },
+        "series": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "license": {
+          "type": "object",
+          "required": ["name"],
+          "properties": { "name": { "type": "string", "maxLength": 100 }, "url": { "type": "string", "maxLength": 500 } },
+          "additionalProperties": false
+        },
+        "sourceUrl": { "type": "string", "maxLength": 500 },
+        "notice": { "type": "string", "maxLength": 4000 }
+      },
+      "additionalProperties": false
+    },
+    "sections": {
+      "type": "array",
+      "description": "Every entry of the outline, in reading order.",
+      "items": {
+        "type": "object",
+        "required": ["index", "title", "page", "depth", "parent", "exercises", "exercisesTotal", "withSolution", "withSolutionTotal"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0, "description": "The position of the entry in the outline." },
+          "id": { "type": "string", "description": "The id exercises name; absent for an entry that has none." },
+          "label": { "type": "string", "description": "The number printed with the heading." },
+          "title": { "type": "string" },
+          "page": { "type": "integer", "minimum": 0 },
+          "top": { "type": "number", "minimum": 0, "maximum": 1 },
+          "depth": { "type": "integer", "minimum": 0, "maximum": 8 },
+          "parent": { "type": ["integer", "null"], "minimum": 0, "description": "The index of the entry above this one, or null for a top-level entry." },
+          "exercises": { "type": "integer", "minimum": 0, "description": "Authoritative exercises filed under this entry." },
+          "exercisesTotal": { "type": "integer", "minimum": 0, "description": "The same for this entry and everything below it." },
+          "withSolution": { "type": "integer", "minimum": 0 },
+          "withSolutionTotal": { "type": "integer", "minimum": 0 },
+          "firstLabel": { "type": "string" },
+          "lastLabel": { "type": "string" },
+          "items": {
+            "type": "array",
+            "description": "Only with the exercises option: this entry's own exercises in reading order.",
+            "items": {
+              "type": "object",
+              "required": ["id", "label", "page", "solutionRegions"],
+              "properties": {
+                "id": { "type": "string" },
+                "label": { "type": "string" },
+                "page": { "type": "integer", "minimum": 0 },
+                "solutionRegions": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": ["sections", "sectionsWithId", "exercises", "withSolution", "withoutSolution", "unfiled", "ordinary"],
+      "properties": {
+        "sections": { "type": "integer", "minimum": 0 },
+        "sectionsWithId": { "type": "integer", "minimum": 0 },
+        "exercises": { "type": "integer", "minimum": 0 },
+        "withSolution": { "type": "integer", "minimum": 0 },
+        "withoutSolution": { "type": "integer", "minimum": 0 },
+        "unfiled": { "type": "integer", "minimum": 0, "description": "Authoritative exercises whose section is not an entry of the outline." },
+        "ordinary": {
+          "type": "object",
+          "required": ["exercises", "questions", "bookmarks"],
+          "properties": {
+            "exercises": { "type": "integer", "minimum": 0 },
+            "questions": { "type": "integer", "minimum": 0 },
+            "bookmarks": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

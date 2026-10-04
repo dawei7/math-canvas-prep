@@ -1,8 +1,9 @@
 import { resolve } from 'node:path';
-import { checkBundle, hashFile, type BundleReport } from '@mcprep/core';
+import { buildBookSummary, checkBundle, hashFile, type BundleReport } from '@mcprep/core';
 import { flag, stringOption, usage } from '../args.js';
-import { FRAME_HEADERS, issueLines, plural, rectText, table } from '../format.js';
+import { FRAME_HEADERS, byPosition, frameRows, issueLines, plural, summarizeFrame, table, tableLimited } from '../format.js';
 import type { CommandSpec } from '../types.js';
+import { describeBook } from './book.js';
 import { GLOBAL_OPTIONS } from './common.js';
 
 export const exportBundle: CommandSpec = {
@@ -20,7 +21,7 @@ export const exportBundle: CommandSpec = {
     ...GLOBAL_OPTIONS,
   ],
   examples: ['mcprep export', 'mcprep export --out out/analysis1.mcbundle --folder "University/Analysis"'],
-  output: '{ path, bytes, sha256, manifest, counts: { frames, outlineEntries }, issues: Issue[] (repairs and warnings), validation: { errors, warnings, repairs }, importCheck?: { ok, steps } }',
+  output: '{ path, bytes, sha256, manifest (with features and the document info when there are any), counts: { frames, outlineEntries }, book: { exercises, withSolution }, issues: Issue[] (repairs and warnings), validation: { errors, warnings, repairs }, importCheck?: { ok, steps } }',
   async run(context) {
     const session = await context.session();
     const outline = stringOption(context.options, 'outline') ?? 'project';
@@ -49,18 +50,22 @@ export const exportBundle: CommandSpec = {
       sha256: hashed.sha256,
       manifest: done.write.manifest,
       counts: done.write.counts,
+      book: done.write.book,
       issues: done.write.issues,
       validation: { errors: done.validation.errors, warnings: done.validation.warnings, repairs: done.validation.repairs },
       ...(done.check ? { importCheck: { ok: done.check.ok, steps: done.check.steps } } : {}),
     };
     const manifest = done.write.manifest;
+    const document = manifest.document;
     const lines = [
       `Wrote ${done.write.path} (${done.write.bytes} bytes).`,
-      `  title: ${manifest.document.title}${manifest.document.folder ? `   folder: ${manifest.document.folder}` : ''}`,
-      `  ${plural(done.write.counts.frames, 'frame')}, ${plural(done.write.counts.outlineEntries, 'outline entry', 'outline entries')}, ${plural(manifest.document.pageCount, 'page')}`,
+      `  title: ${document.title}${document.folder ? `   folder: ${document.folder}` : ''}`,
+      ...(document.author !== undefined || document.license !== undefined ? [`  ${[document.author !== undefined ? `author: ${document.author}` : '', document.license !== undefined ? `licence: ${document.license.name}` : ''].filter(Boolean).join('   ')}`] : []),
+      `  ${plural(done.write.counts.frames, 'frame')}, ${plural(done.write.counts.outlineEntries, 'outline entry', 'outline entries')}, ${plural(document.pageCount, 'page')}`,
+      ...(done.write.book.exercises > 0 ? [`  ${plural(done.write.book.exercises, 'authoritative exercise')}, ${done.write.book.withSolution} with a hidden solution (features: ${(manifest.features ?? []).join(', ')})`] : []),
       done.check ? '  The importer check passed: the app will accept it.' : '  (not verified)',
       'Copy it to the tablet and open it in the Math Canvas library.',
-      ...issueLines(done.write.issues.filter((entry) => entry.severity !== 'error'), '  '),
+      ...issueLines(done.write.issues.filter((entry) => entry.severity !== 'error'), '  ', 60),
     ];
     return { result, warnings: done.write.issues.filter((entry) => entry.severity === 'warning'), text: lines.join('\n') };
   },
@@ -70,9 +75,9 @@ function describeReport(report: BundleReport, verdict: boolean): string {
   const lines: string[] = [];
   if (verdict) lines.push(report.ok ? 'The importer would ACCEPT this bundle.' : `The importer would REJECT this bundle: ${report.rejection?.message ?? ''}`);
   lines.push(...report.steps.map((step) => `  step ${step.step} ${step.name}: ${step.status}${step.detail ? ` - ${step.detail}` : ''}`));
-  if (report.errors.length > 0) lines.push('Errors:', ...issueLines(report.errors, '  '));
-  if (report.repairs.length > 0) lines.push('Repairs the importer applies silently:', ...issueLines(report.repairs, '  '));
-  if (report.warnings.length > 0) lines.push('Warnings:', ...issueLines(report.warnings, '  '));
+  if (report.errors.length > 0) lines.push('Errors:', ...issueLines(report.errors, '  ', 60));
+  if (report.repairs.length > 0) lines.push('Repairs the importer applies silently:', ...issueLines(report.repairs, '  ', 60));
+  if (report.warnings.length > 0) lines.push('Warnings:', ...issueLines(report.warnings, '  ', 60));
   return lines.join('\n');
 }
 
@@ -83,21 +88,29 @@ export const inspectBundle: CommandSpec = {
   args: [{ name: 'file', description: 'The .mcbundle file.', required: true }],
   options: [{ name: 'no-open-pdf', type: 'boolean', description: 'Do not open the PDF to count its pages.' }, { name: 'json', type: 'boolean', description: 'Print one JSON document.' }, { name: 'help', short: 'h', type: 'boolean', description: 'Show help.' }],
   examples: ['mcprep inspect-bundle analysis1.mcbundle'],
-  output: '{ ok, rejection?, errors, repairs, warnings, steps, archive: { bytes, entries }, manifest?, document?, frames?, numbers?, outline? } - the same report as import-check, with everything that was read',
+  output: '{ ok, rejection?, errors, repairs, warnings, steps, archive: { bytes, entries }, manifest?, document? (with author, licence, ... when the manifest has them), features?, frames?, numbers? (positional numbers only: authoritative exercises have none), outline?, summary? } - the same report as import-check, with everything that was read; summary is the book summary of `book show` (sections with exercise counts)',
   async run(context) {
     const path = resolve(context.io.cwd, context.args[0] as string);
     const report = await checkBundle(path, { openPdf: !flag(context.options, 'no-open-pdf') });
     const lines: string[] = [`${path}`];
     if (report.archive) lines.push(`  ${report.archive.bytes} bytes, ${plural(report.archive.entries.length, 'entry', 'entries')}:`, table(report.archive.entries.map((entry) => [entry.name, String(entry.bytes), entry.method, entry.role]), ['name', 'bytes', 'method', 'role']));
     if (report.manifest) lines.push(`format ${report.manifest.format} v${report.manifest.version}, written ${report.manifest.createdAt} by ${report.manifest.generator?.name ?? '?'} ${report.manifest.generator?.version ?? ''}`.trim());
+    if (report.features !== undefined) lines.push(`features: ${report.features.join(', ') || '(none)'}`);
     if (report.document) lines.push(`document: "${report.document.title}"${report.document.folder ? ` in ${report.document.folder}` : ''}, ${plural(report.document.pageCount, 'page')}, ${report.document.bytes} bytes, sha256 ${report.document.sha256.slice(0, 16)}...`);
-    if (report.frames && report.numbers) {
-      const labels = new Map(report.numbers.map((entry) => [entry.id, entry.label]));
-      lines.push(`${plural(report.frames.length, 'frame')}:`, table(report.frames.map((frame) => [frame.id, labels.get(frame.id) ?? '', frame.kind, String(frame.page), rectText(frame.rect), [frame.unit ? `unit ${frame.unit}` : '', frame.continues ? `continues ${frame.continues.length}` : '', frame.context ? `context ${frame.context.length}` : ''].filter(Boolean).join(', ')]), FRAME_HEADERS));
+    let summary: ReturnType<typeof buildBookSummary> | undefined;
+    if (report.frames && report.numbers && report.document) {
+      const labels = new Map(report.numbers.map((entry) => [entry.id, entry]));
+      const summaries = report.frames.map((frame) => summarizeFrame(frame, labels)).sort(byPosition);
+      lines.push(`${plural(report.frames.length, 'frame')}:`, tableLimited(frameRows(summaries), FRAME_HEADERS, 400));
+      const { title, folder, pageCount, sha256, bytes, fileName: _fileName, ...info } = report.document;
+      summary = buildBookSummary({ title, folder, info, pageCount, sha256, bytes, frames: report.frames, outline: report.outline });
+      if (summary.totals.exercises > 0 || summary.totals.sectionsWithId > 0) lines.push('The book:', ...describeBook(summary));
+      else if (report.outline) lines.push(`${plural(report.outline.length, 'outline entry', 'outline entries')}:`, ...report.outline.map((entry) => `  ${'  '.repeat(entry.depth)}${entry.title} (page ${entry.page})`));
+    } else if (report.outline) {
+      lines.push(`${plural(report.outline.length, 'outline entry', 'outline entries')}:`, ...report.outline.map((entry) => `  ${'  '.repeat(entry.depth)}${entry.title} (page ${entry.page})`));
     }
-    if (report.outline) lines.push(`${plural(report.outline.length, 'outline entry', 'outline entries')}:`, ...report.outline.map((entry) => `  ${'  '.repeat(entry.depth)}${entry.title} (page ${entry.page})`));
     lines.push(describeReport(report, true));
-    return { result: report, warnings: report.warnings, text: lines.join('\n') };
+    return { result: { ...report, ...(summary ? { summary } : {}) }, warnings: report.warnings, text: lines.join('\n') };
   },
 };
 
@@ -110,7 +123,7 @@ export const importCheck: CommandSpec = {
   args: [{ name: 'file', description: 'The .mcbundle file.', required: true }],
   options: [{ name: 'no-open-pdf', type: 'boolean', description: 'Do not open the PDF to count its pages (step 4 is then skipped).' }, { name: 'json', type: 'boolean', description: 'Print one JSON document.' }, { name: 'help', short: 'h', type: 'boolean', description: 'Show help.' }],
   examples: ['mcprep import-check analysis1.mcbundle', 'mcprep import-check analysis1.mcbundle --json'],
-  output: '{ wouldImport: boolean, rejection?: Issue, steps: [{ step, name, status, detail }], errors, repairs, warnings, document?, frames?, numbers?, outline? }',
+  output: '{ wouldImport: boolean, rejection?: Issue, steps: [{ step, name, status, detail }], errors, repairs, warnings, document?, features?, frames?, numbers?, outline? }',
   async run(context) {
     const path = resolve(context.io.cwd, context.args[0] as string);
     const report = await checkBundle(path, { openPdf: !flag(context.options, 'no-open-pdf') });

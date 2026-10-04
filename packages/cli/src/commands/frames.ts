@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { McPrepError, countFrames, type FrameKind, type Operation } from '@mcprep/core';
+import { McPrepError, countBook, countFrames, type FrameKind, type Operation } from '@mcprep/core';
 import { flag, listOption, numberList, numberOption, pageNumber, stringOption, usage } from '../args.js';
-import { FRAME_HEADERS, frameRows, plural, summarizeFrames, table } from '../format.js';
+import { FRAME_HEADERS, frameRows, plural, summarizeFrames, tableLimited } from '../format.js';
 import type { CommandContext, CommandSpec, OptionSpec } from '../types.js';
 import { DRY_RUN, FORCE, GLOBAL_OPTIONS, applyAndReport, parseRegion } from './common.js';
 
@@ -22,16 +22,18 @@ function reportOptions(context: CommandContext): { dryRun?: boolean; force?: boo
 
 export const framesList: CommandSpec = {
   name: 'frames list',
-  summary: 'List the frames in reading order with their positional labels (E1, E2.1, Q1, B1).',
+  summary: 'List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.',
   description:
-    'Labels are computed from position, never stored: page by page, top before bottom, left before right; the parts of one exercise count once, at the position of its first part. Adding a frame earlier in the document renumbers the later ones; use the id to refer to a frame.',
+    'Two kinds of exercise: those you framed yourself have a positional label, computed from position, never stored (page by page, top before bottom, left before right; the parts of one exercise count once, at the position of its first part), and adding a frame earlier in the document renumbers the later ones; authoritative book exercises (authority "book") are listed by SECTION:LABEL, the number the book prints, which never changes, and are marked "book" in the notes. Use the id, or SECTION:LABEL, to refer to a frame.',
   options: [
     { name: 'page', type: 'string', value: '<n>', description: 'Only this zero-based page.' },
     { name: 'kind', type: 'string', value: 'exercise|question|bookmark', description: 'Only this kind.' },
+    { name: 'authority', type: 'string', value: 'book|user', description: 'Only authoritative book exercises (book), or only what a person framed for themselves (user: ordinary exercises, questions and bookmarks).' },
+    { name: 'section', type: 'string', value: '<id>', description: 'Only the book exercises filed under this section (an outline entry id).' },
     ...GLOBAL_OPTIONS,
   ],
-  examples: ['mcprep frames list', 'mcprep frames list --page 2 --json'],
-  output: '{ frames: [{ id, label, kind, page, rect, unit?, part?, partCount?, continues?, context? }], counts: { exercise, question, bookmark } }',
+  examples: ['mcprep frames list', 'mcprep frames list --page 2 --json', 'mcprep frames list --authority book --section 1.2'],
+  output: '{ frames: [{ id, label, kind, authority: "book"|"user", reference?, section?, page, rect, unit?, part?, partCount?, continues?, context?, solution? }], counts: { exercise, question, bookmark }, book: { exercises, withSolution } }; counts are the positional ones (book exercises are not in them)',
   async run(context) {
     const session = await context.session();
     let frames = summarizeFrames(session.project);
@@ -39,10 +41,19 @@ export const framesList: CommandSpec = {
     if (page !== undefined) frames = frames.filter((frame) => frame.page === pageNumber(page));
     const kind = stringOption(context.options, 'kind');
     if (kind !== undefined) frames = frames.filter((frame) => frame.kind === kindOf(kind));
+    const authority = stringOption(context.options, 'authority');
+    if (authority !== undefined) {
+      if (authority !== 'book' && authority !== 'user') throw usage(`--authority must be book or user, not "${authority}".`);
+      frames = frames.filter((frame) => frame.authority === authority);
+    }
+    const section = stringOption(context.options, 'section');
+    if (section !== undefined) frames = frames.filter((frame) => frame.section === section);
     const counts = countFrames(session.project.frames);
+    const book = countBook(session.project.frames);
+    const bookText = book.exercises > 0 ? `, ${plural(book.exercises, 'book exercise')} (${book.withSolution} with a solution)` : '';
     return {
-      result: { frames, counts },
-      text: `${plural(frames.length, 'frame')} (project: ${plural(counts.exercise, 'exercise')}, ${plural(counts.question, 'question')}, ${plural(counts.bookmark, 'bookmark')}).\n${table(frameRows(frames), FRAME_HEADERS)}`,
+      result: { frames, counts, book },
+      text: `${plural(frames.length, 'frame')} (project: ${plural(counts.exercise, 'exercise')}, ${plural(counts.question, 'question')}, ${plural(counts.bookmark, 'bookmark')}${bookText}).\n${tableLimited(frameRows(frames), FRAME_HEADERS, 400)}`,
     };
   },
 };
@@ -63,30 +74,58 @@ export const framesAdd: CommandSpec = {
     { name: 'context', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'A context region (instruction or background printed elsewhere); repeatable, up to 8. Exercises only.' },
     { name: 'continues', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'A further region of the same task, e.g. on the next page; repeatable, up to 8. Not for parts.' },
     { name: 'no-enlarge', type: 'boolean', description: 'Refuse a rect below the minimum size instead of enlarging it.' },
+    { name: 'authority', type: 'string', value: 'book', description: 'Make it an authoritative exercise audited from a book (needs --label and --section; it cannot be a part). `mcprep exercises add` is the same without --kind.' },
+    { name: 'label', type: 'string', value: '<5a>', description: 'With --authority book: the number exactly as the book prints it, without the closing "." or ")" (5, 12, 5a, A.3).' },
+    { name: 'section', type: 'string', value: '<id>', description: 'With --authority book: the id of the outline entry (section) the exercise belongs to (`mcprep outline` lists them).' },
+    { name: 'solution', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 8. Exercises only.' },
+    { name: 'replace', type: 'boolean', description: 'With --authority book: if the exercise (same section and label) already exists, overwrite it in place (page, rect and continuation; context and solution when given) instead of failing.' },
     ...REPORT_OPTIONS,
   ],
   examples: [
     'mcprep frames add --kind exercise --page 2 --rect 0.08,0.12,0.92,0.31 --snap',
     'mcprep frames add --kind exercise --page 3 --rect 0.08,0.6,0.92,0.95 --continues 4:0.08,0.05,0.92,0.2',
     'mcprep frames add --kind bookmark --page 5 --rect 0.1,0.4,0.9,0.52',
+    'mcprep frames add --kind exercise --authority book --label 5a --section 1.2 --page 17 --rect 0.09,0.41,0.91,0.48 --solution 211:0.1,0.52,0.5,0.54',
   ],
-  output: 'The change report: { applied, dryRun, created, removed, frames: [...], counts, validation: { ok, errors, warnings, repairs } }',
+  output: 'The change report: { applied, dryRun, created, replaced, removed, frames: [...], counts, book, validation: { ok, errors, warnings, repairs } }',
   async run(context) {
-    const op: Operation = {
-      op: 'add',
-      kind: kindOf(stringOption(context.options, 'kind') as string),
-      page: pageNumber(stringOption(context.options, 'page') as string),
-      rect: stringOption(context.options, 'rect') as string,
-      ...(flag(context.options, 'snap') ? { snap: true } : {}),
-      ...(flag(context.options, 'no-enlarge') ? { enlarge: false } : {}),
-      ...(stringOption(context.options, 'id') !== undefined ? { id: stringOption(context.options, 'id') as string } : {}),
-      ...(stringOption(context.options, 'unit') !== undefined ? { unit: stringOption(context.options, 'unit') as string } : {}),
-      ...(listOption(context.options, 'context').length > 0 ? { context: listOption(context.options, 'context').map((text) => parseRegion(text, '--context')) } : {}),
-      ...(listOption(context.options, 'continues').length > 0 ? { continues: listOption(context.options, 'continues').map((text) => parseRegion(text, '--continues')) } : {}),
-    };
-    return applyAndReport(context, [op], `added a ${op.kind}`, reportOptions(context));
+    const op = addOperation(context);
+    return applyAndReport(context, [op], op.authority !== undefined ? `added the book exercise ${op.section as string}:${op.label as string}` : `added a ${op.kind as string}`, reportOptions(context));
   },
 };
+
+/** The `add` operation that `frames add` and `exercises add` describe. */
+export function addOperation(context: CommandContext, defaults: { kind?: FrameKind; authority?: 'book' } = {}): Extract<Operation, { op: 'add' }> {
+  const kindText = stringOption(context.options, 'kind');
+  const authorityText = stringOption(context.options, 'authority') ?? defaults.authority;
+  if (authorityText !== undefined && authorityText !== 'book') throw usage(`--authority must be book, not "${authorityText}".`, 'Leave it out for an exercise you frame for yourself.');
+  const kind = kindText !== undefined ? kindOf(kindText) : defaults.kind;
+  const label = stringOption(context.options, 'label');
+  const section = stringOption(context.options, 'section');
+  if (authorityText === 'book') {
+    if (label === undefined) throw usage('An authoritative exercise needs --label: the number exactly as the book prints it (5, 5a, A.3).');
+    if (section === undefined) throw usage('An authoritative exercise needs --section: the id of the outline entry it belongs to (`mcprep outline` lists them).');
+  } else if (label !== undefined || section !== undefined) {
+    throw usage('--label and --section belong to authoritative exercises: add --authority book (or use `mcprep exercises add`).');
+  }
+  if (flag(context.options, 'replace') && authorityText !== 'book') throw usage('--replace only applies to authoritative exercises (--authority book), which are identified by section and label.');
+  const regions = (name: string): ReturnType<typeof parseRegion>[] => listOption(context.options, name).map((text) => parseRegion(text, `--${name}`));
+  return {
+    op: 'add',
+    ...(kind !== undefined ? { kind } : {}),
+    page: pageNumber(stringOption(context.options, 'page') as string),
+    rect: stringOption(context.options, 'rect') as string,
+    ...(flag(context.options, 'snap') ? { snap: true } : {}),
+    ...(flag(context.options, 'no-enlarge') ? { enlarge: false } : {}),
+    ...(stringOption(context.options, 'id') !== undefined ? { id: stringOption(context.options, 'id') as string } : {}),
+    ...(stringOption(context.options, 'unit') !== undefined ? { unit: stringOption(context.options, 'unit') as string } : {}),
+    ...(listOption(context.options, 'context').length > 0 ? { context: regions('context') } : {}),
+    ...(listOption(context.options, 'continues').length > 0 ? { continues: regions('continues') } : {}),
+    ...(listOption(context.options, 'solution').length > 0 ? { solution: regions('solution') } : {}),
+    ...(authorityText === 'book' ? { authority: 'book' as const, label: label as string, section: section as string } : {}),
+    ...(flag(context.options, 'replace') ? { replace: true } : {}),
+  };
+}
 
 export const framesUpdate: CommandSpec = {
   name: 'frames update',
@@ -253,7 +292,7 @@ export const framesApply: CommandSpec = {
   name: 'frames apply',
   summary: 'Apply many operations at once, atomically, with one validation at the end.',
   description:
-    'The file holds { "operations": [ ... ] } (or just the list). Each operation has an "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, outline.set, outline.add, outline.clear, meta.set, with the same fields as the matching commands. An "add" may carry "ref": "a" and later operations may say "id": "@a" for the frame it created, so you need not guess generated ids. Any failure, or any new validation error, rejects the whole batch and nothing is written. This is how to mark a 60-page sheet in one call.',
+    'The file holds { "operations": [ ... ] } (or just the list). Each operation has an "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, authority.mark, authority.unmark, label.set, section.set, solution.add, solution.remove, solution.set, outline.set, outline.add, outline.update, outline.delete, outline.ids, outline.clear, meta.set, with the same fields as the matching commands. An "add" may carry "ref": "a" and later operations may say "id": "@a" for the frame it created (or replaced), so you need not guess generated ids; a book exercise can also be named "SECTION:LABEL" ("1.2:5a"). An "add" with "authority": "book", "label" and "section" makes an authoritative exercise; applying the same batch twice does not duplicate it (the second time is an error naming the exercise) unless the "add" says "replace": true. Any failure, or any new validation error, rejects the whole batch and nothing is written. This is how to mark a 60-page sheet in one call.',
   writes: true,
   args: [{ name: 'file', description: 'A JSON file, or - for standard input.', required: true }],
   options: [...REPORT_OPTIONS],
