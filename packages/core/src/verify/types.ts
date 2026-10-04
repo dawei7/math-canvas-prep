@@ -46,12 +46,14 @@ export const VERIFY_CODES = [
   { code: 'context-range', severities: ['error'] },
   { code: 'context-missing', severities: ['error'] },
   { code: 'context-not-nearest', severities: ['warning'] },
+  { code: 'context-inconsistent', severities: ['warning'] },
   { code: 'solution-section-mismatch', severities: ['error'] },
   { code: 'solution-order', severities: ['warning'] },
   { code: 'edge-on-ink', severities: ['warning'] },
   { code: 'region-open-end', severities: ['warning'] },
   { code: 'region-holds-item', severities: ['error'] },
   { code: 'inline-section', severities: ['info'] },
+  { code: 'stray-frame', severities: ['warning'] },
 ] as const;
 
 export type VerifyCode = (typeof VERIFY_CODES)[number]['code'];

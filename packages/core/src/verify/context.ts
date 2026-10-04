@@ -118,8 +118,10 @@ export function checkContexts(run: Run): Draft[] {
     const zone = zoneOf(run, exercise);
     if (zone === undefined) continue;
     const frame = exercise.frame;
-    const from = Math.max(...contexts.map((region) => pos(region.page, region.rect.bottom)));
     const to = pos(frame.page, frame.rect.top);
+    // The instructions are printed above the exercise; one attached from below is wrong, and then the nearest one above is looked for.
+    const printedAbove = contexts.filter((region) => pos(region.page, region.rect.top) < to);
+    const from = printedAbove.length > 0 ? Math.max(...printedAbove.map((region) => pos(region.page, region.rect.bottom))) : Math.max(0, frame.page - 1);
     if (to <= from) continue;
     let nearest: { piece: Piece; page: number; at: number } | undefined;
     for (let page = Math.floor(from); page <= frame.page; page += 1) {
@@ -150,6 +152,37 @@ export function checkContexts(run: Run): Draft[] {
         exercise.where,
       ),
     );
+  }
+
+  // --- context-inconsistent: both neighbours share an instruction that this exercise does not have ------------------------------
+  const keyOf = (exercise: Exercise): string =>
+    (exercise.frame.context ?? [])
+      .map((region) => regionKey(region.page, region.rect))
+      .sort()
+      .join(';');
+  for (const zone of run.layout.zones) {
+    const list = zone.exercises;
+    for (let i = 1; i + 1 < list.length; i += 1) {
+      const [before, exercise, after] = [list[i - 1] as Exercise, list[i] as Exercise, list[i + 1] as Exercise];
+      const shared = keyOf(before);
+      if (shared === '' || shared !== keyOf(after) || keyOf(exercise) === shared) continue;
+      // An instruction of its own, printed between the previous exercise and this one, makes a group of one: that is the book's.
+      const start = pos(before.frame.page, before.frame.rect.bottom) - 1e-6;
+      const end = pos(exercise.frame.page, exercise.frame.rect.top);
+      const own = exercise.frame.context ?? [];
+      if (own.length > 0 && own.every((region) => pos(region.page, region.rect.top) >= start && pos(region.page, region.rect.top) < end)) continue;
+      drafts.push(
+        draft(
+          'context-inconsistent',
+          'warning',
+          exercise.ref,
+          exercise.frame.page,
+          `${exercise.ref} ${own.length === 0 ? 'has no instruction' : 'has another instruction'}, though the exercises before and after it (${before.ref} and ${after.ref}) share one.`,
+          `${before.ref} and ${after.ref} have the same instruction`,
+          exercise.where,
+        ),
+      );
+    }
   }
   return drafts;
 }

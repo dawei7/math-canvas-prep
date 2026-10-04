@@ -56,12 +56,14 @@
               "context-range",
               "context-missing",
               "context-not-nearest",
+              "context-inconsistent",
               "solution-section-mismatch",
               "solution-order",
               "edge-on-ink",
               "region-open-end",
               "region-holds-item",
-              "inline-section"
+              "inline-section",
+              "stray-frame"
             ]
           },
           "severity": { "enum": ["error", "warning", "info"] },

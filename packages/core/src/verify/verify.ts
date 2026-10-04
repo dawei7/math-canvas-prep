@@ -2,7 +2,8 @@ import type { PageText, Rect } from '../model/types.js';
 import type { Project } from '../project/model.js';
 import { LIMITS } from '../rules/constants.js';
 import { McPrepError } from '../rules/issues.js';
-import { prepare, type Draft, type Prepared } from './common.js';
+import { isAuthoritative } from '../model/authority.js';
+import { draft, prepare, type Draft, type Prepared } from './common.js';
 import { checkContexts } from './context.js';
 import { checkContinuations } from './continuation.js';
 import { checkCoverage } from './coverage.js';
@@ -85,6 +86,30 @@ export function regionsToMeasure(project: Project, options: VerifyOptions = {}):
   return regions;
 }
 
+/**
+ * An audited book holds only the exercises the book prints. A frame that is none of them (an exercise, question or bookmark framed
+ * for oneself) is something the audit did not mean to leave in: a stray region.
+ */
+function checkStrays(project: Project, state: Prepared): Draft[] {
+  if (!project.frames.some((frame) => isAuthoritative(frame))) return [];
+  const drafts: Draft[] = [];
+  for (const frame of project.frames) {
+    if (isAuthoritative(frame)) continue;
+    drafts.push(
+      draft(
+        'stray-frame',
+        'warning',
+        frame.id,
+        frame.page,
+        `The frame ${frame.id} on page ${frame.page} (${frame.kind}) is no exercise of the book, in a project that is audited as a book: a stray region.`,
+        `${frame.kind} at ${[frame.rect.left, frame.rect.top, frame.rect.right, frame.rect.bottom].map((value) => Math.round(value * 1000) / 1000).join(',')}`,
+        { section: state.sectionRank(undefined), page: frame.page, top: frame.rect.top, left: frame.rect.left },
+      ),
+    );
+  }
+  return drafts;
+}
+
 const compareDrafts = (a: Draft, b: Draft): number =>
   SEVERITY_RANK[a.finding.severity] - SEVERITY_RANK[b.finding.severity] ||
   (CODE_RANK.get(a.finding.code) as number) - (CODE_RANK.get(b.finding.code) as number) ||
@@ -121,6 +146,7 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
     ...checkContexts(run),
     ...checkKeys(run),
     ...(options.ink !== undefined ? checkInk(state.exercises, options.ink) : []),
+    ...(chosenSections(project, options) === undefined ? checkStrays(project, state) : []),
   ];
   drafts.sort(compareDrafts);
   const findings = drafts.map((entry) => entry.finding);
