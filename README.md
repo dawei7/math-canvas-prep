@@ -18,9 +18,9 @@ Chapter 14 of the [agent guide](docs/AGENT_GUIDE.md) describes it; a transcript 
 
 | Part | State |
 | --- | --- |
-| `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check; authoritative book exercises, hidden solution regions, sections, document information (licence, notice) and the book summary. 598 tests. |
-| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands. 69 tests, plus two end-to-end tests of the built binary. |
-| `packages/mcp` | Works. 49 tools over stdio. 12 tests, plus an end-to-end test of the built server. |
+| `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check; authoritative book exercises, hidden solution regions, sections, document information (licence, notice) and the book summary; proposals for a whole book (the sections from the printed contents, the numbered exercises of the practice sets with their instruction, the answers of the answer key). 727 tests. |
+| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands, and `outline derive --book`, `exercises propose` and `solutions propose` for a whole book. 91 tests, plus two end-to-end tests of the built binary. |
+| `packages/mcp` | Works. 52 tools over stdio. 16 tests, plus an end-to-end test of the built server. |
 | `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file. 26 unit tests and 17 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux: see [docs/DESKTOP.md](docs/DESKTOP.md). It has no screens yet for book exercises, solutions and sections: a project that has them still opens and saves, and the command line and the MCP server edit them. |
 | Docs | [Agent guide](docs/AGENT_GUIDE.md), [audit a book](docs/AUDIT_A_BOOK.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [dependencies](docs/DEPENDENCIES.md). |
 
@@ -109,7 +109,7 @@ generated.
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources): 741 tests
+npm test             # unit tests (Vitest, against the sources): 860 tests
 npm run lint
 npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md
