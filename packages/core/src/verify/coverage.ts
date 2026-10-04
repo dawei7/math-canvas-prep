@@ -251,7 +251,7 @@ export function checkCoverage(run: Run): Draft[] {
 
   // A section is a practice set when its exercises are together: most of the text from the first of them to the end of the section is
   // in regions. Where they stand inline between paragraphs of ordinary text, the text between them is not an exercise left behind.
-  const inline = new Set<Zone>();
+  const inline = run.inline;
   for (const zone of layout.zones) {
     const held = stats.get(zone);
     // Fewer than three exercises are no block (a block is told from inline exercises by how much text lies between them).

@@ -51,6 +51,24 @@ function zoneOf(run: Run, exercise: Exercise): Zone | undefined {
   return run.layout.zones.find((zone) => zone.id === exercise.section);
 }
 
+/** True when a line that tells what to do is printed between two places (positions as `pos`), in the column of the rect, and is in no region of an exercise. */
+function instructionBetween(run: Run, from: number, to: number, page: number, rect: Rect): boolean {
+  for (let at = Math.max(0, Math.floor(from)); at <= Math.floor(to) && at <= page; at += 1) {
+    if (at >= run.project.pdf.pageCount) break;
+    const kinds = run.kinds(at);
+    for (const piece of run.index.page(at).pieces) {
+      if (kinds.kind(piece) !== 'instruction') continue;
+      const place = pos(at, piece.rect.top);
+      if (place < from || place >= to) continue;
+      const across = Math.min(piece.rect.right, rect.right) - Math.max(piece.rect.left, rect.left);
+      if (piece.rect.right - piece.rect.left < 0.6 && across < 0.3 * Math.min(piece.rect.right - piece.rect.left, rect.right - rect.left)) continue;
+      if (coveredShare(piece.rect, run.covering(at).filter((region) => region.kind === 'exercise' || region.kind === 'continues')) >= VERIFY_LIMITS.coveredShare) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
 export function checkContexts(run: Run): Draft[] {
   const drafts: Draft[] = [];
   const pageCount = run.project.pdf.pageCount;
@@ -154,7 +172,8 @@ export function checkContexts(run: Run): Draft[] {
     );
   }
 
-  // --- context-inconsistent: both neighbours share an instruction that this exercise does not have ------------------------------
+  // --- context-inconsistent: the instruction of its neighbours or the one printed right above it is not the exercise's own --------------
+  // The instructions are compared as sets of regions (an instruction that crosses a page break is two regions).
   const keyOf = (exercise: Exercise): string =>
     (exercise.frame.context ?? [])
       .map((region) => regionKey(region.page, region.rect))
@@ -162,26 +181,92 @@ export function checkContexts(run: Run): Draft[] {
       .join(';');
   for (const zone of run.layout.zones) {
     const list = zone.exercises;
-    for (let i = 1; i + 1 < list.length; i += 1) {
-      const [before, exercise, after] = [list[i - 1] as Exercise, list[i] as Exercise, list[i + 1] as Exercise];
-      const shared = keyOf(before);
-      if (shared === '' || shared !== keyOf(after) || keyOf(exercise) === shared) continue;
-      // An instruction of its own, printed between the previous exercise and this one, makes a group of one: that is the book's.
-      const start = pos(before.frame.page, before.frame.rect.bottom) - 1e-6;
-      const end = pos(exercise.frame.page, exercise.frame.rect.top);
-      const own = exercise.frame.context ?? [];
-      if (own.length > 0 && own.every((region) => pos(region.page, region.rect.top) >= start && pos(region.page, region.rect.top) < end)) continue;
-      drafts.push(
-        draft(
-          'context-inconsistent',
-          'warning',
-          exercise.ref,
-          exercise.frame.page,
-          `${exercise.ref} ${own.length === 0 ? 'has no instruction' : 'has another instruction'}, though the exercises before and after it (${before.ref} and ${after.ref}) share one.`,
-          `${before.ref} and ${after.ref} have the same instruction`,
-          exercise.where,
-        ),
-      );
+    // How many exercises of the zone have each set of instructions: a set that two or more have is the instruction of a group.
+    const members = new Map<string, number>();
+    // The instruction regions printed in the zone, each with the exercises that have it.
+    const printed = new Map<string, { page: number; rect: Rect; at: number; owners: Exercise[] }>();
+    for (const exercise of list) {
+      const key = keyOf(exercise);
+      if (key !== '') members.set(key, (members.get(key) ?? 0) + 1);
+      for (const region of exercise.frame.context ?? []) {
+        const regionId = regionKey(region.page, region.rect);
+        const held = printed.get(regionId);
+        if (held) held.owners.push(exercise);
+        else printed.set(regionId, { page: region.page, rect: region.rect, at: pos(region.page, region.rect.top), owners: [exercise] });
+      }
+    }
+    for (let i = 0; i < list.length; i += 1) {
+      const exercise = list[i] as Exercise;
+      const before = list[i - 1];
+      const after = list[i + 1];
+      const frame = exercise.frame;
+      const own = keyOf(exercise);
+      const ownKeys = new Set((frame.context ?? []).map((region) => regionKey(region.page, region.rect)));
+      const top = pos(frame.page, frame.rect.top);
+      // Between the end of the previous exercise and the top of this one: where an instruction of this exercise is printed.
+      const from = before !== undefined ? Math.max(...chainOf(before.frame).map((region) => pos(region.page, region.rect.bottom))) - 1e-6 : zone.head - 1e-6;
+      const relevant = (rect: Rect): boolean => {
+        const across = Math.min(rect.right, frame.rect.right) - Math.max(rect.left, frame.rect.left);
+        return rect.right - rect.left >= 0.6 || across >= 0.3 * Math.min(rect.right - rect.left, frame.rect.right - frame.rect.left);
+      };
+      const above = [...printed.entries()].filter(([, entry]) => entry.at >= from && entry.at < top - 1e-6 && relevant(entry.rect));
+
+      // (a) An instruction printed right above this exercise, which other exercises have and this one does not.
+      const lacking = above.filter(([id]) => !ownKeys.has(id));
+      if (lacking.length > 0) {
+        const [, entry] = lacking[lacking.length - 1] as (typeof lacking)[number];
+        const owners = entry.owners.filter((owner) => owner !== exercise);
+        drafts.push(
+          draft(
+            'context-inconsistent',
+            'warning',
+            exercise.ref,
+            frame.page,
+            `${exercise.ref} ${own === '' ? 'has no instruction' : 'does not have the instruction'} printed right above it (page ${entry.page}), which is the instruction of ${owners
+              .slice(0, 3)
+              .map((owner) => owner.ref)
+              .join(', ')}${owners.length > 3 ? ` and ${owners.length - 3} more` : ''}.`,
+            `the instruction on page ${entry.page} is the one of ${(owners[0] as Exercise).ref}`,
+            exercise.where,
+          ),
+        );
+        continue;
+      }
+
+      // (b) The exercises before and after it share an instruction that it does not have (it has none, or another that is not printed above it).
+      const shared = before !== undefined ? keyOf(before) : '';
+      // (b) and (c) read a practice set, where the exercises of a group follow one another: in a lesson with exercises inline they do not.
+      const practice = !run.inline.has(zone);
+      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id)))) {
+        drafts.push(
+          draft(
+            'context-inconsistent',
+            'warning',
+            exercise.ref,
+            frame.page,
+            `${exercise.ref} ${own === '' ? 'has no instruction' : 'has another instruction'}, though the exercises before and after it (${before.ref} and ${after.ref}) share one.`,
+            `${before.ref} and ${after.ref} have the same instruction`,
+            exercise.where,
+          ),
+        );
+        continue;
+      }
+
+      // (c) It has none, the exercise before it has an instruction that a group shares, and nothing is printed between them: it belongs to that group.
+      const group = before !== undefined ? keyOf(before) : '';
+      if (practice && before !== undefined && own === '' && group !== '' && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect)) {
+        drafts.push(
+          draft(
+            'context-inconsistent',
+            'warning',
+            exercise.ref,
+            frame.page,
+            `${exercise.ref} has no instruction, though ${before.ref}, printed just before it with no other instruction in between, has one that ${members.get(group) as number} exercises share.`,
+            `${before.ref} and ${(members.get(group) as number) - 1} more have the same instruction`,
+            exercise.where,
+          ),
+        );
+      }
     }
   }
   return drafts;

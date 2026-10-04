@@ -50,6 +50,8 @@ export const DEFECT_TYPES: readonly DefectType[] = [
   { type: 'solution-other-section', on: 'workbook', what: 'an exercise points at the answer of another section' },
   { type: 'solution-deleted', on: 'workbook', what: 'the answer of an exercise is missing' },
   { type: 'context-dropped', on: 'workbook', what: 'an exercise in a group has lost the instruction its neighbours share' },
+  { type: 'context-dropped-start', on: 'workbook', what: 'the first exercise of a group has lost the instruction printed right above it (an exercise put back without it)' },
+  { type: 'context-dropped-end', on: 'workbook', what: 'the last exercise of a group has lost the instruction of the exercises before it' },
   { type: 'context-wrong', on: 'workbook', what: 'an exercise has the instruction of another group' },
   { type: 'continuation-left-out', on: 'workbook', what: 'an exercise that goes on over a page break has lost its continuation' },
   { type: 'stray-frame', on: 'workbook', what: 'a frame that no book exercise is' },
@@ -62,7 +64,7 @@ export const DEFECT_TYPES: readonly DefectType[] = [
 /** What the checks cannot see; the report says so (docs/AUDIT_A_BOOK.md, "The gate"). */
 export const INVISIBLE_DEFECTS: readonly string[] = [
   'a continuation that holds no text (a figure) left out',
-  'an instruction dropped from the first or the last exercise of a group (its neighbours on one side differ)',
+  'an instruction dropped from an exercise that is alone in its group (nothing else carries it, so only the unattached line shows, as text left behind)',
   'a region that is too large on blank paper (it holds nothing a learner would miss)',
   'an edge that cuts between two words and so no glyph (with --ink the ones that cut a glyph are found)',
   'two exercises swapped whose answers are swapped too',
@@ -105,6 +107,25 @@ function insideGroups(context: Context): Frame[] {
     if (before.section !== here.section || after.section !== here.section) continue;
     const key = contextKey(here);
     if (key !== '[]' && contextKey(before) === key && contextKey(after) === key) result.push(here);
+  }
+  return result;
+}
+
+/** The exercises that start a group of three or more that share an instruction (the one before has another, or none), and those that end one. */
+function groupEnds(context: Context, which: 'start' | 'end'): Frame[] {
+  const result: Frame[] = [];
+  const list = context.ordered;
+  for (let i = 0; i < list.length; i += 1) {
+    const here = list[i] as Frame;
+    const key = contextKey(here);
+    if (key === '[]') continue;
+    const before = list[i - 1];
+    const after = list[i + 1];
+    const sameBefore = before !== undefined && before.section === here.section && contextKey(before) === key;
+    const sameAfter = after !== undefined && after.section === here.section && contextKey(after) === key;
+    const further = list[i + (which === 'start' ? 2 : -2)];
+    const group = which === 'start' ? !sameBefore && sameAfter && further !== undefined && contextKey(further) === key : sameBefore && !sameAfter && further !== undefined && contextKey(further) === key;
+    if (group) result.push(here);
   }
   return result;
 }
@@ -197,6 +218,18 @@ const GENERATORS: Record<string, Generator> = {
     if (!target) return undefined;
     delete (frames.get(target.id) as Frame).context;
     return { description: `${refOf(target)}: its instruction is dropped`, expect: { codes: ['context-inconsistent'], refs: [refOf(target)] } };
+  },
+  'context-dropped-start': (frames, context) => {
+    const target = context.pick(groupEnds(context, 'start'));
+    if (!target) return undefined;
+    delete (frames.get(target.id) as Frame).context;
+    return { description: `${refOf(target)}: the first of its group, its instruction is dropped`, expect: { codes: ['context-inconsistent'], refs: [refOf(target)] } };
+  },
+  'context-dropped-end': (frames, context) => {
+    const target = context.pick(groupEnds(context, 'end'));
+    if (!target) return undefined;
+    delete (frames.get(target.id) as Frame).context;
+    return { description: `${refOf(target)}: the last of its group, its instruction is dropped`, expect: { codes: ['context-inconsistent'], refs: [refOf(target)] } };
   },
   'context-wrong': (frames, context) => {
     const target = context.pick(insideGroups(context));

@@ -123,6 +123,8 @@ export interface Run {
   filtered: boolean;
   layout: Layout;
   names: HeadingNames;
+  /** The zones whose exercises stand inline between paragraphs of ordinary text (filled by the coverage check, which runs first). */
+  inline: Set<Zone>;
   kinds(page: number): PageKinds;
   covering(page: number): readonly Covering[];
   /** `SECTION:LABEL` of an authoritative frame, else its id. */
@@ -155,6 +157,7 @@ export function buildRun(project: Project, state: Prepared, index: PageIndex, pa
     filtered,
     layout: computeLayout(project, state),
     names,
+    inline: new Set<Zone>(),
     kinds(page) {
       let found = kinds.get(page);
       if (!found) {

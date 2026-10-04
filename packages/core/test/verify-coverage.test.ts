@@ -421,7 +421,8 @@ describe('context-inconsistent: an exercise between two that share an instructio
   it('warns when it has none or another one, not when its own instruction is printed right above it', async () => {
     const { book, frames } = small();
     book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
-    book.text(0, 72, 45, 'Solve each equation.', 11, BOLD);
+    // The instruction that a wrong exercise has is printed far from them (on a page after the exercises).
+    book.text(2, 72, 45, 'Solve each equation.', 11, BOLD);
     book.text(0, 72, 160, 'Simplify each fraction.', 11, BOLD);
     const shared = around(0, 72, 60, { width: 200 });
     for (const frame of frames) frame.context = [shared];
@@ -429,14 +430,69 @@ describe('context-inconsistent: an exercise between two that share an instructio
     const dropped = frames[2] as Frame;
     delete dropped.context;
     expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:3']);
-    dropped.context = [around(0, 72, 45, { width: 200 })];
+    dropped.context = [around(2, 72, 45, { width: 200 })];
     expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:3']);
     // An instruction of its own, printed between the exercise before and this one, is a group of one: the book's.
     dropped.context = [around(0, 72, 160, { width: 200 })];
     expect(codes(await check(book))).not.toContain('context-inconsistent');
-    // The first and the last exercise of a group are not judged.
+    // The first exercise of the group lacks the instruction printed right above it.
     delete (frames[0] as Frame).context;
-    expect(refs(await check(book), 'context-inconsistent')).toEqual([]);
+    expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:1']);
+  });
+
+  /**
+   * Eight exercises: 1 to 4 under one instruction line (page 0), 5 to 8 under an instruction of two lines that crosses a page break (one
+   * region at the bottom of page 0, one at the top of page 1), so that their instruction is a set of two regions.
+   */
+  function twoGroups(): { book: Workbook; frames: Frame[] } {
+    const book = new Workbook(3);
+    book.outline = sectionEntries([
+      { id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' },
+      { id: 'key', page: 2, top: 0.02, title: 'Answers' },
+    ]);
+    book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+    book.text(0, 72, 770, 'Solve each of the following problems by setting up an equation', 11, BOLD);
+    book.text(1, 72, 60, 'and then solving it for the unknown number.', 11, BOLD);
+    const first = around(0, 72, 60, { width: 200 });
+    const crossing = [around(0, 72, 770, { width: 400 }), around(1, 72, 60, { width: 400 })];
+    const frames: Frame[] = [];
+    for (let n = 1; n <= 4; n += 1) frames.push(book.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1), { extra: { context: [first] } }));
+    for (let n = 5; n <= 8; n += 1) frames.push(book.exercise('a', String(n), 1, 72, 100 + 40 * (n - 5), { extra: { context: crossing } }));
+    return { book, frames };
+  }
+
+  it('compares the instructions as sets of regions: an instruction of two regions across a page break', async () => {
+    expect(codes(await check(twoGroups().book))).not.toContain('context-inconsistent');
+    // The first exercise of the second group has none: it is the instruction printed right above it, and the next exercises have it.
+    const start = twoGroups();
+    delete (start.frames[4] as Frame).context;
+    const found = all(await check(start.book), 'context-inconsistent');
+    expect(refs(await check(start.book), 'context-inconsistent')).toEqual(['a:5']);
+    expect(found[0]).toMatchObject({ severity: 'warning', page: 1 });
+    expect(found[0]?.message).toContain('has no instruction printed right above it');
+    expect(found[0]?.message).toContain('a:6');
+    // One region of the two is not the instruction: the exercise in the middle of the group has half of it.
+    const half = twoGroups();
+    (half.frames[5] as Frame).context = [(half.frames[5] as Frame).context?.[0] as Region];
+    expect(refs(await check(half.book), 'context-inconsistent')).toEqual(['a:6']);
+    // The last exercise of the group has none, and nothing is printed between it and the one before: it belongs to that group.
+    const end = twoGroups();
+    delete (end.frames[7] as Frame).context;
+    const last = all(await check(end.book), 'context-inconsistent');
+    expect(last.map((finding) => finding.ref)).toEqual(['a:8']);
+    expect(last[0]?.message).toContain('a:7');
+    expect(last[0]?.message).toContain('3 exercises share');
+    // A group of one with an instruction of its own is not judged.
+    const alone = twoGroups();
+    delete (alone.frames[7] as Frame).context;
+    alone.book.text(1, 72, 200, 'Check your answer.', 11, BOLD);
+    expect(refs(await check(alone.book), 'context-inconsistent')).toEqual([]);
+  });
+
+  it('says nothing about a book that prints no instruction, or in a lesson with its exercises inline', async () => {
+    const plain = twoGroups();
+    for (const frame of plain.frames) delete frame.context;
+    expect(codes(await check(plain.book))).not.toContain('context-inconsistent');
   });
 });
 
