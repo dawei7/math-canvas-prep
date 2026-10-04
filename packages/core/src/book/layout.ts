@@ -601,7 +601,19 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
   left = clamp01(left);
   right = clamp01(right);
   const firstLine = [...item.own].sort((a, b) => a.line.rect.top - b.line.rect.top)[0] as PLine;
-  const top = clamp01(lineStart(firstLine.line, AUTHORING.startPadding, all));
+  const ownTop = firstLine.line.rect.top;
+  let top = clamp01(lineStart(firstLine.line, AUTHORING.startPadding, all));
+  // The frame never starts inside a line of something else beside it (an instruction, the fraction row of the item above):
+  // it starts at that line's baseline region, but never below the first line of the item itself.
+  const ownLines = new Set<TextLine>(item.own.map((entryLine) => entryLine.line));
+  for (const other of all) {
+    if (ownLines.has(other) || isRunningLine(other)) continue;
+    const centre = (other.rect.left + other.rect.right) / 2;
+    if (centre < left || centre > right) continue;
+    const height = other.rect.bottom - other.rect.top;
+    if (height <= 0 || height > 0.05 || other.rect.top >= ownTop || other.rect.bottom <= top) continue;
+    top = Math.max(top, Math.min(other.rect.bottom - 0.25 * height, ownTop - 0.0005));
+  }
   const lastText = Math.max(...item.own.map((entryLine) => entryLine.line.rect.bottom));
   let bottom = clamp01(lastText + AUTHORING.endPadding);
   // The limit below: the next item or instruction in the same column, or the end of the page's content.
@@ -630,7 +642,8 @@ export function itemFrame(item: ItemAcc, context: FrameContext): ItemFrame {
     }
   }
   if (below.length > 0) bottom = Math.min(bottom, limit);
-  bottom = Math.max(bottom, top + AUTHORING.minPieceHeight * 1.5);
+  // The lines of the item itself are always inside, even where the next item's fraction rows reach up into them.
+  bottom = Math.max(bottom, Math.min(1, lastText + 0.001), top + AUTHORING.minPieceHeight * 1.5);
   const rect: Rect = { left: round(left), top: round(top), right: round(right), bottom: round(Math.min(1, bottom)) };
 
   const continues: Region[] = [];
