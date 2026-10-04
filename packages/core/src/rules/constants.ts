@@ -24,10 +24,24 @@ export const LIMITS = {
   folderNameMax: 60,
   outlineTitleMax: 200,
   outlineDepthMax: 8,
+  /** An authoritative exercise's printed number: starts with a letter or digit, then letters, digits and . _ - ( ) / or space. */
+  labelMax: 24,
+  labelPattern: /^[\p{L}\p{N}][\p{L}\p{N} ._\-()/]{0,23}$/u,
+  /** The id of an outline entry, which a frame's `section` names. */
+  sectionIdPattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/,
+  /** At most this many `solution` regions per frame (the same number as `continues` and `context`). */
+  maxSolutionRegions: 8,
+  /** Texts about the work itself (manifest `document`). */
+  authorMax: 200,
+  seriesMax: 200,
+  descriptionMax: 4000,
+  noticeMax: 4000,
+  licenseNameMax: 100,
+  urlMax: 500,
   bundle: {
     maxEntries: 16,
     maxPdfBytes: 512 * 1024 * 1024,
-    maxJsonBytes: 4 * 1024 * 1024,
+    maxJsonBytes: 16 * 1024 * 1024,
     maxArchiveBytes: 600 * 1024 * 1024,
   },
 } as const;

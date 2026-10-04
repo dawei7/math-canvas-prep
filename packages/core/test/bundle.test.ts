@@ -127,8 +127,8 @@ describe('step 1: the archive', () => {
     expect(report.rejection?.code).toBe('zip-limits');
   });
 
-  it('rejects a JSON entry above 4 MiB', async () => {
-    const padded = `${JSON.stringify(goodFrames)}${' '.repeat(4 * 1024 * 1024 + 10)}`;
+  it('rejects a JSON entry above 16 MiB', async () => {
+    const padded = `${JSON.stringify(goodFrames)}${' '.repeat(16 * 1024 * 1024 + 10)}`;
     const report = await check({ frames: padded });
     expect(report.ok).toBe(false);
     expect(codes(report)).toContain('zip-limits');

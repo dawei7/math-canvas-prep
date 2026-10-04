@@ -33,13 +33,33 @@ export interface Frame {
   unit?: string;
   /** The instruction, question or background that belongs to this exercise, wherever it is printed. */
   context?: Region[];
+  /**
+   * `book`: an authoritative exercise, audited from the book and named by its printed `label` instead of a positional
+   * number. Only exercises. Absent: an ordinary exercise framed by a person for themselves.
+   */
+  authority?: Authority;
+  /** The number as the book prints it ("5", "5a", "A.3"), without the closing "." or ")". Required with `authority`. */
+  label?: string;
+  /** The `id` of the outline entry (the section) the authoritative exercise belongs to. Required with `authority`. */
+  section?: string;
+  /** Where the solution or answer is printed, in the same document. Hidden from the learner; used only to grade. */
+  solution?: Region[];
 }
+
+export const AUTHORITIES = ['book'] as const;
+export type Authority = (typeof AUTHORITIES)[number];
 
 export interface OutlineEntry {
   title: string;
   /** Zero-based page. */
   page: number;
   depth: number;
+  /** Unique among the entries: the key by which a frame's `section` finds its entry. */
+  id?: string;
+  /** The number printed with the heading ("1.1", "Chapter 3"). */
+  label?: string;
+  /** Where the heading starts on its page, 0 (top) to 1. */
+  top?: number;
 }
 
 /** frames.json of a bundle. */
@@ -54,12 +74,28 @@ export interface OutlineFile {
   entries: OutlineEntry[];
 }
 
+/** What a writer may say about the work itself; all optional. */
+export interface DocumentInfo {
+  author?: string;
+  series?: string;
+  description?: string;
+  license?: { name: string; url?: string };
+  sourceUrl?: string;
+  /** The text a licence asks to be shown with the work (attribution, what was changed). */
+  notice?: string;
+}
+
+export const BUNDLE_FEATURES = ['sections', 'authority', 'solution'] as const;
+export type BundleFeature = (typeof BUNDLE_FEATURES)[number];
+
 export interface BundleManifest {
   format: 'math-canvas-bundle';
   version: 1;
   createdAt: string;
   generator: { name: string; version: string; targets?: string };
-  document: {
+  /** Which optional parts of the format the writer used; informational. */
+  features?: BundleFeature[];
+  document: DocumentInfo & {
     title: string;
     fileName: string;
     pdf: 'document.pdf';
