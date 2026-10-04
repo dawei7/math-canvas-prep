@@ -1,4 +1,5 @@
-import { McPrepError, VERSION, type ProjectSession } from '@mcprep/core';
+import { resolve } from 'node:path';
+import { CALL_LOG_ENV, McPrepError, VERSION, appendCallLog, type ProjectSession } from '@mcprep/core';
 import { closest, parseArguments, usage } from './args.js';
 import { GLOBAL_OPTIONS } from './commands/common.js';
 import { commandOptions, renderCommandHelp, renderTopHelp } from './help.js';
@@ -98,11 +99,45 @@ function errorText(error: McPrepError): string {
   return `${lines.join('\n')}\n`;
 }
 
+/** What a command line asked for, kept for the call log: the command, what it was given, and the error it failed with. */
+interface CallTrace {
+  command?: string;
+  arguments?: Record<string, unknown>;
+  error?: string;
+}
+
+/** The options as parsed, without the ones that only choose the output (--json, --help), and the positional arguments under `_`. */
+function loggedArguments(options: Record<string, unknown>, positionals: readonly string[]): Record<string, unknown> {
+  const logged: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(options)) if (value !== undefined && name !== 'json' && name !== 'help') logged[name] = value;
+  if (positionals.length > 0) logged['_'] = [...positionals];
+  return logged;
+}
+
 /**
  * Runs one command line and returns the exit code. Nothing is read from a terminal and nothing prompts; with --json the
- * only thing written to standard output is one JSON document.
+ * only thing written to standard output is one JSON document. When the environment variable MCPREP_CALL_LOG names a file, the
+ * call is appended to it as one line of JSON (docs/AGENT_GUIDE.md, "Comparing two agent runs").
  */
 export async function run(argv: readonly string[], io: IO = realIO()): Promise<number> {
+  const trace: CallTrace = {};
+  const code = await execute(argv, io, trace);
+  const file = io.env[CALL_LOG_ENV];
+  if (file !== undefined && file !== '' && trace.command !== undefined) {
+    const problem = await appendCallLog(resolve(io.cwd, file), {
+      surface: 'cli',
+      tool: trace.command,
+      arguments: trace.arguments ?? {},
+      ok: code === 0,
+      ...(trace.error !== undefined ? { error: trace.error } : {}),
+      exitCode: code,
+    });
+    if (problem !== undefined) io.stderr(`mcprep: the call log ${file} cannot be written: ${problem}\n`);
+  }
+  return code;
+}
+
+async function execute(argv: readonly string[], io: IO, trace: CallTrace): Promise<number> {
   const wantsJson = argv.includes('--json');
   const found = findCommand(argv);
 
@@ -142,13 +177,17 @@ export async function run(argv: readonly string[], io: IO = realIO()): Promise<n
       io.stdout(`${renderCommandHelp(spec)}\n`);
       return 0;
     }
+    trace.command = command;
+    trace.arguments = { argv: [...argv] };
     const known = commandOptions(spec);
     const globalsOnly = spec.noProject === true ? GLOBAL_OPTIONS.filter((option) => option.name === 'json' || option.name === 'help') : [];
     const parsed = parseArguments([...known, ...globalsOnly.filter((option) => !known.some((own) => own.name === option.name))], orderedRest(argv, spec), command);
     if (parsed.options['help'] === true) {
       io.stdout(`${renderCommandHelp(spec)}\n`);
+      delete trace.command;
       return 0;
     }
+    trace.arguments = loggedArguments(parsed.options, parsed.positionals);
     const required = (spec.args ?? []).filter((arg) => arg.required === true).length;
     const max = (spec.args ?? []).some((arg) => arg.variadic === true) ? Number.POSITIVE_INFINITY : (spec.args ?? []).length;
     if (parsed.positionals.length < required) {
@@ -176,6 +215,7 @@ export async function run(argv: readonly string[], io: IO = realIO()): Promise<n
     }
     return exitCode;
   } catch (error) {
+    trace.error = error instanceof McPrepError ? error.code : 'E_INTERNAL';
     if (error instanceof McPrepError) {
       if (wantsJson) io.stdout(errorEnvelope(command, error));
       else io.stderr(errorText(error));

@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { run } from '@mcprep/cli';
-import { VERSION, readAgentGuide } from '@mcprep/core';
+import { CALL_LOG_ENV, VERSION, appendCallLog, readAgentGuide } from '@mcprep/core';
 import { z } from 'zod';
 import { AUDIT_INSTRUCTIONS, registerAuditTools } from './audit-tools.js';
 import { capLists, dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
@@ -22,6 +22,11 @@ export interface ServerOptions {
   /** Where relative paths are resolved (default: the process folder). */
   cwd?: string;
   env?: Record<string, string | undefined>;
+  /**
+   * A file that every tool call is appended to, as one line of JSON written after the call returned (default: $MCPREP_CALL_LOG;
+   * none when neither is set). See docs/AGENT_GUIDE.md, "Comparing two agent runs".
+   */
+  callLog?: string;
 }
 
 const INSTRUCTIONS = `Math Canvas Prep marks exercises, parts, context, questions and bookmarks in a mathematics PDF and exports a bundle (.mcbundle) for the Android app Professor Euler: Math Canvas.
@@ -36,6 +41,9 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
   let current: string | undefined = options.project ?? env['MCPREP_PROJECT'];
+  const callLog = options.callLog !== undefined && options.callLog !== '' ? options.callLog : env[CALL_LOG_ENV];
+  // The command line the tools run in process would log the same call a second time: it is not given the log.
+  const { [CALL_LOG_ENV]: _logged, ...cliEnv } = env;
   const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}${VERIFY_INSTRUCTIONS}` });
 
   async function cli(argv: string[], extra: { stdin?: string; project?: string | undefined } = {}): Promise<CliResult> {
@@ -53,7 +61,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
       },
       stdin: () => Promise.resolve(extra.stdin ?? ''),
       cwd,
-      env: { ...env },
+      env: { ...cliEnv },
     });
     const text = out.trim();
     if (text.startsWith('{')) return { code, envelope: JSON.parse(text) as CliResult['envelope'] };
@@ -80,6 +88,20 @@ export function createServer(options: ServerOptions = {}): McpServer {
     return { isError: true, content: [text(failure)], structuredContent: failure };
   }
 
+  /** Appends the call to the call log, after it returned; a log that cannot be written is reported on standard error, never to the client. */
+  async function record(name: string, args: Record<string, unknown>, result: CallToolResult): Promise<void> {
+    if (callLog === undefined || callLog === '') return;
+    const code = result.isError === true ? ((result.structuredContent as { error?: { code?: unknown } } | undefined)?.error?.code ?? 'E_INTERNAL') : undefined;
+    const problem = await appendCallLog(isAbsolute(callLog) ? callLog : resolve(cwd, callLog), {
+      surface: 'mcp',
+      tool: name,
+      arguments: args,
+      ok: result.isError !== true,
+      ...(typeof code === 'string' ? { error: code } : {}),
+    });
+    if (problem !== undefined) process.stderr.write(`mcprep-mcp: the call log ${callLog} cannot be written: ${problem}\n`);
+  }
+
   type Handler<A> = (args: A) => Promise<CallToolResult>;
   function tool<Shape extends z.ZodRawShape>(
     name: string,
@@ -95,16 +117,18 @@ export function createServer(options: ServerOptions = {}): McpServer {
         annotations: { readOnlyHint: config.readOnly === true, destructiveHint: config.destructive === true, idempotentHint: config.idempotent === true, openWorldHint: false },
       },
       (async (args: z.infer<z.ZodObject<Shape>>) => {
-        if (config.project !== false) {
-          const missing = needsProject((args as { project?: string }).project);
-          if (missing) return missing;
+        let result: CallToolResult | undefined;
+        if (config.project !== false) result = needsProject((args as { project?: string }).project);
+        if (result === undefined) {
+          try {
+            result = await handler(args);
+          } catch (error) {
+            const failure = { ok: false, error: { code: 'E_INTERNAL', message: error instanceof Error ? error.message : String(error) } };
+            result = { isError: true, content: [text(failure)], structuredContent: failure };
+          }
         }
-        try {
-          return await handler(args);
-        } catch (error) {
-          const failure = { ok: false, error: { code: 'E_INTERNAL', message: error instanceof Error ? error.message : String(error) } };
-          return { isError: true, content: [text(failure)], structuredContent: failure };
-        }
+        await record(name, args as Record<string, unknown>, result);
+        return result;
       }) as never,
     );
   }

@@ -4,6 +4,7 @@
  */
 export * from './pure.js';
 export * from './fs/atomic.js';
+export * from './calllog.js';
 export * from './pdf/document.js';
 export * from './pdf/render.js';
 export { configurePdfRuntime, pdfDataDirs } from './pdf/runtime.js';

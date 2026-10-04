@@ -37,4 +37,23 @@ describe.skipIf(!existsSync(dist))('the built MCP server over stdio', () => {
       await client.close();
     }
   });
+
+  it('writes a call log with --call-log, one line for each tool call', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mcprep-stdio-log-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'sheet.pdf'), readFileSync(sample));
+    const client = new Client({ name: 'e2e', version: '1.0.0' });
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [bin, '--call-log', 'calls.jsonl'], cwd: dir, stderr: 'pipe' }));
+    try {
+      await client.callTool({ name: 'create_project', arguments: { pdf: 'sheet.pdf' } });
+      await client.callTool({ name: 'render_page', arguments: { page: 99 } });
+    } finally {
+      await client.close();
+    }
+    const lines = readFileSync(join(dir, 'calls.jsonl'), 'utf8').trim().split('\n');
+    expect(lines).toEqual([
+      '{"arguments":{"pdf":"sheet.pdf"},"ok":true,"surface":"mcp","tool":"create_project"}',
+      '{"arguments":{"page":99},"error":"E_PAGE","ok":false,"surface":"mcp","tool":"render_page"}',
+    ]);
+  });
 });

@@ -33,6 +33,10 @@ Run it from the repository as \`npx mcprep <command>\` or \`node packages/cli/bi
   validates once and writes only if the change did not introduce validation errors (\`--force\` overrides, \`--dry-run\` previews).
 - **Images** (\`render\`, \`crop\`) are written as PNG files, by default into \`.mcprep-cache/\` next to the project; the JSON
   result names the path. Open them with an image viewer: that is how a model checks its work.
+- **The call log.** With the environment variable \`MCPREP_CALL_LOG=<file>\` every command (not \`help\` or \`--version\`) appends one
+  line of JSON to the file after it has run: \`{"arguments":{...},"exitCode":0,"ok":true,"surface":"cli","tool":"exercises propose"}\`,
+  keys sorted, \`arguments\` the options as parsed and the positional arguments under \`_\`. \`scripts/compare-calls.mjs\` compares two logs
+  (see the [agent guide](AGENT_GUIDE.md), "Comparing two agent runs").
 
 ## JSON output
 

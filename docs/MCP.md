@@ -29,11 +29,18 @@ npm install
 npm run build
 node packages/mcp/bin/mcprep-mcp.js            # waits for a client on stdin/stdout
 node packages/mcp/bin/mcprep-mcp.js --project /path/to/book.mcprep.json   # optional default project
+node packages/mcp/bin/mcprep-mcp.js --call-log /path/to/run-a.jsonl       # optional: log every tool call
 ```
 
 Use **absolute paths** in the configurations below: clients start the server in a folder of their own choosing. Relative paths in
 tool arguments (for example `create_project` with `pdf: "book.pdf"`) are resolved from the server's working directory; give absolute
 paths unless you set `cwd`.
+
+**The call log.** With `--call-log FILE` (or the environment variable `MCPREP_CALL_LOG`, which the option overrides) the server appends
+one line of JSON to the file for every tool call, after the call has returned: `{"arguments":{...},"ok":true,"surface":"mcp","tool":"..."}`
+with the keys of every object in sorted order, the arguments as given (never the contents of a PDF) and, for a call that failed with an
+error, its code as `"error"`. Two logs, of two agents or of an agent and a person at the command line (which logs the same way when
+`MCPREP_CALL_LOG` is set), are compared by `scripts/compare-calls.mjs`: see the agent guide, "Comparing two agent runs".
 
 ## Register it in a client
 

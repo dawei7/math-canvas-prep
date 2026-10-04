@@ -38,4 +38,18 @@ describe.skipIf(!existsSync(dist))('the built mcprep binary', () => {
     expect(mcprep(dir, 'nonsense').status).toBe(2);
     expect(mcprep(dir, '--version').stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
   });
+
+  it('appends each command to the file that MCPREP_CALL_LOG names', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mcprep-bin-log-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'sheet.pdf'), readFileSync(sample));
+    const run = (...args: string[]): number | null => spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: 'utf8', env: { ...process.env, MCPREP_CALL_LOG: 'calls.jsonl' } }).status;
+    expect(run('init', 'sheet.pdf', '--title', 'Binary test')).toBe(0);
+    expect(run('lines', '99')).toBe(4);
+    expect(run('--version')).toBe(0);
+    expect(readFileSync(join(dir, 'calls.jsonl'), 'utf8').trim().split('\n')).toEqual([
+      '{"arguments":{"_":["sheet.pdf"],"title":"Binary test"},"exitCode":0,"ok":true,"surface":"cli","tool":"init"}',
+      '{"arguments":{"_":["99"]},"error":"E_PAGE","exitCode":4,"ok":false,"surface":"cli","tool":"lines"}',
+    ]);
+  });
 });

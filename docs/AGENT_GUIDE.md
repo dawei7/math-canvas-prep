@@ -649,6 +649,40 @@ The MCP tools have the same names as the commands: `exercises_add`, `exercises_l
 - [ ] Every printed exercise is one book exercise with the label the book prints, in the section it is printed in; parts are separate
       exercises with the shared statement as context; continuations attached.
 - [ ] Every answer of the key is attached as a solution to its exercise; the exercises without one are known.
-- [ ] Every region **looked at** (`crop --all --section ...`): exercise, context, continuation, solution.
+- [ ] Every region **looked at** (`crop --all --section ...`): exercise, context, continuation, solution. For a whole book: `exercises
+      verify` has no errors (every warning explained) and the fixed sample of `exercises sample` is looked at, all of it.
 - [ ] `validate`: zero errors, warnings understood; `book show` compared with the book; `export` and `import-check` done.
 - [ ] The user is told where the bundle is, the counts per section, the licence, and what you were unsure about.
+
+## 15. Comparing two agent runs
+
+When two agents (two models, or one model twice) audit the same book, the question is whether they did the same thing. Every call
+can be written to a log, and two logs can be compared.
+
+- **The MCP server** appends one line of JSON for each tool call, after the call has returned: start it with
+  `mcprep-mcp --call-log run-a.jsonl`, or set the environment variable `MCPREP_CALL_LOG` in its configuration.
+- **The command line** appends a line for each command when `MCPREP_CALL_LOG` is set.
+
+```console
+MCPREP_CALL_LOG=run-b.jsonl mcprep exercises propose --solutions --details audit.json
+node scripts/compare-calls.mjs run-a.jsonl run-b.jsonl
+```
+
+A line is `{"arguments":{...},"ok":true,"surface":"mcp","tool":"exercises_propose"}`, with the keys of every object in sorted order, so
+that the same call is the same text. `tool` is the MCP tool or the command (`exercises propose`); `arguments` are what the call was
+given, as given (paths as the agent wrote them, a batch of operations as it was sent, never the contents of a PDF: a call names a file,
+it does not carry it); on the command line they are the options as parsed, and the positional arguments are under `_`. `ok` says
+whether the call returned a result (a tool that did not fail, a command with exit code 0), `error` is the error code of a call that
+failed with one (`E_PAGE`), and the command line adds `exitCode`.
+
+`scripts/compare-calls.mjs` (Node, no build needed) prints `identical: 37 calls`, or the first call at which the runs differ and what
+each run made that the other did not, and exits with 0 (the same calls), 1 (they differ) or 2 (a log cannot be read). Before it
+compares, an absolute path becomes `<path>` and its last two segments (so the runs may be in different folders), an MCP tool and the
+command that does the same are the same call (`exercises_propose` and `exercises propose`, `details_file` and `--details`), and numbers,
+rectangles, regions and lists are written one way. Whether a call succeeded counts only with `--strict`; `--json` prints the result as
+JSON. When one log comes from MCP and the other from the command line, a batch (`apply_operations`, `set_outline`) is compared by its
+name only, because the command line takes it from a file.
+
+Two agents that were given the same instruction (docs/AUDIT_A_BOOK.md has one) and made the same calls with the same arguments on the
+same project took the same decisions as far as the tools can tell. `exercises verify` and `exercises sample` are what make the checking
+and the looking, which depend most on the model, the same for every agent.
