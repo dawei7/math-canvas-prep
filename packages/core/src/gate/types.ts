@@ -87,7 +87,8 @@ export interface GateReport {
     reference: { file: string; differences: number } | null;
     bundle: { path: string; ok: boolean; frames: number | null } | null;
     sheets: { file: string; sheets: number; seen: number; missing: number[]; exhaustive: boolean; current: boolean } | null;
-    visual: { file: string; entries: number; exercises: number; missing: number; mismatches: number; defects: number; exhaustive: boolean } | null;
+    /** `file` is the file or the folder of the visual record, `files` how many files were read, `missingSheets` the sheets that hold exercises without an entry (when the list of the sheets was found). */
+    visual: { file: string; entries: number; files: number; exercises: number; missing: number; mismatches: number; defects: number; missingSheets: number[]; exhaustive: boolean } | null;
   };
   itemPatterns: string[];
   /** Neither repaired nor acknowledged. */

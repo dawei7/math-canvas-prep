@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/dawei7/math-canvas-prep/schemas/visual.schema.json",
-  "title": "The visual record of an audit: proof that every exercise was looked at (mcprep audit gate --visual FILE)",
-  "description": "A JSON list with ONE ENTRY PER EXERCISE, written by whoever looked at its cell on the contact sheets (an object { \"visual\": [...] } is accepted too). The gate checks every entry against the project and the text layer: startsWith (three words) must be a piece of the text of the exercise's region, instruction must be whether the exercise has an instruction, answerStartsWith must be the number at the start of the text of its answer; an entry that does not fit is open as visual-mismatch (the cell was not looked at), ok false as visual-defect, an exercise without an entry as visual-missing. Plain JSON, camelCase.",
+  "title": "The visual record of an audit: proof that every exercise was looked at (mcprep audit gate --visual FILE or FOLDER)",
+  "description": "A JSON list with ONE ENTRY PER EXERCISE, written by whoever looked at its cell on the contact sheets (an object { \"visual\": [...] } is accepted too). --visual may name a FOLDER instead of a file: every .json file in it (sheets.json, the list of the sheets, is skipped) is such a list, and the lists are merged in the order of the file names, numbers compared as numbers (sheet-2 before sheet-10), so that one small file can be written for each sheet; one entry per exercise over all the files, a ref that two entries repeat is a visual-mismatch. The gate checks every entry against the project and the text layer: startsWith (three words) must be a piece of the text of the exercise's region, instruction must be whether the exercise has an instruction, answerStartsWith must be the number at the start of the text of its answer; an entry that does not fit is open as visual-mismatch (the cell was not looked at), ok false as visual-defect, an exercise without an entry as visual-missing. Plain JSON, camelCase.",
   "type": "array",
   "items": {
     "type": "object",

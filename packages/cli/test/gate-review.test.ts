@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Frame, Project } from '@mcprep/core';
@@ -27,7 +27,7 @@ interface Gate {
   open: Finding[];
   acknowledged: { finding: Finding; acknowledgement: { code: string; ref: string; confirmed: boolean; confirmedBy?: string } }[];
   refusedAcknowledgements: { acknowledgement: { code: string; ref: string }; why: string }[];
-  checks: { verify: { ink: boolean }; visual: { entries: number; exercises: number; missing: number; mismatches: number; defects: number; exhaustive: boolean } | null; sheets: { exhaustive: boolean } | null };
+  checks: { verify: { ink: boolean }; visual: { entries: number; files: number; exercises: number; missing: number; mismatches: number; defects: number; missingSheets: number[]; exhaustive: boolean } | null; sheets: { exhaustive: boolean } | null };
 }
 const gateOf = (done: Result): Gate => done.json.result as unknown as Gate;
 const said = (done: Result): string => `${done.json.error?.message ?? ''} ${done.json.error?.hint ?? ''}`;
@@ -456,6 +456,90 @@ describe('the visual record: proof that every exercise was looked at', () => {
     await writeFile(join(cli.dir, 'visual.json'), '{"entries": 5}');
     expect((await cli(['audit', 'gate', '--visual', 'visual.json'])).code).toBe(3);
     expect((await cli(['audit', 'gate', '--visual', 'missing.json'])).code).toBe(3);
+  });
+
+  /** The contact sheets in `sheets/` and a folder with one file of entries for each sheet, except the sheets in `skip`. */
+  async function filePerSheet(cli: Cli, entries: VisualEntry[], folder: string, skip: number[] = []): Promise<{ sheets: { number: number; refs: string[] }[] }> {
+    expect((await cli(['exercises', 'sheets', '--out', 'sheets', '--solutions'])).code).toBe(0);
+    const manifest = JSON.parse(await readFile(join(cli.dir, 'sheets', 'sheets.json'), 'utf8')) as { sheets: { number: number; refs: string[] }[] };
+    await mkdir(join(cli.dir, folder), { recursive: true });
+    for (const sheet of manifest.sheets) {
+      if (skip.includes(sheet.number)) continue;
+      await writeFile(join(cli.dir, folder, `sheet-${sheet.number}.json`), JSON.stringify(entries.filter((entry) => sheet.refs.includes(entry.ref))));
+    }
+    return manifest;
+  }
+
+  it('takes a folder of files, one for each sheet, merged in the order of their names; a ref in two files is a mismatch; a file still works', async () => {
+    const { cli, entries } = await recorded();
+    const manifest = await filePerSheet(cli, entries, 'visual');
+    // More than nine sheets: sheet-2 comes before sheet-10 because the numbers in the names are compared as numbers.
+    expect(manifest.sheets.length).toBeGreaterThan(9);
+    const done = await cli(['audit', 'gate', '--visual', 'visual', '--final']);
+    expect(done.code).toBe(0);
+    expect(gateOf(done)).toMatchObject({ passed: true, perfect: true });
+    expect(gateOf(done).checks.visual).toMatchObject({ entries: 112, files: manifest.sheets.length, exercises: 112, missing: 0, mismatches: 0, missingSheets: [], exhaustive: true });
+    // The list of the sheets may lie in the folder: it is not a record.
+    await copyFile(join(cli.dir, 'sheets', 'sheets.json'), join(cli.dir, 'visual', 'sheets.json'));
+    expect((await cli(['audit', 'gate', '--visual', 'visual'])).code).toBe(0);
+    // The same entry in two files.
+    const first = JSON.parse(await readFile(join(cli.dir, 'visual', 'sheet-1.json'), 'utf8')) as VisualEntry[];
+    const second = JSON.parse(await readFile(join(cli.dir, 'visual', 'sheet-2.json'), 'utf8')) as VisualEntry[];
+    const repeated = first[0] as VisualEntry;
+    await writeFile(join(cli.dir, 'visual', 'sheet-2.json'), JSON.stringify([...second, repeated]));
+    const twice = gateOf(await cli(['audit', 'gate', '--visual', 'visual']));
+    const mismatch = twice.open.find((finding) => finding.code === 'visual-mismatch');
+    expect(mismatch?.message).toContain(`two entries for ${repeated.ref} (sheet-1.json and sheet-2.json): one entry per exercise`);
+    expect(mismatch?.evidence).toBe(`entry ${second.length + 1} of sheet-2.json repeats ${repeated.ref}`);
+    // The object form works in a folder too; a file that is no record is named; an empty folder is refused.
+    await writeFile(join(cli.dir, 'visual', 'sheet-2.json'), JSON.stringify({ visual: second }));
+    expect((await cli(['audit', 'gate', '--visual', 'visual'])).code).toBe(0);
+    await writeFile(join(cli.dir, 'visual', 'notes.json'), '{"hello": 1}');
+    const bad = await cli(['audit', 'gate', '--visual', 'visual']);
+    expect(bad.code).toBe(3);
+    expect(said(bad)).toContain('notes.json');
+    expect(said(bad)).toContain('is not a visual record');
+    await mkdir(join(cli.dir, 'empty'));
+    const none = await cli(['audit', 'gate', '--visual', 'empty']);
+    expect(none.code).toBe(3);
+    expect(said(none)).toContain('holds no .json file');
+    // The single file form is as it was.
+    await writeFile(join(cli.dir, 'one.json'), JSON.stringify(entries));
+    expect(gateOf(await cli(['audit', 'gate', '--visual', 'one.json', '--final'])).checks.visual).toMatchObject({ entries: 112, files: 1, exhaustive: true });
+  });
+
+  it('names the sheets that hold the exercises without an entry when the list of the sheets is found, and the sections when it is not', async () => {
+    const { cli, entries } = await recorded();
+    const manifest = await filePerSheet(cli, entries, 'visual', [2, 3]);
+    const sheet = (number: number): { number: number; refs: string[] } => manifest.sheets.find((entry) => entry.number === number) as { number: number; refs: string[] };
+    // The folder sheets of the project holds sheets.json: it is found without being named.
+    const gate = gateOf(await cli(['audit', 'gate', '--visual', 'visual']));
+    expect(gate.passed).toBe(false);
+    expect(named(gate)).toEqual(['visual-missing sheet 2', 'visual-missing sheet 3']);
+    expect(gate.open[0]?.message).toContain(`The ${sheet(2).refs.length} exercises of sheet 2 have no entry in the visual record`);
+    expect(gate.open[0]?.evidence).toBe(sheet(2).refs.slice(0, 8).join(', '));
+    expect(gate.open.every((finding) => !finding.acknowledgeable)).toBe(true);
+    expect(gate.checks.visual).toMatchObject({ missing: sheet(2).refs.length + sheet(3).refs.length, missingSheets: [2, 3], exhaustive: false });
+    const text = await cli(['audit', 'gate', '--visual', 'visual'], { json: false });
+    expect(text.stdout).toContain('(exercises of sheet 2 and 3 have no entry)');
+    expect(text.stdout).toContain('Gate NOT passed');
+    // A sheet that is partly written: only its missing exercises are counted.
+    const four = JSON.parse(await readFile(join(cli.dir, 'visual', 'sheet-4.json'), 'utf8')) as VisualEntry[];
+    await writeFile(join(cli.dir, 'visual', 'sheet-4.json'), JSON.stringify(four.slice(1)));
+    expect(gateOf(await cli(['audit', 'gate', '--visual', 'visual'])).open.find((finding) => finding.ref === 'sheet 4')?.message).toContain(`1 of the ${sheet(4).refs.length} exercises of sheet 4 has no entry`);
+    // Found next to the file of the sheets that were looked at, wherever the sheets are.
+    await rename(join(cli.dir, 'sheets'), join(cli.dir, 'contact'));
+    const plain = gateOf(await cli(['audit', 'gate', '--visual', 'visual']));
+    expect(plain.open.every((finding) => finding.code === 'visual-missing' && !finding.ref.startsWith('sheet'))).toBe(true);
+    expect(plain.open[0]?.message).toMatch(/exercises? of section \S+ (has|have) no entry in the visual record/);
+    expect(plain.checks.visual?.missingSheets).toEqual([]);
+    await writeFile(join(cli.dir, 'contact', 'seen.txt'), `1-${manifest.sheets.length}`);
+    const seen = gateOf(await cli(['audit', 'gate', '--visual', 'visual', '--sheets-seen', 'contact/seen.txt']));
+    expect(seen.checks.visual?.missingSheets).toEqual([2, 3, 4]);
+    // And next to the record, when the record is a folder that holds it.
+    await rename(join(cli.dir, 'contact'), join(cli.dir, 'elsewhere'));
+    await copyFile(join(cli.dir, 'elsewhere', 'sheets.json'), join(cli.dir, 'visual', 'sheets.json'));
+    expect(gateOf(await cli(['audit', 'gate', '--visual', 'visual'])).checks.visual?.missingSheets).toEqual([2, 3, 4]);
   });
 
   it('has a schema', async () => {

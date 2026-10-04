@@ -1,5 +1,5 @@
 import { readFile, stat } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { buildBookSummary } from '../book/summary.js';
 import { compareBook, type ReferenceSection } from '../book/compare.js';
 import { checkBundle } from '../bundle/reader.js';
@@ -26,7 +26,7 @@ import {
   verifyFindings,
 } from './gate.js';
 import { GATE_FORMAT, GATE_VERSION, type Acknowledgement, type AuditNotes, type GateFinding, type GateReport, type GateStatus } from './types.js';
-import { checkVisual } from './visual.js';
+import { checkVisual, findSheetsManifest } from './visual.js';
 
 /** Running the gate on a project: the checks, the notes, the certificate. */
 
@@ -148,6 +148,32 @@ async function checkSheets(session: ProjectSession, seenFile: string): Promise<{
   return { findings, summary: { file: seenFile, sheets: numbers.length, seen: numbers.length - unseen.length, missing: unseen, exhaustive, current: stale.length === 0 } };
 }
 
+/**
+ * Where the list of the sheets (`sheets.json`) may be, to name the sheets that hold exercises without an entry in the visual record: next
+ * to the file of the sheets that were looked at (or where that file says), next to the visual record (in its folder), and in the folder
+ * `sheets` next to the project. It only names sheets in a message: whatever is found or not changes no verdict.
+ */
+async function sheetsManifestCandidates(session: ProjectSession, options: GateRunOptions): Promise<string[]> {
+  const list: string[] = [];
+  if (options.sheetsSeen !== undefined) {
+    const seenPath = resolve(options.sheetsSeen);
+    let named: string | undefined;
+    try {
+      named = parseSeen(await readFile(seenPath, 'utf8')).manifest;
+    } catch {
+      // the check of the sheets says what is wrong with that file
+    }
+    list.push(resolve(dirname(seenPath), named ?? 'sheets.json'));
+  }
+  if (options.visual !== undefined) {
+    const visualPath = resolve(options.visual);
+    const folder = await stat(visualPath).then((info) => (info.isDirectory() ? visualPath : dirname(visualPath)), () => dirname(visualPath));
+    list.push(join(folder, 'sheets.json'));
+  }
+  list.push(join(dirname(session.projectPath), 'sheets', 'sheets.json'));
+  return list;
+}
+
 export interface Collected {
   findings: GateFinding[];
   checks: GateReport['checks'];
@@ -196,7 +222,8 @@ export async function collectFindings(session: ProjectSession, options: GateRunO
     checks.sheets = sheets.summary;
   }
   if (options.visual !== undefined && options.sheets !== false) {
-    const visual = await checkVisual(session, options.visual, options.itemPatterns ?? []);
+    const manifest = await findSheetsManifest(await sheetsManifestCandidates(session, options));
+    const visual = await checkVisual(session, options.visual, options.itemPatterns ?? [], manifest !== undefined ? { sheets: manifest } : {});
     findings.push(...visual.findings);
     checks.visual = visual.summary;
   }

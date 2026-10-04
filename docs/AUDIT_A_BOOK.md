@@ -326,7 +326,7 @@ error and warning must be repaired or acknowledged; information needs nothing) a
 loop, MCP `ink: false`); with `--reference FILE` the comparison of `book compare` (a count that differs, a section on one side only, a title: each is a finding
 `reference-count`, `reference-missing`, `reference-extra`, `reference-title`); the bundle exported last, when there is one (it must pass
 the importer's checks and have the frames of the project: `bundle-rejected`, `bundle-stale`); with `--sheets-seen FILE` the contact
-sheets (below); and with `--visual FILE` the visual record (below). It reports `open`, `acknowledged` (each with its reason) and exits with
+sheets (below); and with `--visual FILE` (or a folder of files) the visual record (below). It reports `open`, `acknowledged` (each with its reason) and exits with
 code 4 unless `open` is empty. Give it the same `--item-pattern` as the audit (or put them in the notes file, as `itemPatterns`): the
 certificate lists them.
 
@@ -349,19 +349,29 @@ file (JSON `{"seen": [1, 2, 3]}` or text such as `1-40`) and give the file to th
 (`sheets-unseen`). None of these can be acknowledged. **A list of numbers proves nothing**: `exhaustive` in the certificate is true only
 when the visual record covers every exercise.
 
-**The visual record** (`audit gate --visual FILE`, `mcprep schema visual`) is the proof of looking: a JSON list with **one entry for
-every exercise**, written by whoever looked at its cell on the sheets (an object `{"visual": [...]}` is accepted as well):
+**The visual record** (`audit gate --visual FILE|FOLDER`, `mcprep schema visual`) is the proof of looking: a JSON list with **one entry
+for every exercise**, written by whoever looked at its cell on the sheets (an object `{"visual": [...]}` is accepted as well):
 
 ```json
 [{ "ref": "1.2:5", "startsWith": "Find the value", "instruction": true, "answerStartsWith": "5", "ok": true },
  { "ref": "1.2:6", "startsWith": "Find the value", "instruction": true, "answerStartsWith": "6", "ok": false, "defect": "context-missing" }]
 ```
 
+A book of 3,000 exercises is not written in one file: `--visual` takes **a folder** as well. Every `.json` file in it is such a list, and
+the lists are merged in the order of the file names (numbers compared as numbers: `sheet-2.json` before `sheet-10.json`; the `sheets.json`
+of the sheets, if it lies in the folder, is skipped), so one small file can be written for each sheet as the sheet is looked at. It is one
+entry per exercise over all the files: a ref that two entries repeat, in one file or in two, is a `visual-mismatch` (the message names the
+two files). A file of the folder that is no list of entries is an error that names the file; a folder without a `.json` file is refused.
+
 - `ref` is `SECTION:LABEL`; `startsWith` the first three words printed after the number, as you read them in the cell;
   `instruction` whether the cell shows a blue box; `answerStartsWith` the number at the start of the green box (`""` when there is none);
   `ok` false, with `defect` (a finding code or a word), when the cell shows anything wrong.
-- The gate checks each entry against the project and the text layer: every exercise has an entry (`visual-missing`, one finding for the
-  exercises of a section); `startsWith` (its first three words, case and spaces do not matter) is a piece of the text of the exercise's
+- The gate checks each entry against the project and the text layer: every exercise has an entry (`visual-missing`: when the list of the
+  sheets, `sheets.json`, is found, one finding **for each sheet** that holds exercises without an entry, "The 12 exercises of sheet 5 have no
+  entry in the visual record" or "3 of the 12 exercises of sheet 5 ...", with their references, and the gate says "exercises of sheet 5
+  and 6 have no entry"; without it one finding for the exercises of each section. The list is looked for next to the file of
+  `--sheets-seen` (or where that file says), in the folder of the record and in the folder `sheets` next to the project; if none holds one
+  the references are listed as before and nothing else changes); `startsWith` (its first three words, case and spaces do not matter) is a piece of the text of the exercise's
   region; `instruction` is whether the exercise has an instruction (a `context` region); `answerStartsWith` is the number at the start of the
   text of its answer region (or `""` for an exercise without one). An entry that does not fit is open as `visual-mismatch`: it shows that
   the cell was not looked at, or that the exercise changed afterwards. An entry with `ok` false is open as `visual-defect`. An entry for

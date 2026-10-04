@@ -62,14 +62,16 @@
         },
         "visual": {
           "type": ["object", "null"],
-          "required": ["file", "entries", "exercises", "missing", "mismatches", "defects", "exhaustive"],
+          "required": ["file", "entries", "files", "exercises", "missing", "mismatches", "defects", "missingSheets", "exhaustive"],
           "properties": {
-            "file": { "type": "string" },
+            "file": { "type": "string", "description": "The file, or the folder of .json files, of the visual record." },
             "entries": { "type": "integer", "minimum": 0 },
+            "files": { "type": "integer", "minimum": 1, "description": "How many files were read (1 for a file; the .json files of a folder, merged in the order of their names)." },
             "exercises": { "type": "integer", "minimum": 0 },
             "missing": { "type": "integer", "minimum": 0, "description": "Exercises without an entry." },
             "mismatches": { "type": "integer", "minimum": 0, "description": "Entries that do not fit the project or the text layer (visual-mismatch)." },
             "defects": { "type": "integer", "minimum": 0, "description": "Entries with ok false (visual-defect)." },
+            "missingSheets": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "The sheets that hold exercises without an entry, when the list of the sheets (sheets.json) was found next to the file of the sheets that were looked at, next to the visual record, or in the folder sheets of the project." },
             "exhaustive": { "type": "boolean", "description": "Every exercise has an entry." }
           },
           "additionalProperties": false

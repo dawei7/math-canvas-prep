@@ -706,12 +706,14 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    holds a neighbour, lacks its instruction or shows the wrong answer is repaired. To repair an instruction, copy it from the neighbour:
    `exercises_list` with `regions` (`exercises list --section S --regions`) prints the regions as `page:l,t,r,b`, `context_add` takes them.
    After a repair draw the sheet again (`--sheet N`).
-4. **Write the visual record**: a JSON list with **one entry per exercise** `{ref, startsWith, instruction, answerStartsWith, ok, defect?}`:
-   `startsWith` the first three words printed after the number, `instruction` whether the cell shows a blue box, `answerStartsWith` the
-   number at the start of the green box (`""` when there is none), `ok: false` with `defect` when the cell shows anything wrong. Write what
-   the cell **shows**, not what you expect: the gate compares every entry with the text layer and the project, and an entry that does not fit
-   is open (`visual-mismatch`, `visual-defect`, `visual-missing`) and cannot be acknowledged. If you cannot look at images, say so and do not
-   write entries: a book without a record is not `perfect`.
+4. **Write the visual record** as you look at each sheet: a JSON list with **one entry per exercise** `{ref, startsWith, instruction,
+   answerStartsWith, ok, defect?}`: `startsWith` the first three words printed after the number, `instruction` whether the cell shows a
+   blue box, `answerStartsWith` the number at the start of the green box (`""` when there is none), `ok: false` with `defect` when the cell
+   shows anything wrong. Write **one small file for each sheet** in a folder (`visual/sheet-1.json`, `visual/sheet-2.json`, ...: the refs of
+   the sheet are in `sheets.json`) and give the folder to the gate (`--visual visual`); the files are merged in the order of their names.
+   Write what the cell **shows**, not what you expect: the gate compares every entry with the text layer and the project, and an entry that
+   does not fit is open (`visual-mismatch`, `visual-defect`, `visual-missing`, which names the sheets that have no entry yet) and cannot be
+   acknowledged. If you cannot look at images, say so and do not write entries: a book without a record is not `perfect`.
 5. `audit_gate` (`audit gate --reference ... --visual FILE`): read `open`. Repair what is open and run it again. The pixel check of the
    edges of every region (`edge-on-ink`) is part of the gate and runs by default; `--no-ink` (`ink=false`) skips it for a quick loop, and a
    book is not perfect until the gate has run without it. It writes `<project>.audit-gate.json` (`ink: true` when the pixel check ran); a
