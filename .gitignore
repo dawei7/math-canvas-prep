@@ -23,3 +23,6 @@ test-results/
 !examples/sample.pdf
 !examples/sample.mcbundle
 !examples/sample.mcprep.json
+!examples/workbook/workbook.pdf
+!examples/workbook/workbook.mcbundle
+!examples/workbook/workbook.mcprep.json
