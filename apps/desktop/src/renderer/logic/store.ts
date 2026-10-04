@@ -479,7 +479,8 @@ export class Store {
     const { doc } = this.state;
     if (!doc) return;
     const clamped = Math.min(Math.max(0, Math.trunc(page)), doc.pageSizes.length - 1);
-    this.set({ page: clamped });
+    // A book exercise that was drawn and is waiting for its number belongs to the page it was drawn on.
+    this.set({ page: clamped, ...(this.state.draft !== null && this.state.draft.page !== clamped ? { draft: null } : {}) });
     void this.ensureText(clamped);
   }
 

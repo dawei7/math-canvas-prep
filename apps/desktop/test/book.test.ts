@@ -289,6 +289,15 @@ describe('the store: two kinds of exercise', () => {
     expect(store.state.project?.frames.map((frame) => frame.label).sort()).toEqual(['1', '2']);
   });
 
+  it('drops a drawn exercise that is waiting for its number when another page is shown', async () => {
+    const { store } = await started();
+    store.startDraft(0, row(0.33));
+    store.setPage(0);
+    expect(store.state.draft).not.toBeNull();
+    store.setPage(1);
+    expect(store.state.draft).toBeNull();
+  });
+
   it('keeps the form open and says what is wrong, in plain words, when the exercise cannot be filed', async () => {
     const { store } = await started(workbook({ exercises: true }));
     store.startDraft(0, row(0.5));

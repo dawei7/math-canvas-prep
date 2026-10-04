@@ -121,6 +121,23 @@ using the commands (or the MCP tools).
 - Do not try to operate the window; everything it can do is a command. Do not edit `name.mcprep.json` by hand with a text tool
   unless you have to: the commands validate, lock and keep the file consistent.
 
+The window knows the **two kinds of exercise** of chapter 14, so a person and an agent can share a book:
+
+- A book exercise you add (`exercises add`) shows in the window with its **printed label** (`5a`, never an `E` number), grouped by
+  section, in amber with square labels; the exercises the person frames themselves stay `E1`, `E2.1`, ... and are not renumbered by
+  yours. Leave their ordinary exercises alone unless asked: `exercises mark` and `exercises unmark` change a kind, and the person
+  can do the same from the card of a frame (a part of an exercise with parts has to be joined first, as for you).
+- The person can **draw** a book exercise (the window asks for its number and section and offers the next number in the section),
+  change its label or section, attach **context** and **solution** regions (the solutions are drawn on the answer key, in green),
+  and add, rename, move or delete **sections**. Every one of those is the operation you know (`label.set`, `section.set`,
+  `solution.add`, `outline.update`, ...), so your next `exercises list`, `book show` or `solution list --missing` already reflects
+  it, and a section id they renamed keeps its exercises. Read before you assume ids and labels, and say which sections or labels
+  you are going to touch.
+- What the person draws but has not confirmed yet (the form that waits for a number) is not in the file, so you cannot collide
+  with it. A change of yours that makes the person's unsaved edit conflict asks them which version to keep, as above.
+- The person sees your sections as a tree with the number of book exercises under each and how many have a solution: the same
+  counts as `book show`. A section with no `id` cannot hold exercises, and the window says so; give ids (`outline ids`).
+
 ## 5. Deciding what to mark
 
 ### Exercises

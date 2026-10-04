@@ -96,6 +96,9 @@ describe.skipIf(!available)('the desktop app with a book of 5 000 exercises and 
     const target = (await framesOf(win())).find((frame) => frame.page === 0 && frame.label === '30') as { id: string };
     await win().locator('.frame[data-label="30"] .chip').first().click();
     expect(await stateOf(win(), (s) => s['selection'])).toBe(target.id);
+    // The list shows the frame that was chosen on the page.
+    await win().waitForSelector('.frames-list .frame-row.selected');
+    expect(await win().locator('.frames-list .frame-row.selected .chip').innerText()).toBe('30');
     // And so does its body.
     const body = await win().locator('.frame[data-label="31"] .body').first().boundingBox();
     expect(body).not.toBeNull();
@@ -106,12 +109,26 @@ describe.skipIf(!available)('the desktop app with a book of 5 000 exercises and 
   });
 
   it('stays smooth while scrolling the list, choosing frames in it and moving through the pages: no long pauses', async () => {
+    // The instrument: a timer every 20 ms in the window; how late it fires says how long the window was busy.
     await win().evaluate(() => {
-      const holder = window as unknown as { __long: number[] };
-      holder.__long = [];
-      new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) holder.__long.push(entry.duration);
-      }).observe({ entryTypes: ['longtask'] });
+      const holder = window as unknown as { __late: number[] };
+      holder.__late = [];
+      let last = performance.now();
+      setInterval(() => {
+        const now = performance.now();
+        holder.__late.push(now - last - 20);
+        last = now;
+      }, 20);
+    });
+    // It works: a pause of 150 ms made on purpose is seen (and then forgotten).
+    await win().evaluate(() => {
+      const until = performance.now() + 150;
+      while (performance.now() < until);
+    });
+    await win().waitForTimeout(100);
+    expect(Math.max(...(await win().evaluate(() => (window as unknown as { __late: number[] }).__late)))).toBeGreaterThan(100);
+    await win().evaluate(() => {
+      (window as unknown as { __late: number[] }).__late.length = 0;
     });
     // Scroll the list far down in steps, as a wheel does.
     const started = performance.now();
@@ -140,9 +157,10 @@ describe.skipIf(!available)('the desktop app with a book of 5 000 exercises and 
     for (let n = 0; n < 30; n += 1) await win().keyboard.press('ArrowRight');
     await win().waitForTimeout(300);
     timings['thirty pages with the arrow key'] = Math.round(performance.now() - walked);
-    const long = await win().evaluate(() => (window as unknown as { __long: number[] }).__long);
-    timings['longest pause'] = Math.round(Math.max(0, ...long));
-    expect(Math.max(0, ...long)).toBeLessThan(700);
+    const late = await win().evaluate(() => (window as unknown as { __late: number[] }).__late);
+    timings['longest pause'] = Math.round(Math.max(0, ...late));
+    expect(late.length).toBeGreaterThan(20);
+    expect(Math.max(0, ...late)).toBeLessThan(700);
   });
 
   it('lists by section, filters and finds by number', async () => {

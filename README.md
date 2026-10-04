@@ -21,7 +21,7 @@ Chapter 14 of the [agent guide](docs/AGENT_GUIDE.md) describes it; a transcript 
 | `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check; authoritative book exercises, hidden solution regions, sections, document information (licence, notice) and the book summary. 598 tests. |
 | `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands. 69 tests, plus two end-to-end tests of the built binary. |
 | `packages/mcp` | Works. 49 tools over stdio. 12 tests, plus an end-to-end test of the built server. |
-| `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file. 26 unit tests and 17 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux: see [docs/DESKTOP.md](docs/DESKTOP.md). It has no screens yet for book exercises, solutions and sections: a project that has them still opens and saves, and the command line and the MCP server edit them. |
+| `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file, and for auditing a book: book exercises with their printed numbers and sections, hidden solutions drawn on the answer key, the list of sections, the licence and notice of the document, an export that says which parts of the format the bundle uses and checks it as the importer does, and lists that stay quick with 5,000 exercises. 102 unit tests and 52 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux; finding the sections of a book from its text and proposing book exercises and solutions are not in the window yet: see [docs/DESKTOP.md](docs/DESKTOP.md). |
 | Docs | [Agent guide](docs/AGENT_GUIDE.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [dependencies](docs/DEPENDENCIES.md). |
 
 The bundle format ([docs/BUNDLE_FORMAT.md](docs/BUNDLE_FORMAT.md)) is the contract with the Android app; the writer and the
@@ -70,8 +70,10 @@ npm run desktop -- analysis.pdf          # or without a file name, for the welco
 ```
 
 Draw around the exercises (or press **Find proposals** and accept what is right), cut exercises into parts with the slicers,
-check the **Checks** tab, press **Export**, and copy the `.mcbundle` to the tablet. [docs/DESKTOP.md](docs/DESKTOP.md) explains the
-window. If an agent is marking the same PDF with the command line, its changes appear in the window as it saves them.
+check the **Checks** tab, press **Export**, and copy the `.mcbundle` to the tablet. To audit a book, set up its **Sections**,
+draw each printed exercise with the **Book exercise** tool (the window asks for its number and offers the next one), attach the
+answers of the answer key with the **Solution** tool, fill in **Document info**, and export. [docs/DESKTOP.md](docs/DESKTOP.md)
+explains the window. If an agent is marking the same PDF with the command line, its changes appear in the window as it saves them.
 
 ## What is in this repository
 
@@ -109,7 +111,7 @@ generated.
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources): 705 tests
+npm test             # unit tests (Vitest, against the sources): 781 tests
 npm run lint
 npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md

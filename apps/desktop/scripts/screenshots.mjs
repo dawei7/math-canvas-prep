@@ -1,5 +1,6 @@
-// Takes the screenshots of docs/DESKTOP.md from the synthetic sample, by driving the built app with Playwright.
-// Needs `npm run build` and Electron's binary.   npm run screenshots --workspace @mcprep/desktop
+// Takes the screenshots of docs/DESKTOP.md from the synthetic samples (examples/sample.pdf and examples/workbook), by
+// driving the built app with Playwright. Needs `npm run build` and Electron's binary.
+//   npm run screenshots --workspace @mcprep/desktop
 /* global window, document -- the callbacks given to `evaluate` run in the app's window, not in Node */
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -19,6 +20,9 @@ cli('init', 'sheet.pdf', '--title', 'Calculus Sheet 1', '--folder', 'Examples/Ca
 cli('propose', '--apply');
 cli('outline', 'pdf', '--adopt');
 cli('init', 'sheet.pdf', '--out', 'fresh.mcprep.json', '--title', 'Calculus Sheet 1');
+// The workbook comes after the commands above (a folder with two projects makes the command line ask which one).
+copyFileSync(join(root, 'examples/workbook/workbook.pdf'), join(work, 'workbook.pdf'));
+copyFileSync(join(root, 'examples/workbook/workbook.mcprep.json'), join(work, 'workbook.mcprep.json'));
 
 const electronPath = join(root, 'node_modules/electron/dist', process.platform === 'win32' ? 'electron.exe' : 'electron');
 const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && value !== undefined));
@@ -34,21 +38,21 @@ await win.waitForSelector('.page canvas');
 await win.waitForSelector('.thumbs .thumb');
 await win.waitForTimeout(1500);
 
-const shot = async (name) => {
+const shot = async (name, path = 'C:\\Books\\Calculus\\sheet.mcprep.json') => {
   await win.evaluate(() => window.__store.dismissNotice());
   await win.waitForTimeout(500);
   // The status bar shows the project's real path, which is a temporary folder under the user's profile: show a neutral
   // path in the picture so that no user name ends up in the repository.
-  await win.evaluate(() => {
+  await win.evaluate((neutral) => {
     const path = document.querySelector('.statusbar .path');
-    if (path) path.textContent = 'C:\\Books\\Calculus\\sheet.mcprep.json';
-  });
+    if (path) path.textContent = neutral;
+  }, path);
   await win.screenshot({ path: join(images, `${name}.png`) });
   console.log(`wrote docs/img/${name}.png`);
 };
 
 // 1. The editor with the first page: the unit E2 selected, with its slicers and handles.
-await win.locator('.chip', { hasText: 'E2' }).first().click();
+await win.locator('.page .chip', { hasText: 'E2' }).first().click();
 await shot('desktop-editor');
 
 // 2. Page 2 in the dark theme: the instruction (dashed) that Exercises 3 and 4 share, exercise 3 selected.
@@ -63,28 +67,55 @@ await win.evaluate(() => {
 });
 await shot('desktop-dark');
 
-// 3. The contents panel with its counts.
+// 3. Proposals as ghost frames on a project without frames.
 await win.evaluate(() => {
   window.__store.setTheme('light');
-  window.__store.setPage(0);
-  window.__store.setTab('contents');
+  window.__store.select(null);
 });
-await shot('desktop-contents');
-
-// 4. Proposals as ghost frames on a project without frames.
 await win.evaluate((path) => window.mcprep.openPath(path).then((outcome) => window.__store.open(outcome)), join(work, 'fresh.mcprep.json'));
 await win.waitForSelector('.thumbs .thumb');
 await win.evaluate(() => window.__store.runPropose());
 await win.waitForSelector('.ghost');
 await shot('desktop-propose');
 
-// 5. The export dialog with the validation shown first.
+// 4. The export dialog of an ordinary project, with the validation shown first.
 await win.evaluate(() => window.__store.acceptAll());
 await win.evaluate(() => {
   window.__store.setTab('frames');
   window.__store.openExport();
 });
 await shot('desktop-export');
+await win.evaluate(() => window.__store.closeExport());
+
+// 5. The audit of a book (the synthetic workbook): a book exercise selected, with its context and its hidden solution,
+//    the Frames list by section, and on the page the printed numbers of the exercises.
+await win.evaluate((path) => window.mcprep.openPath(path).then((outcome) => window.__store.open(outcome)), join(work, 'workbook.mcprep.json'));
+await win.waitForSelector('.frame.book');
+await win.waitForTimeout(800);
+await win.evaluate(() => {
+  const frame = window.__store.state.project.frames.find((entry) => entry.label === '3a');
+  window.__store.select(frame.id, { jump: true });
+});
+await win.waitForSelector('.inspector .region-list-solution');
+await shot('desktop-book', 'C:\\Books\\Algebra\\workbook.mcprep.json');
+
+// 6. The Sections list: the outline as a tree with the number of book exercises under each section and how many have a
+//    solution; the heading of the selected section marked on its page.
+await win.evaluate(() => {
+  window.__store.select(null);
+  window.__store.setTab('sections');
+});
+await win.locator('.section-row', { hasText: 'id 1.2' }).click();
+await win.waitForSelector('.section-editor');
+await shot('desktop-sections', 'C:\\Books\\Algebra\\workbook.mcprep.json');
+
+// 7. The export dialog of the book: the parts of the format it uses, what it holds per section, the importer's verdict.
+await win.evaluate(() => {
+  window.__store.select(null);
+  window.__store.setTab('frames');
+  window.__store.openExport();
+});
+await shot('desktop-book-export', 'C:\\Books\\Algebra\\workbook.mcprep.json');
 
 await win.evaluate(() => window.mcprep.setDirty(false));
 await app.close();
