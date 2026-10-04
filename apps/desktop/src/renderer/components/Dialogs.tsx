@@ -8,7 +8,7 @@ export function Welcome({ store }: { store: Store }): preact.JSX.Element {
   return (
     <main class="welcome">
       <h1>Math Canvas Prep</h1>
-      <p class="lead">Mark the exercises, parts, context, questions and bookmarks of a PDF, then export a bundle for the Math Canvas app.</p>
+      <p class="lead">Mark the exercises, parts, context, questions and bookmarks of a PDF, or audit a whole book with its printed numbers, sections and solutions, then export a bundle for the Math Canvas app.</p>
       <div class="button-row big">
         <button class="text-button primary big" onClick={() => void api.chooseAndOpenPdf().then((outcome) => store.open(outcome))}>
           Open a PDF
@@ -35,93 +35,6 @@ export function Welcome({ store }: { store: Store }): preact.JSX.Element {
         </section>
       ) : null}
     </main>
-  );
-}
-
-export function ExportDialog({ store }: { store: Store }): preact.JSX.Element | null {
-  const state = useStore(store);
-  const { exporting, validation, project, doc } = state;
-  if (!exporting.open || !project || !validation) return null;
-  const index = frameIndex(project.frames);
-  const counts = index.counts;
-  const api = window.mcprep;
-  const outcome = exporting.outcome;
-  return (
-    <div class="modal-backdrop" onClick={() => store.closeExport()}>
-      <section class="modal" role="dialog" aria-label="Export the bundle" onClick={(event) => event.stopPropagation()}>
-        <h2>Export the bundle</h2>
-        <p>
-          {counts.exercise} exercise{counts.exercise === 1 ? '' : 's'}, {counts.question} question{counts.question === 1 ? '' : 's'}, {counts.bookmark} bookmark{counts.bookmark === 1 ? '' : 's'}
-          {' '}of "{project.meta.title}"{project.meta.folder ? ` in ${project.meta.folder}` : ''}.
-        </p>
-        <div class={`verdict-box ${validation.ok ? 'ok' : 'bad'}`}>
-          {validation.ok ? '✓ The importer would accept this project.' : `✕ ${validation.errors.length} error${validation.errors.length === 1 ? '' : 's'}: fix them first (see Checks).`}
-        </div>
-        {validation.errors.length > 0 ? (
-          <ul class="issue-list">
-            {validation.errors.slice(0, 6).map((issue, index) => (
-              <li key={index}>
-                {issue.message}
-                {issue.fix ? <em> {issue.fix}</em> : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {validation.warnings.length > 0 ? (
-          <details>
-            <summary>{validation.warnings.length} warning{validation.warnings.length === 1 ? '' : 's'} (they do not stop the export)</summary>
-            <ul class="issue-list">
-              {validation.warnings.slice(0, 8).map((issue, index) => (
-                <li key={index}>{issue.message}</li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
-        <fieldset class="options">
-          <legend>Contents</legend>
-          {(['project', 'pdf', 'none'] as const).map((choice) => {
-            const label = { project: `The project's own contents${project.outline ? ` (${project.outline.entries.length})` : ' (none yet)'}`, pdf: `The PDF's bookmarks${doc?.pdfOutline ? ` (${doc.pdfOutline.length})` : ' (none)'}`, none: 'None' }[choice];
-            return (
-              <label key={choice} class="radio">
-                <input type="radio" name="outline" checked={exporting.outline === choice} onChange={() => store.setExportOutline(choice)} />
-                <span>{label}</span>
-              </label>
-            );
-          })}
-        </fieldset>
-        {state.dirty ? <p class="muted">The project has unsaved changes; it is saved first.</p> : null}
-        {outcome?.ok ? (
-          <div class="verdict-box ok" role="status">
-            <p>✓ Wrote {outcome.path} ({outcome.bytes} bytes, {outcome.frames} frames). The importer check passed.</p>
-            {outcome.issues.length > 0 ? <p class="muted">{outcome.issues.length} note{outcome.issues.length === 1 ? '' : 's'}: {outcome.issues.slice(0, 3).map((issue) => issue.message).join(' ')}</p> : null}
-            <div class="button-row">
-              <button class="text-button small" onClick={() => void api.reveal(outcome.path)}>Show in folder</button>
-              <button class="text-button small" onClick={() => void store.copyExport()}>Copy to a folder...</button>
-            </div>
-            {exporting.copiedTo ? <p class="muted">Copied to {exporting.copiedTo}</p> : null}
-          </div>
-        ) : null}
-        {outcome && !outcome.ok ? (
-          <div class="verdict-box bad" role="alert">
-            <p>✕ Not exported: {outcome.message}</p>
-            {outcome.hint ? <p class="muted">{outcome.hint}</p> : null}
-            {outcome.issues && outcome.issues.length > 0 ? (
-              <ul class="issue-list">
-                {outcome.issues.slice(0, 5).map((issue, index) => (
-                  <li key={index}>{issue.message}{issue.fix ? <em> {issue.fix}</em> : null}</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
-        <div class="button-row end">
-          <button class="text-button" onClick={() => store.closeExport()}>Close</button>
-          <button class="text-button primary" disabled={!validation.ok || exporting.busy} onClick={() => void store.runExport()}>
-            {exporting.busy ? 'Exporting...' : 'Export...'}
-          </button>
-        </div>
-      </section>
-    </div>
   );
 }
 

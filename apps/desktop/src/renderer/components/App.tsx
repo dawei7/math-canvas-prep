@@ -3,7 +3,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { useStore } from '../hooks.js';
 import type { Store, Tool } from '../logic/store.js';
 import { loadPdf } from '../pdf.js';
-import { ConflictDialog, ExportDialog, Notices, StatusBar, Welcome } from './Dialogs.js';
+import { ConflictDialog, Notices, StatusBar, Welcome } from './Dialogs.js';
+import { ExportDialog } from './ExportDialog.js';
+import { InfoDialog } from './InfoDialog.js';
 import { PageView } from './PageView.js';
 import { SidePanel } from './Panels.js';
 import { Thumbnails } from './Thumbnails.js';
@@ -100,6 +102,7 @@ export function App({ store }: { store: Store }): preact.JSX.Element {
         }
       } else if (!mod && key === 'escape') {
         if (store.state.exporting.open) store.closeExport();
+        else if (store.state.infoOpen) store.closeInfo();
         else if (store.state.draft) store.cancelDraft();
         else if (store.state.picking !== null) store.pickHeading(null);
         else if (store.state.tool !== 'select') store.setTool('select');
@@ -154,6 +157,7 @@ export function App({ store }: { store: Store }): preact.JSX.Element {
         <Welcome store={store} />
       )}
       <ExportDialog store={store} />
+      <InfoDialog store={store} />
       <ConflictDialog store={store} />
       <Notices store={store} />
       {dropping ? <div class="drop-hint">Drop a PDF or a project to open it</div> : null}

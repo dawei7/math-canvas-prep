@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -509,6 +509,86 @@ describe.skipIf(!available)('auditing a book in the desktop app', () => {
     expect(disk.outline.entries.map((entry) => entry.id)).toEqual(['c1', '1.1', '1.2', 'c2', '2.1', 'answers']);
     expect(disk.outline.entries.every((entry) => entry.top !== undefined)).toBe(true);
     expect(JSON.parse(cli('validate', '--json')) as { ok: boolean }).toMatchObject({ ok: true });
+  });
+
+  it('edits what the bundle says about the work: licence, source and the notice the licence asks for, with plain messages', async () => {
+    const win = (running as Running).win;
+    await win.getByRole('button', { name: 'Document info' }).click();
+    const dialog = win.locator('[role="dialog"][aria-label="Document information"]');
+    expect(await dialog.locator('input[aria-label="Title"]').inputValue()).toBe('Pre-Algebra Workbook');
+    await dialog.locator('input[aria-label="Author"]').fill('A. Author');
+    await dialog.locator('input[aria-label="Licence"]').fill('CC BY 3.0');
+    await dialog.locator('input[aria-label="Licence address"]').fill('https://creativecommons.org/licenses/by/3.0/');
+    await dialog.locator('input[aria-label="Source address"]').fill('example.org/the-workbook');
+    expect(await dialog.locator('.form-error').innerText()).toContain('starting with http:// or https://');
+    expect(await dialog.getByRole('button', { name: 'Save' }).isDisabled()).toBe(true);
+    await dialog.locator('input[aria-label="Source address"]').fill('https://example.org/the-workbook');
+    await dialog.locator('textarea[aria-label="Notice"]').fill('Attribution: A. Author, Pre-Algebra Workbook, CC BY 3.0. Changes: marked for study.');
+    await dialog.locator('input[aria-label="Series"]').fill('Prerequisites');
+    await dialog.locator('input[aria-label="Folder"]').fill('Books\\Algebra');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await win.waitForSelector('[role="dialog"][aria-label="Document information"]', { state: 'detached' });
+    const meta = await stateOf(win, (s) => (s['project'] as { meta: Record<string, unknown> }).meta);
+    expect(meta).toMatchObject({
+      title: 'Pre-Algebra Workbook',
+      folder: 'Books/Algebra',
+      author: 'A. Author',
+      series: 'Prerequisites',
+      license: { name: 'CC BY 3.0', url: 'https://creativecommons.org/licenses/by/3.0/' },
+      sourceUrl: 'https://example.org/the-workbook',
+      notice: 'Attribution: A. Author, Pre-Algebra Workbook, CC BY 3.0. Changes: marked for study.',
+    });
+    expect(await stateOf(win, (s) => s['dirty'])).toBe(true);
+    // Escape closes it without a change.
+    await win.getByRole('button', { name: 'Document info' }).click();
+    await win.locator('input[aria-label="Author"]').fill('Somebody else');
+    await win.keyboard.press('Escape');
+    await win.waitForSelector('[role="dialog"][aria-label="Document information"]', { state: 'detached' });
+    expect(((await stateOf(win, (s) => (s['project'] as { meta: { author: string } }).meta)) as { author: string }).author).toBe('A. Author');
+  });
+
+  it('shows the parts of the format the bundle uses, what it holds per section and the importer check, and writes the bundle and the summary', async () => {
+    const { app, win } = running as Running;
+    const bundle = join(work, 'book.mcbundle');
+    const summaryPath = join(work, 'book.book.json');
+    await app.evaluate(({ dialog }, paths) => {
+      (dialog as unknown as { showSaveDialog: (_window: unknown, options: { filters?: { extensions: string[] }[] }) => Promise<{ canceled: boolean; filePath: string }> }).showSaveDialog = (_window, options) =>
+        Promise.resolve({ canceled: false, filePath: options.filters?.[0]?.extensions[0] === 'json' ? paths.summary : paths.bundle });
+    }, { bundle, summary: summaryPath });
+    await win.keyboard.press('Control+e');
+    const dialog = win.locator('[role="dialog"][aria-label="Export the bundle"]');
+    await dialog.waitFor();
+    const facts = await dialog.locator('.facts').innerText();
+    expect(facts).toContain('5 in 2 sections: 3 with a solution (60%), 2 without');
+    expect(await dialog.locator('.feature').allInnerTexts()).toEqual(['Sections', 'Book exercises', 'Hidden solutions']);
+    const rows = await dialog.locator('.section-table tbody tr').allInnerTexts();
+    expect(rows.map((row) => row.replace(/\s+/g, ' ').trim())).toEqual(['Chapter 1 Integers 0 (5) 3/5', '1.1 Adding integers 4 3/4', '1.2 Subtracting integers 1 0/1']);
+    expect(await dialog.innerText()).toContain('The importer would accept this project');
+    // The book exercises are filed under the project's own sections: the other contents are not offered.
+    expect(await dialog.locator('input[type="radio"]').evaluateAll((nodes) => nodes.map((node) => (node as HTMLInputElement).disabled))).toEqual([false, true, true]);
+    await dialog.getByRole('button', { name: 'Export bundle...' }).click();
+    await dialog.locator('.verdict-box.ok[role="status"]').waitFor({ timeout: 30000 });
+    const checked = await dialog.locator('.importer-check').innerText();
+    expect(checked).toContain('The importer check passed');
+    expect(checked).toContain('Sections, Book exercises, Hidden solutions');
+    expect(existsSync(bundle)).toBe(true);
+    const inspected = JSON.parse(cli('inspect-bundle', bundle, '--json')) as { result: { manifest: { features: string[]; document: { author: string; license: { name: string }; notice: string } }; summary: { totals: { exercises: number; withSolution: number; sections: number } } } };
+    expect(inspected.result.manifest.features).toEqual(['sections', 'authority', 'solution']);
+    expect(inspected.result.manifest.document).toMatchObject({ author: 'A. Author', license: { name: 'CC BY 3.0' }, notice: 'Attribution: A. Author, Pre-Algebra Workbook, CC BY 3.0. Changes: marked for study.' });
+    expect(inspected.result.summary.totals).toMatchObject({ exercises: 5, withSolution: 3, sections: 6 });
+    // The summary next to it: the same plain JSON as `book export`, with each section's exercises.
+    await dialog.getByRole('button', { name: 'Export book summary (JSON)...' }).click();
+    await dialog.locator('.summary-result').waitFor({ timeout: 30000 });
+    expect(await dialog.locator('.summary-result').innerText()).toContain('6 sections, 5 book exercises');
+    const written = JSON.parse(readFileSync(summaryPath, 'utf8')) as { format: string; totals: { exercises: number }; document: { author: string }; sections: { id?: string; items?: { label: string }[] }[] };
+    expect(written.format).toBe('math-canvas-book-summary');
+    expect(written.document.author).toBe('A. Author');
+    expect(written.sections.find((section) => section.id === '1.1')?.items?.map((item) => item.label)).toEqual(['1', '2', '3a', '3b']);
+    const fromCli = (JSON.parse(cli('book', 'show', '--json', '--exercises')) as { result: unknown }).result;
+    expect(written).toEqual(fromCli);
+    await dialog.getByRole('button', { name: 'Close' }).click();
+    // The export saved what was unsaved first.
+    expect(await stateOf(win, (s) => s['dirty'])).toBe(false);
   });
 
   it('raised no errors in the page while all of this happened', () => {

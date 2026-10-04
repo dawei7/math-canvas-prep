@@ -295,7 +295,7 @@ describe.skipIf(!available)('the desktop app', () => {
     await win.keyboard.press('Control+e');
     await win.waitForSelector('[role="dialog"]');
     expect(await win.locator('[role="dialog"]').innerText()).toContain('The importer would accept this project');
-    await win.getByRole('button', { name: 'Export...' }).click();
+    await win.getByRole('button', { name: 'Export bundle...' }).click();
     await win.waitForSelector('.verdict-box.ok[role="status"]', { timeout: 30000 });
     expect(existsSync(out)).toBe(true);
     const check = JSON.parse(cli('import-check', out, '--json')) as { result: { wouldImport: boolean; outline?: unknown[] } };

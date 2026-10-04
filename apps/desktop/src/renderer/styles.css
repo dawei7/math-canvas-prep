@@ -1377,3 +1377,168 @@ button:disabled {
   font: 600 10px 'Segoe UI', system-ui, sans-serif;
   fill: #fff;
 }
+
+/* ------------------------------------------------------------- export and information dialogs */
+
+.export-dialog,
+.info-dialog {
+  width: min(720px, 94vw);
+}
+
+.export-title {
+  margin: 0 0 8px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 6px 12px;
+  margin: 8px 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.feature {
+  padding: 1px 9px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.feature-authority {
+  border-color: #b45309;
+  color: #b45309;
+}
+
+.feature-solution {
+  border-color: #15803d;
+  color: #15803d;
+}
+
+.feature-sections {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.bad-text {
+  color: var(--bad);
+}
+
+.ok-text {
+  color: var(--ok);
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.per-section {
+  margin: 8px 0;
+}
+
+.per-section summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.section-table {
+  display: block;
+  max-height: 190px;
+  overflow-y: auto;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.section-table thead,
+.section-table tbody {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.section-table th {
+  position: sticky;
+  top: 0;
+  padding: 4px 6px;
+  background: var(--panel-2);
+  text-align: left;
+}
+
+.section-table td {
+  padding: 2px 6px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-table th:nth-child(1),
+.section-table td:nth-child(1) {
+  width: 62%;
+}
+
+.section-table .num {
+  text-align: right;
+}
+
+.steps {
+  margin: 6px 0;
+  padding-left: 20px;
+  font-size: 12px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+}
+
+.info-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.info-label {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.info-input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+.info-field.has-problem .info-input {
+  border-color: var(--bad);
+}
+
+.info-field .help {
+  font-size: 11px;
+}

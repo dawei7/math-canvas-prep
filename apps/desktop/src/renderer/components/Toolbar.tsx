@@ -106,6 +106,9 @@ export function TopBar({ store }: { store: Store }): preact.JSX.Element {
         <button class="text-button" disabled={!state.project} onClick={() => store.openExport()} title="Export the bundle (Ctrl+E)">
           Export
         </button>
+        <button class="text-button" disabled={!state.project} onClick={() => store.openInfo()} title="Title, author, licence and notice of the document">
+          Document info
+        </button>
       </div>
       <div class="group">
         <button class="square" disabled={state.past.length === 0} onClick={() => store.undo()} title="Undo (Ctrl+Z)" aria-label="Undo">
