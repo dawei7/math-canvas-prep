@@ -136,7 +136,7 @@ describe('a run through the tools and a run through the command line make the sa
       await client.callTool({ name: 'outline_derive_book', arguments: { apply: true } });
       await client.callTool({ name: 'exercises_propose', arguments: { solutions: true, apply: true, details_file: join(viaTools, 'out', 'details.json') } });
       await client.callTool({ name: 'exercises_verify', arguments: { details_file: 'verify.json', fail_on: 'warning' } });
-      await client.callTool({ name: 'exercises_sample', arguments: { exercises: 10, solutions: 5 } });
+      await client.callTool({ name: 'exercises_sample', arguments: { exercises: 10, solutions: 5, per_section: true } });
       await client.callTool({ name: 'render_crop', arguments: { frame: '0.1:5', region: 'main', max_side: 600 } });
       await client.callTool({ name: 'validate', arguments: { text: false } });
     } finally {
@@ -150,7 +150,7 @@ describe('a run through the tools and a run through the command line make the sa
     await cli('outline', 'derive', '--book', '--apply');
     await cli('exercises', 'propose', '--solutions', '--apply', '--details', join(viaCommands, 'out', 'details.json'));
     await cli('exercises', 'verify', '--details', 'verify.json', '--fail-on', 'warning');
-    await cli('exercises', 'sample', '--exercises', '10', '--solutions', '5');
+    await cli('exercises', 'sample', '--exercises', '10', '--solutions', '5', '--per-section');
     await cli('crop', '0.1:5', '--region', 'main', '--max-side', '600');
     await cli('validate', '--no-text');
     const a = compare.parseLog(await readFile(join(viaTools, 'calls.jsonl'), 'utf8'));

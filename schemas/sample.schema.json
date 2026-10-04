@@ -10,10 +10,11 @@
     "version": { "const": 1 },
     "options": {
       "type": "object",
-      "required": ["exercises", "solutions"],
+      "required": ["exercises", "solutions", "perSection"],
       "properties": {
-        "exercises": { "type": "integer", "minimum": 0, "description": "The sample of exercises is filled up to this many; the rules add what they name even when that is more." },
-        "solutions": { "type": "integer", "minimum": 0, "description": "The same for the answers." }
+        "exercises": { "type": "integer", "minimum": 0, "description": "The most exercises the sample has (a hard cap; only perSection may go beyond it)." },
+        "solutions": { "type": "integer", "minimum": 0, "description": "The most answers the sample has (a hard cap; only perSection may go beyond it)." },
+        "perSection": { "type": "boolean", "description": "The thorough review: the first and the last exercise of every section, and the answers of every sampled exercise, are taken whatever the caps are." }
       },
       "additionalProperties": false
     },
@@ -31,7 +32,7 @@
     },
     "exercises": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
     "solutions": { "type": "array", "items": { "$ref": "#/$defs/entry" } },
-    "notes": { "type": "array", "items": { "type": "string" }, "description": "Layouts the book does not have, so that nobody looks for them." },
+    "notes": { "type": "array", "items": { "type": "string" }, "description": "Layouts the book does not have (so that nobody looks for them), and the rules that were thinned by an even stride to stay within a cap." },
     "crops": {
       "type": "array",
       "description": "Only with --crops: the PNG written for each region of the sample.",

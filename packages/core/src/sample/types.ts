@@ -8,7 +8,7 @@
 export const SAMPLE_FORMAT = 'math-canvas-sample';
 export const SAMPLE_VERSION = 1;
 
-/** The defaults of `--exercises` and `--solutions`: the sample is filled up to this many entries. */
+/** The defaults of `--exercises` and `--solutions`: the most exercises and the most answers the sample has. */
 export const SAMPLE_DEFAULTS = { exercises: 40, solutions: 20 } as const;
 
 /** Why an exercise is in the sample, in the order of the rules (docs/AUDIT_A_BOOK.md). */
@@ -48,7 +48,7 @@ export interface SampleEntry {
 export interface SampleReport {
   format: typeof SAMPLE_FORMAT;
   version: typeof SAMPLE_VERSION;
-  options: { exercises: number; solutions: number };
+  options: { exercises: number; solutions: number; perSection: boolean };
   summary: {
     /** Sections that have exercises. */
     sections: number;
@@ -63,15 +63,20 @@ export interface SampleReport {
   exercises: SampleEntry[];
   /** In the order of the book (by the exercise they answer). */
   solutions: SampleEntry[];
-  /** What the book does not have (a layout that no exercise shows), so that nobody looks for it. */
+  /** What the book does not have (a layout that no exercise shows), and which rule had to be thinned to stay within a cap. */
   notes: string[];
 }
 
 export interface SampleOptions {
-  /** Fill the sample of exercises up to this many (default 40; 0 leaves the exercises out). The rules always add what they name. */
+  /** The most exercises the sample has (default 40; 0 leaves the exercises out). Only `perSection` may go beyond it. */
   exercises?: number;
-  /** The same for the answers (default 20; 0 leaves the answers out). */
+  /** The most answers the sample has (default 20; 0 leaves the answers out). Only `perSection` may go beyond it. */
   solutions?: number;
+  /**
+   * The thorough review: the first and the last exercise of every section are taken whatever the caps are (and the answers of
+   * every sampled exercise), so the sample may be larger than `exercises` and `solutions`. Default off.
+   */
+  perSection?: boolean;
 }
 
 /** The numbers the layout rules use (page fractions). */

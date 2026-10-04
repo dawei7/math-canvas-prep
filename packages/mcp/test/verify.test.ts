@@ -109,28 +109,48 @@ describe('exercises_sample', () => {
     const properties = found?.inputSchema.properties as Record<string, { type?: string }>;
     expect(properties['exercises']?.type).toBe('integer');
     expect(properties['solutions']?.type).toBe('integer');
+    expect(properties['per_section']?.type).toBe('boolean');
     expect(properties['crops_dir']?.type).toBe('string');
+    expect(found?.description).toContain('At most');
+    expect(found?.description).toContain('per_section');
     expect(client.getInstructions()).toContain('exercises_sample');
+    expect(client.getInstructions()).toContain('at most 40 exercises and 20 answers');
   });
 
-  it('returns the same fixed sample every time, in the format of the schema', async () => {
+  it('returns the same fixed sample every time, within the caps, in the format of the schema', async () => {
     const first = await call('exercises_sample', { exercises: 12, solutions: 6 });
     expect(first.isError).toBeUndefined();
-    expect(data(first)).toMatchObject({ format: 'math-canvas-sample', version: 1, options: { exercises: 12, solutions: 6 }, summary: { sections: 4, exercises: 112 } });
+    expect(data(first)).toMatchObject({ format: 'math-canvas-sample', version: 1, options: { exercises: 12, solutions: 6, perSection: false }, summary: { sections: 4, exercises: 112, sampledExercises: 12, sampledSolutions: 6 } });
     const entries = data(first)['exercises'] as { ref: string; reason: string; kind: string; region: string }[];
-    expect(entries.length).toBeGreaterThanOrEqual(8);
+    expect(entries).toHaveLength(12);
+    expect(data(first)['solutions']).toHaveLength(6);
     expect(entries.map((entry) => entry.ref)).toEqual(expect.arrayContaining(['0.1:1', '0.1:70', '1.2:16']));
     expect(entries.every((entry) => entry.kind === 'exercise' && entry.region === 'main')).toBe(true);
     const second = await call('exercises_sample', { exercises: 12, solutions: 6 });
     expect(data(second)).toEqual(data(first));
+    // Nothing given: the defaults are the caps.
+    expect(data(await call('exercises_sample', {}))).toMatchObject({ options: { exercises: 40, solutions: 20, perSection: false }, summary: { sampledExercises: 40, sampledSolutions: 20 } });
+  });
+
+  it('takes the first and the last exercise of every section beyond the caps with per_section', async () => {
+    const done = await call('exercises_sample', { exercises: 6, per_section: true });
+    expect(done.isError).toBeUndefined();
+    expect(data(done)).toMatchObject({ options: { exercises: 6, solutions: 20, perSection: true } });
+    const refs = (data(done)['exercises'] as { ref: string }[]).map((entry) => entry.ref);
+    expect(refs.length).toBeGreaterThan(6);
+    expect(refs).toEqual(expect.arrayContaining(['0.1:1', '0.1:70', '0.2:1', '0.2:14', '1.1:1', '1.1:12', '1.2:1', '1.2:16']));
+    const plain = await call('exercises_sample', { exercises: 6 });
+    expect(data(plain)['exercises']).toHaveLength(6);
   });
 
   it('writes the sample and the crops of its regions where it is told to', async () => {
-    const done = await call('exercises_sample', { exercises: 1, solutions: 1, out_file: 'sample.json', crops_dir: 'sample-crops' });
+    const done = await call('exercises_sample', { exercises: 6, solutions: 2, out_file: 'sample.json', crops_dir: 'sample-crops' });
     expect(done.isError).toBeUndefined();
     const crops = data(done)['crops'] as { ref: string; kind: string; path: string }[];
-    expect(crops.length).toBeGreaterThan(8);
-    expect(crops.map((crop) => crop.path.replace(/\\/g, '/').split('/').pop())).toEqual(expect.arrayContaining(['0.1_1-exercise.png', '0.1_1-solution.png']));
+    // Six exercises with eight regions (one has a context, one a continuation) and two answers.
+    expect(crops.filter((crop) => crop.kind === 'exercise')).toHaveLength(8);
+    expect(crops.filter((crop) => crop.kind === 'solution')).toHaveLength(2);
+    expect(crops.map((crop) => crop.path.replace(/\\/g, '/').split('/').pop())).toEqual(expect.arrayContaining(['0.1_1-exercise.png', '0.2_11-continues0.png', '0.1_45-context0.png', '0.2_11-solution.png', '1.1_1-solution.png']));
     const written = JSON.parse(await readFile(join(dir, 'sample.json'), 'utf8')) as { crops: unknown[] };
     expect(written.crops).toHaveLength(crops.length);
     expect((await call('exercises_sample', { exercises: -1 })).isError).toBe(true);

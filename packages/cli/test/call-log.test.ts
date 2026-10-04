@@ -138,6 +138,7 @@ describe('scripts/compare-calls.mjs', () => {
       [call('merge_frames', { ids: ['f1', 'f2'] }), cli('frames merge', { _: ['f1', 'f2'] })],
       [call('split_frame', { id: 'f1', at: [0.4, 0.52], snap: true }), cli('frames split', { _: ['f1'], at: '0.4,0.52', snap: true })],
       [call('exercises_sample', { exercises: 40, crops_dir: 'sample' }), cli('exercises sample', { exercises: 40, crops: 'sample' })],
+      [call('exercises_sample', { exercises: 10, solutions: 5, per_section: true }), cli('exercises sample', { exercises: 10, solutions: 5, 'per-section': true })],
       [call('create_project', { pdf: 'book.pdf', title: 'T' }), cli('init', { _: ['book.pdf'], title: 'T' })],
     ];
     for (const [mcp, line] of pairs) expect(compareCalls([mcp], [line]).identical, mcp.tool).toBe(true);
