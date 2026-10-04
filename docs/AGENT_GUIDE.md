@@ -227,9 +227,9 @@ Without a text layer, see section 8.
 ### Proposals for books
 
 For a textbook that is audited once as an **authority** (exercises that keep the numbers the book prints, sections for its
-contents, the answer key as hidden solution context; see [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md) section 3) three commands do what
-`propose` does for a sheet. The whole workflow, for a person and for an agent, is in [AUDIT_A_BOOK.md](AUDIT_A_BOOK.md); this is how
-they work and what to check.
+contents, the answer key as hidden solution context; see [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md) section 3 and chapter 14 below) three
+commands do what `propose` does for a sheet. The whole workflow, for a person and for an agent, is in
+[AUDIT_A_BOOK.md](AUDIT_A_BOOK.md); this is how they work and what to check.
 
 **`outline derive --book`** reads three things the book prints about its structure and cross-checks them: the printed contents
 (lines with dot leaders and a page number; lines that the text extraction merged are cut apart again, also a page number glued to the
@@ -239,8 +239,9 @@ the footers. It proposes chapters (`id` `c3`, `label` `Chapter 3`) and sections 
 `top` (where the label line is), a confidence and the evidence, and for each section where its practice set starts and ends (where the
 next section, the next chapter or the answer key starts). Titles are normalised ("&" and a slash between words read as "and", numbering
 and leaders removed); where the contents has a typo that the opener list and the headings contradict, the majority wins and the
-evidence says so; spellings that differ are listed. A book without numbered sections falls back on generic headings (`s1`, `s2`, ...) and
-then has no practice sets to read.
+evidence says so; spellings that differ are listed. A book without numbered sections falls back on generic headings (ids made from
+the titles) and then has no practice sets to read. `--apply` stores the entries as the outline of the project (`outline.set`), which
+replaces the outline it had.
 
 **`exercises propose`** finds, in each practice set, the lines that start with a printed number (`5)`, `5.`, `(5)`, `5a)`; also a
 number alone on its line beside a figure, glued to the text, or without its closing mark when the sequence asks for it), keeps those
@@ -250,32 +251,41 @@ instructions and each band into columns by the left edges of its items, so a pag
 is read correctly, also when the extraction merged the two items of a row into one line. Everything that belongs to an item goes into
 its frame: continuation lines, the rows of a fraction or a root, the labels of a figure, the figure itself (from the ink profile) and the
 lines on the next page (a continuation region). The bold instruction above a group is the `context` of every item below it, also when
-it crosses a page break (two regions); a practice set without an instruction gives no context. Each proposal has a deterministic frame
-id (`x0_1-5`: section `0.1`, label `5`), so applying twice does not duplicate.
+it crosses a page break (two regions); a practice set without an instruction gives no context. `--apply` adds the exercises as
+book exercises in one atomic batch (`add` with `authority`, `label`, `section`, `context`, `continues`, `solution`); they are named
+`SECTION:LABEL` (`0.1:5`). It can be run again: an exercise the project has exactly like this is skipped, one that only lacks its
+answer gets the answer, one that differs (you corrected the frame) is kept and listed under `changed`, and `--replace` overwrites it in
+place (it keeps its id). `--dry-run` shows the batch and its validation without writing.
 
 **`solutions propose`** cuts the answer key into bands by the small section markers and the headers (a band runs across all columns
 and over page breaks), reads the answers of a band with the same engine (a number that stands alone with a graph below it, an answer of
-several lines, a fraction) and matches them by (section, label) to the authoritative exercises of the project.
+several lines, a fraction) and matches them by (section, label) to the authoritative exercises of the project. `--apply` gives each
+exercise its answer with `solution.set` (one operation per exercise, named `SECTION:LABEL`), under the same rules as above
+(`changed`, `--replace`).
 
 Limits, and what to look at:
 
-- **A garbled text layer.** A stray glyph with a wrong font size (for example a "not equal" sign) can swallow the lines around it into
-  one line of unreadable text. The exercises or answers inside are missing and show up as gaps and as "no answer for ...": frame those by
-  hand (`add` with `authority`, `label` and `section`) after looking at the page.
+- **A garbled text layer.** A glyph that the PDF sets at an absurd size (an unmapped "not equal" sign at 120 points) is read at the
+  usual size of the page. A line that is garbled in some other way can still swallow the lines around it into one of unreadable
+  text: the exercises or answers inside are missing and show up as gaps and as "no answer for ...": frame those by hand (`add` with
+  `authority`, `label` and `section`) after looking at the page.
 - **What the book itself gets wrong:** a number printed twice, a missing answer, a practice set with more exercises than the contents
   promise. The proposal follows the print; what to do with the difference is for the owner of the audit to decide (`--max-items` caps a
   section).
 - **Parts** ((a), (b)) are not split into exercises of their own: they stay inside the exercise that carries the number.
-- **Figures and graphs** are framed with the ink profile, which cannot tell which column a drawing belongs to: look at every kind of
-  figure item and at graph answers.
+- **Figures and graphs** are framed with the ink profile, which cannot tell which column a drawing belongs to (a figure stops at the
+  column to its right and above a heading): look at every kind of figure item and at graph answers.
+- **Edges** move into the white between two lines when the page's ink map says that an edge runs through a glyph; in rows that are set
+  very tight there may be none within reach of the own text. `scripts/acceptance-book.mjs` counts such regions (see AUDIT_A_BOOK.md).
 - **Without font information** (pages read without `--fonts`) instructions are found by their position only.
 
 Check by looking, as in section 7, in a sample that covers every kind of layout: the first and the last item of every section, an item
 beside a figure, an item at the end of a page, an instruction that crosses a page break, a two-column row with fractions, a
-three-column row, a graph answer, an answer of several lines. `mcprep crop x0_1-5` crops by the deterministic id and `--region context:0`
-shows the instruction. Read the `notes` of the commands and the gaps before you look at any crop. Fix with the operations you know:
-`update` for a rectangle, `context.set` for the instruction, `delete` and `add` for an exercise that was found where there is none or
-not found; `solution.add` adds a solution region.
+three-column row, a graph answer, an answer of several lines, the last answer before a chapter heading. `mcprep crop 0.1:5` crops a
+book exercise by section and label, `--region context:0` shows the instruction and `--region solution:0` the answer. Read the `notes`
+of the commands and the gaps before you look at any crop. Fix with the operations you know: `update` for a rectangle, `context.set` for
+the instruction, `solution.set` for an answer, `delete` and `add` (with `--replace` for an exercise that exists) for an exercise that
+was found where there is none or not found.
 
 ## 7. Check by looking
 
@@ -530,6 +540,8 @@ mcprep outline add --title "Review exercises" --page 31 --depth 1 --id review --
    A task that goes on over the page: `--continues <page>:l,t,r,b`. For a whole section write one batch (`mcprep frames apply
    batch.json`, one atomic call with one validation; each operation `{ "op": "add", "authority": "book", "section": "1.2",
    "label": "5a", "page": 17, "rect": [..], "context": [..], "solution": [..] }`); the `ref` and `@name` mechanism of 12 works too.
+   (For a whole book, steps 3 to 5 can start from the proposals of section 6 and docs/AUDIT_A_BOOK.md: `outline derive --book --apply`,
+   `exercises propose --solutions --apply`; then look at the result and correct it with the commands below.)
 5. **Solutions.** Find each answer in the answer key and attach it: `mcprep solution add 1.2:5a --page 211 --rect
    0.1,0.52,0.5,0.54 --snap`, or pass `--solution 211:l,t,r,b` to `exercises add`. One small region per exercise (the line
    "22) 0"), or one block for several exercises: give each the same region. Exercises the key does not answer simply have none
