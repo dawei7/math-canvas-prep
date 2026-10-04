@@ -3,6 +3,7 @@ import {
   McPrepError,
   PdfDocument,
   ProjectSession,
+  countBook,
   countFrames,
   hashFile,
   readProjectFile,
@@ -102,7 +103,7 @@ export const info: CommandSpec = {
   ],
   examples: ['mcprep info', 'mcprep info --json'],
   output:
-    '{ project: { path, title, folder?, revision, modifiedBy?, updatedAt }, pdf: { path, pageCount, bytes, sha256, pageSizes: [{ width, height, rotation, pages }], textLayer: { checked, withText, withoutText: number[] } }, outline: { pdf: number|null, project: number|null, source? }, frames: { exercises, questions, bookmarks, total, partsOfUnits, byPage } }',
+    '{ project: { path, title, folder?, revision, modifiedBy?, updatedAt }, pdf: { path, pageCount, bytes, sha256, pageSizes: [{ width, height, rotation, pages }], textLayer: { checked, withText, withoutText: number[] } }, outline: { pdf: number|null, project: number|null, source?, withId? }, frames: { exercises, questions, bookmarks, bookExercises, bookExercisesWithSolution, total, partsOfUnits, byPage } }',
   async run(context) {
     const session = await context.session();
     const project = session.project;
@@ -115,6 +116,7 @@ export const info: CommandSpec = {
     for (const page of [...new Set(checked)]) if (!(await pdf.rawPageText(page)).hasText) withoutText.push(page);
     const pdfOutline = await pdf.outline();
     const counts = countFrames(project.frames);
+    const book = countBook(project.frames);
     const byPage: Record<string, number> = {};
     for (const frame of project.frames) byPage[String(frame.page)] = (byPage[String(frame.page)] ?? 0) + 1;
     const groups = groupSizes(sizes);
@@ -135,8 +137,8 @@ export const info: CommandSpec = {
         pageSizes: groups,
         textLayer: { checked: new Set(checked).size, withText: new Set(checked).size - withoutText.length, withoutText },
       },
-      outline: { pdf: pdfOutline ? pdfOutline.length : null, project: project.outline ? project.outline.entries.length : null, ...(project.outline ? { source: project.outline.source } : {}) },
-      frames: { exercises: counts.exercise, questions: counts.question, bookmarks: counts.bookmark, total: project.frames.length, partsOfUnits: project.frames.filter((frame) => frame.unit !== undefined).length, byPage },
+      outline: { pdf: pdfOutline ? pdfOutline.length : null, project: project.outline ? project.outline.entries.length : null, ...(project.outline ? { source: project.outline.source, withId: project.outline.entries.filter((entry) => entry.id !== undefined).length } : {}) },
+      frames: { exercises: counts.exercise, questions: counts.question, bookmarks: counts.bookmark, bookExercises: book.exercises, bookExercisesWithSolution: book.withSolution, total: project.frames.length, partsOfUnits: project.frames.filter((frame) => frame.unit !== undefined).length, byPage },
     };
     const lines = [
       `Project ${session.projectPath}`,
@@ -147,7 +149,7 @@ export const info: CommandSpec = {
       ...groups.map((group) => `  size ${group.width} x ${group.height} pt${group.rotation ? `, /Rotate ${group.rotation}` : ''}: pages ${rangeText(group.pages)}`),
       withoutText.length === 0 ? `  text layer: present on all ${new Set(checked).size} pages checked` : `  text layer: MISSING on pages ${rangeText(withoutText)} (scans: mark them by eye with \`render --grid\`)`,
       `  outline: ${pdfOutline ? `${plural(pdfOutline.length, 'entry', 'entries')} in the PDF` : 'none in the PDF'}${project.outline ? `; the project has its own (${project.outline.source}, ${plural(project.outline.entries.length, 'entry', 'entries')})` : ''}`,
-      `Frames: ${plural(counts.exercise, 'exercise')}, ${plural(counts.question, 'question')}, ${plural(counts.bookmark, 'bookmark')}`,
+      `Frames: ${plural(counts.exercise, 'exercise')}, ${plural(counts.question, 'question')}, ${plural(counts.bookmark, 'bookmark')}${book.exercises > 0 ? `, ${plural(book.exercises, 'book exercise')} (${book.withSolution} with a solution)` : ''}`,
     ];
     return { result, text: lines.join('\n') };
   },
@@ -155,7 +157,7 @@ export const info: CommandSpec = {
 
 export const meta: CommandSpec = {
   name: 'meta',
-  summary: 'Show or change the title and library folder of the project.',
+  summary: 'Show or change the title and library folder of the project (author, licence and notice: `book meta`).',
   writes: true,
   options: [
     { name: 'title', type: 'string', value: '<text>', description: 'The title the app library shows (1 to 200 characters).' },

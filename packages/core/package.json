@@ -1,6 +1,6 @@
 {
   "name": "@mcprep/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Math Canvas Prep core: model, rules, numbering, PDF reading, proposals and the .mcbundle reader and writer. No UI.",
   "type": "module",

@@ -68,6 +68,9 @@ This page is the contract. The reference implementation of reading, validating a
 - `document.author`, `series` (each at most 200 characters), `description`, `notice` (each at most 4000), `license.name` (at most
   100), `license.url` and `sourceUrl` (http or https, at most 500) describe the work itself and are all optional. A reader
   shows author, licence and notice where it shows the document's details: a licence that asks for attribution travels with the file.
+  A reader is lenient about them, as it is about `folder`: a text that is too long is cut to its limit, a value of the wrong
+  kind is ignored, and so is a web address that is not http or https (a licence without a usable `name` is ignored as a
+  whole); none of this rejects the bundle. A writer is strict and treats the same problems as errors.
 - `features` is optional and informational: which of `sections` (outline entries with ids), `authority` (authoritative
   exercises) and `solution` (hidden solution context) the writer used. A reader that does not implement one of them still reads
   the bundle: it shows authoritative exercises as ordinary exercises and never shows or sends `solution` regions.
@@ -128,13 +131,13 @@ This page is the contract. The reference implementation of reading, validating a
 | `unit` | no | Frames that share a `unit` id are the **parts** of one exercise ((a), (b), (c) become 1.1, 1.2, 1.3). Only `exercise` frames can have one. |
 | `context` | no | At most 8 regions holding the instruction, question or background that belongs to this exercise, wherever it is printed (it may be on another page). It is shown first when the exercise is shown and goes to the AI with every check. Only `exercise` frames can have context. |
 | `authority` | no | `"book"`: an **authoritative exercise**, audited from the book and numbered the way the book numbers it (see "Authoritative exercises"). Only `exercise` frames. Absent: an ordinary exercise, framed by a person for themselves. |
-| `label` | with `authority` | The exercise's number exactly as the book prints it, without the closing `.` or `)`: `5`, `12`, `5a`, `A.3`, `II-4`. 1 to 24 characters, starting with a letter or digit, no control characters. |
+| `label` | with `authority` | The exercise's number exactly as the book prints it, without the closing `.` or `)`: `5`, `12`, `5a`, `A.3`, `II-4`. 1 to 24 characters: a letter or digit first, then letters, digits, spaces and the characters `. _ - ( ) /` (regular expression `^[\p{L}\p{N}][\p{L}\p{N} ._\-()/]{0,23}$`). Tools warn about a label that ends in `.` or `)` (apart from a closed `(a)`). |
 | `section` | with `authority` | The `id` of the outline entry (section 4) the exercise belongs to. |
 | `solution` | no | At most 8 regions **of the same document** where the solution or answer of this exercise is printed (for example the answer key at the back of the same PDF). **Hidden**: never shown with the exercise, never sent to a tutor chat, used only to grade. Only `exercise` frames. |
 
 ### Parts (units)
 
-- All frames with the same `unit` are `exercise` frames with no `continues`.
+- All frames with the same `unit` are `exercise` frames with no `continues`, none of them authoritative.
 - **On every page they occupy, the parts tile one area**: sorted from top to bottom, each part's `top` equals the previous
   part's `bottom` (within `0.002`), and all parts there have the same `left` and `right` (within `0.002`). Parts never
   overlap and leave no gap. A reader snaps deviations up to `0.002` and rejects larger ones.
@@ -157,11 +160,29 @@ themselves stay **ordinary** (free, positional numbers). The two kinds can live 
   by its label and its section.
 - A reader that does not know `authority` shows the frame as an ordinary exercise; nothing else changes.
 
+An authoritative exercise with its shared statement as context and its answer in the key at the back of the same PDF:
+
+```json
+{
+  "id": "f31",
+  "kind": "exercise",
+  "page": 17,
+  "rect": { "left": 0.09, "top": 0.412, "right": 0.91, "bottom": 0.478 },
+  "authority": "book",
+  "label": "5a",
+  "section": "1.2",
+  "context": [ { "page": 17, "rect": { "left": 0.09, "top": 0.36, "right": 0.91, "bottom": 0.41 } } ],
+  "solution": [ { "page": 211, "rect": { "left": 0.1, "top": 0.527, "right": 0.5, "bottom": 0.543 } } ]
+}
+```
+
 ### Solution context (`solution`)
 
 `context` is what the learner is shown (the instruction) and what the grader receives. `solution` is the other side: what
 **only the grader** receives, as the answer key to compare the learner's work with.
 
+- A frame has at most 8 solution regions, each a region like those of `continues` and `context` (a valid rect, on a page of
+  the document). Solution regions only on `exercise` frames, authoritative or not.
 - Only regions of the same PDF count; a solution printed elsewhere (another file, a web page) is outside the format.
 - Typically the answer key sits at the back of the same PDF: one small region for each exercise (the line "22) 0"), or a
   block that answers several.
@@ -212,9 +233,13 @@ A book prepared as an authority names its sections with `id`, `label` and `top`:
 - When present, the app uses it as the document's contents instead of reading titles from the PDF itself.
 - `id` (optional): `[A-Za-z0-9][A-Za-z0-9._-]{0,59}`, unique among the entries; the key by which a frame's `section` finds
   its entry. Writers give an id to every entry that exercises refer to.
-- `label` (optional, at most 24 characters): the number printed with the heading ("1.1", "Chapter 3").
+- `label` (optional, at most 24 characters; an empty one is the same as none): the number printed with the heading ("1.1",
+  "Chapter 3").
 - `top` (optional, 0 to 1): where the heading starts on its `page`, measured from the top. With it a reader can tell, on a
-  page where one section ends and the next begins, which part belongs to which.
+  page where one section ends and the next begins, which part belongs to which. An entry without `top` starts at the top of
+  its page.
+- A reader rejects an `id` that does not match the pattern or is used by two entries, a `label` longer than 24 characters and
+  a `top` outside 0 to 1, and names the entry.
 - A **section** is an outline entry that exercises refer to. Its extent runs from its page (and `top`) to the next entry of
   the same or a lower depth, so a reader can count the exercises of a section and of everything below it.
 

@@ -61,6 +61,8 @@ export function renderTopHelp(): string {
     '  Pages are ZERO-BASED: the first page is 0. Coordinates are fractions of the page as displayed (after /Rotate),',
     '  origin at the top-left, x to the right, y downwards, all between 0 and 1. Run `mcprep guide` for the full guide.',
     '  Every command accepts --json: one JSON document on standard output, never a prompt. Commands never use the network.',
+    '  A book audited as an authority has exercises named by the number the book prints and their section (SECTION:LABEL, for example',
+    '  1.2:5a), never cut into parts; sections are the outline entries. `mcprep guide` explains it in chapter 14.',
     '  The project is --project <file>, or $MCPREP_PROJECT, or the only *.mcprep.json in the current folder.',
     '',
     'Exit codes:',

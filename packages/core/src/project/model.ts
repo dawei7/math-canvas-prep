@@ -1,4 +1,4 @@
-import type { Frame, OutlineEntry } from '../model/types.js';
+import type { DocumentInfo, Frame, OutlineEntry } from '../model/types.js';
 import { FORMAT } from '../rules/constants.js';
 import { VERSION } from '../version.js';
 
@@ -13,7 +13,8 @@ export interface ProjectPdf {
   pageCount: number;
 }
 
-export interface ProjectMeta {
+/** What the bundle says about the work: the library's title and folder, and the optional document info (author, licence, ...). */
+export interface ProjectMeta extends DocumentInfo {
   title: string;
   /** Where the document is filed in the app's library: names separated by "/", at most seven levels. */
   folder?: string;
@@ -70,21 +71,30 @@ export function newProject(input: { pdf: ProjectPdf; title: string; folder?: str
   };
 }
 
+/** Highest N among the ids `f<N>` and `u<N>` of frames and units; the counter of generated ids must not go below it. */
+export function highestSequence(frames: readonly Frame[]): number {
+  let highest = 0;
+  for (const frame of frames) {
+    for (const id of [frame.id, frame.unit]) {
+      const match = id === undefined ? null : /^[fu](\d+)$/.exec(id);
+      if (match) highest = Math.max(highest, Number(match[1]));
+    }
+  }
+  return highest;
+}
+
+/** The project with its counter raised above every generated-looking id it already holds (one pass over the frames). */
+export function withSequenceBeyondIds(project: Project): Project {
+  const highest = highestSequence(project.frames);
+  return highest > project.seq ? { ...project, seq: highest } : project;
+}
+
 /**
- * A new unused id of the form `f1`, `f2`, ... (or `u1`, ... for units). Ids are never reused: the counter only grows,
- * and ids that exist in the file (for example added by hand) are skipped.
+ * A new unused id of the form `f1`, `f2`, ... (or `u1`, ... for units). Ids are never reused: the counter only grows.
+ * It stays above every id of that form in the project (loading a project and the operations that take an id of their own
+ * see to that), so the next number is unused and no search is needed: adding thousands of frames stays linear.
  */
 export function nextId(project: Project, prefix: 'f' | 'u'): { id: string; project: Project } {
-  const used = new Set<string>();
-  for (const frame of project.frames) {
-    used.add(frame.id);
-    if (frame.unit !== undefined) used.add(frame.unit);
-  }
-  let seq = project.seq;
-  let id: string;
-  do {
-    seq += 1;
-    id = `${prefix}${seq}`;
-  } while (used.has(id));
-  return { id, project: { ...project, seq } };
+  const seq = project.seq + 1;
+  return { id: `${prefix}${seq}`, project: { ...project, seq } };
 }

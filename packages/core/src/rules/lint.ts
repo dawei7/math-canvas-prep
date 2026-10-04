@@ -1,4 +1,4 @@
-import { containsRect, intersection, rectArea, rectHeight } from '../model/rect.js';
+import { containsRect, intersection, overlapOfSmaller, rectArea, rectHeight, rectsEqual } from '../model/rect.js';
 import type { Frame, PageText, Rect, TextLine } from '../model/types.js';
 import { AUTHORING } from './constants.js';
 import { issue, type Issue } from './issues.js';
@@ -42,18 +42,15 @@ export function lintFrames(frames: readonly Frame[]): Issue[] {
     );
   }
 
-  for (const frame of frames) {
-    for (const entry of regions) {
-      if (entry.frame.id !== frame.id) continue;
-      if (rectHeight(entry.rect) < THIN) {
-        issues.push(
-          issue('warning', 'thin-frame', `${frame.id} (${entry.where}) is ${fmt(rectHeight(entry.rect))} tall, thinner than one text line (about ${THIN}); it probably cuts a line.`, {
-            frameId: frame.id,
-            page: entry.page,
-            fix: 'Make the frame taller or snap its edges to the text lines.',
-          }),
-        );
-      }
+  for (const entry of regions) {
+    if (rectHeight(entry.rect) < THIN) {
+      issues.push(
+        issue('warning', 'thin-frame', `${entry.frame.id} (${entry.where}) is ${fmt(rectHeight(entry.rect))} tall, thinner than one text line (about ${THIN}); it probably cuts a line.`, {
+          frameId: entry.frame.id,
+          page: entry.page,
+          fix: 'Make the frame taller or snap its edges to the text lines.',
+        }),
+      );
     }
   }
 
@@ -142,6 +139,80 @@ export function lintFrames(frames: readonly Frame[]): Issue[] {
       );
     }
   }
+  issues.push(...lintSolutions(frames));
+  return issues;
+}
+
+/** Two regions count as the same place when every edge is within this distance. */
+const SAME_PLACE = 0.005;
+
+/**
+ * Solution regions: one that overlaps its own exercise shows the exercise instead of the answer, and one that is the
+ * region of another exercise points at an exercise, not at a key. Solution regions are matched against the exercise
+ * regions of their page by a search on `top`, so thousands of both are no problem.
+ */
+function lintSolutions(frames: readonly Frame[]): Issue[] {
+  const issues: Issue[] = [];
+  if (!frames.some((frame) => frame.solution !== undefined && frame.solution.length > 0)) return issues;
+
+  for (const frame of frames) {
+    if (!frame.solution) continue;
+    const own: { page: number; rect: Rect }[] = [{ page: frame.page, rect: frame.rect }, ...(frame.continues ?? [])];
+    frame.solution.forEach((region, index) => {
+      const hit = own.find((target) => target.page === region.page && overlapOfSmaller(target.rect, region.rect) >= OVERLAP_SHARE);
+      if (!hit) return;
+      issues.push(
+        issue('warning', 'solution-overlaps-frame', `The solution region ${index} of ${frame.id} overlaps the exercise itself on page ${region.page}, so the learner's own task would be sent as the answer key.`, {
+          frameId: frame.id,
+          page: region.page,
+          fix: `A solution is printed elsewhere (usually the answer key at the back): \`mcprep solution remove ${frame.id} --index ${index}\`, then \`solution add ${frame.id} --page <key page> --rect ...\`.`,
+        }),
+      );
+    });
+  }
+
+  const exerciseRegions = new Map<number, { frame: Frame; rect: Rect }[]>();
+  const addRegion = (frame: Frame, page: number, rect: Rect): void => {
+    const list = exerciseRegions.get(page);
+    if (list) list.push({ frame, rect });
+    else exerciseRegions.set(page, [{ frame, rect }]);
+  };
+  for (const frame of frames) {
+    if (frame.kind !== 'exercise') continue;
+    addRegion(frame, frame.page, frame.rect);
+    frame.continues?.forEach((region) => addRegion(frame, region.page, region.rect));
+  }
+  for (const list of exerciseRegions.values()) list.sort((a, b) => a.rect.top - b.rect.top);
+
+  for (const frame of frames) {
+    if (!frame.solution) continue;
+    frame.solution.forEach((region, index) => {
+      const list = exerciseRegions.get(region.page);
+      if (!list) return;
+      // The first entry whose top is not above (region.top - SAME_PLACE).
+      let low = 0;
+      let high = list.length;
+      while (low < high) {
+        const middle = (low + high) >> 1;
+        if ((list[middle] as { rect: Rect }).rect.top < region.rect.top - SAME_PLACE) low = middle + 1;
+        else high = middle;
+      }
+      for (let i = low; i < list.length; i += 1) {
+        const candidate = list[i] as { frame: Frame; rect: Rect };
+        if (candidate.rect.top > region.rect.top + SAME_PLACE) break;
+        if (candidate.frame.id === frame.id || !rectsEqual(candidate.rect, region.rect, SAME_PLACE)) continue;
+        issues.push(
+          issue('warning', 'solution-is-exercise', `The solution region ${index} of ${frame.id} is the same place as the exercise ${candidate.frame.id} on page ${region.page}: it points at an exercise, not at a solution.`, {
+            frameId: frame.id,
+            page: region.page,
+            fix: `Check the key page: \`mcprep solution remove ${frame.id} --index ${index}\` and add the region of the answer instead.`,
+            data: { other: candidate.frame.id },
+          }),
+        );
+        break;
+      }
+    });
+  }
   return issues;
 }
 
@@ -210,6 +281,7 @@ export function lintAgainstText(frames: readonly Frame[], pages: ReadonlyMap<num
   for (const frame of frames) {
     check(frame, 'frame', frame.page, frame.rect);
     frame.continues?.forEach((region, index) => check(frame, `continues[${index}]`, region.page, region.rect));
+    frame.solution?.forEach((region, index) => check(frame, `solution[${index}]`, region.page, region.rect));
   }
   return issues;
 }

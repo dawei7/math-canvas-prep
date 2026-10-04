@@ -1,0 +1,213 @@
+{
+  "format": "math-canvas-prep-project",
+  "version": 1,
+  "revision": 7,
+  "createdAt": "2026-10-03T12:00:00Z",
+  "updatedAt": "2026-10-03T12:00:00Z",
+  "modifiedBy": "cli",
+  "generator": { "name": "math-canvas-prep", "version": "0.2.0" },
+  "pdf": {
+    "path": "workbook.pdf",
+    "sha256": "523591c14eb5a7b0a7675adb080e5261a5fdd1fc52d88a59deff4ffe2cbb3d62",
+    "bytes": 5553,
+    "pageCount": 4
+  },
+  "meta": {
+    "title": "Pre-Algebra Workbook",
+    "folder": "Books/Algebra",
+    "author": "A. Author",
+    "series": "Prerequisites",
+    "license": { "name": "CC BY 3.0", "url": "https://creativecommons.org/licenses/by/3.0/" },
+    "sourceUrl": "https://example.org/the-workbook",
+    "notice": "Attribution: A. Author, Pre-Algebra Workbook, CC BY 3.0. Changes: marked for study, nothing else."
+  },
+  "seq": 10,
+  "frames": [
+    {
+      "id": "f1",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.1, "top": 0.3314, "right": 0.9, "bottom": 0.3504 },
+      "authority": "book",
+      "label": "1",
+      "section": "1.1",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.177, "right": 0.9, "bottom": 0.196 }
+        }
+      ]
+    },
+    {
+      "id": "f2",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.1, "top": 0.367, "right": 0.9, "bottom": 0.386 },
+      "authority": "book",
+      "label": "2",
+      "section": "1.1",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.196, "right": 0.9, "bottom": 0.215 }
+        }
+      ]
+    },
+    {
+      "id": "f3",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.1, "top": 0.424, "right": 0.9, "bottom": 0.443 },
+      "authority": "book",
+      "label": "3a",
+      "section": "1.1",
+      "context": [
+        {
+          "page": 0,
+          "rect": { "left": 0.1, "top": 0.4026, "right": 0.9, "bottom": 0.4216 }
+        }
+      ],
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.215, "right": 0.9, "bottom": 0.234 }
+        }
+      ]
+    },
+    {
+      "id": "f4",
+      "kind": "exercise",
+      "page": 0,
+      "rect": { "left": 0.1, "top": 0.4454, "right": 0.9, "bottom": 0.4644 },
+      "authority": "book",
+      "label": "3b",
+      "section": "1.1",
+      "context": [
+        {
+          "page": 0,
+          "rect": { "left": 0.1, "top": 0.4026, "right": 0.9, "bottom": 0.4216 }
+        }
+      ],
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.234, "right": 0.9, "bottom": 0.253 }
+        }
+      ]
+    },
+    {
+      "id": "f5",
+      "kind": "exercise",
+      "page": 1,
+      "rect": { "left": 0.1, "top": 0.1532, "right": 0.9, "bottom": 0.1722 },
+      "authority": "book",
+      "label": "1",
+      "section": "1.2",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.2957, "right": 0.9, "bottom": 0.3147 }
+        }
+      ]
+    },
+    {
+      "id": "f6",
+      "kind": "exercise",
+      "page": 1,
+      "rect": { "left": 0.1, "top": 0.1888, "right": 0.9, "bottom": 0.2078 },
+      "authority": "book",
+      "label": "2",
+      "section": "1.2",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.3147, "right": 0.9, "bottom": 0.3337 }
+        }
+      ]
+    },
+    {
+      "id": "f7",
+      "kind": "exercise",
+      "page": 1,
+      "rect": { "left": 0.1, "top": 0.2245, "right": 0.9, "bottom": 0.2435 },
+      "authority": "book",
+      "label": "3",
+      "section": "1.2",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.3337, "right": 0.9, "bottom": 0.3527 }
+        }
+      ]
+    },
+    {
+      "id": "f8",
+      "kind": "exercise",
+      "page": 1,
+      "rect": { "left": 0.1, "top": 0.9014, "right": 0.9, "bottom": 0.9204 },
+      "authority": "book",
+      "label": "4",
+      "section": "1.2",
+      "continues": [
+        {
+          "page": 2,
+          "rect": { "left": 0.1, "top": 0.101, "right": 0.9, "bottom": 0.12 }
+        }
+      ],
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.3527, "right": 0.9, "bottom": 0.3717 }
+        }
+      ]
+    },
+    {
+      "id": "f9",
+      "kind": "exercise",
+      "page": 2,
+      "rect": { "left": 0.1, "top": 0.3314, "right": 0.9, "bottom": 0.3504 },
+      "authority": "book",
+      "label": "1",
+      "section": "2.1",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.4145, "right": 0.9, "bottom": 0.4335 }
+        }
+      ]
+    },
+    {
+      "id": "f10",
+      "kind": "exercise",
+      "page": 2,
+      "rect": { "left": 0.1, "top": 0.367, "right": 0.9, "bottom": 0.386 },
+      "authority": "book",
+      "label": "2",
+      "section": "2.1",
+      "solution": [
+        {
+          "page": 3,
+          "rect": { "left": 0.1, "top": 0.4335, "right": 0.9, "bottom": 0.4525 }
+        }
+      ]
+    }
+  ],
+  "outline": {
+    "source": "manual",
+    "entries": [
+      { "title": "Chapter 1 Integers", "page": 0, "depth": 0, "id": "1" },
+      {
+        "title": "1.1 Adding integers",
+        "page": 0,
+        "depth": 1,
+        "id": "1.1",
+        "label": "1.1",
+        "top": 0.2577
+      },
+      { "title": "1.2 Subtracting integers", "page": 1, "depth": 1, "id": "1.2" },
+      { "title": "Chapter 2 Fractions", "page": 2, "depth": 0, "id": "2" },
+      { "title": "2.1 Equivalent fractions", "page": 2, "depth": 1, "id": "2.1" },
+      { "title": "Answers", "page": 3, "depth": 0, "id": "Answers" }
+    ]
+  }
+}

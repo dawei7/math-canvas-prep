@@ -15,7 +15,11 @@ Run it from the repository as `npx mcprep <command>` or `node packages/cli/bin/m
   the right, `y` downwards, all between 0 and 1. A rectangle is written `left,top,right,bottom` on the command line and
   `{ "left": .., "top": .., "right": .., "bottom": .. }` in JSON (an array `[l,t,r,b]` is accepted as input).
 - **Labels** such as `E4.2`, `Q1`, `B3` are computed from position and never stored. Refer to a frame by its **id**
-  (`f3`), which does not change when other frames are added.
+  (`f3`), which does not change when other frames are added. An authoritative **book exercise** (audited from a book,
+  `authority: "book"`) has no such label: it is named by the number the book prints and its section, `SECTION:LABEL`
+  (`1.2:5a`), which every command that takes a frame accepts, and it is never cut into parts.
+- **Sections** are the entries of the outline; an entry that exercises are filed under has an `id`. `mcprep book show` lists them with
+  the number of exercises in each. See chapter 14 of the [agent guide](AGENT_GUIDE.md).
 - **The project** is `--project <file>` (or a folder holding exactly one), else `$MCPREP_PROJECT`, else the only
   `*.mcprep.json` in the current folder.
 - **Changes are atomic.** A command that writes the project reads it fresh under a lock, applies the change in memory,
@@ -60,15 +64,19 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`lines`](#lines): List the text lines of a page with their coordinates.
 - [`render`](#render): Render a page to a PNG, optionally with a coordinate grid and the frames drawn on it.
 - [`crop`](#crop): Render one frame, or any rectangle of a page, to a PNG: the way to check a frame by looking at it.
-- [`outline`](#outline): Show the contents the bundle will carry: the project's own outline, or the PDF's.
+- [`outline`](#outline): Show the contents the bundle will carry (the sections of the book): the project's own outline with ids and exercise counts, or the PDF's.
 - [`outline pdf`](#outline-pdf): Read the PDF's own outline (its bookmarks).
 - [`outline derive`](#outline-derive): Find headings by font size, bold, position and numbering, for a PDF without an outline.
 - [`outline set`](#outline-set): Replace the project's outline with entries from a JSON file (or - for standard input).
+- [`outline add`](#outline-add): Add an entry (a section) to the outline.
+- [`outline update`](#outline-update): Change an outline entry: its title, page, depth, label, top or id.
+- [`outline delete`](#outline-delete): Delete an outline entry.
+- [`outline ids`](#outline-ids): Give every outline entry that has no id one (from its printed label, else the number in its title), so that exercises can name it.
 - [`outline clear`](#outline-clear): Remove the project's own outline (the bundle then carries none and the app reads the PDF's).
 - [`propose`](#propose): Suggest exercises, parts, context and bookmarks from the printed text (offline heuristics, nothing is applied).
 - [`exercises propose`](#exercises-propose): Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).
 - [`solutions propose`](#solutions-propose): Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.
-- [`frames list`](#frames-list): List the frames in reading order with their positional labels (E1, E2.1, Q1, B1).
+- [`frames list`](#frames-list): List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.
 - [`frames add`](#frames-add): Add a frame: an exercise, a question or a bookmark.
 - [`frames update`](#frames-update): Change the page, rectangle or kind of a frame.
 - [`frames delete`](#frames-delete): Delete a frame (or, with --unit, every part of an exercise).
@@ -82,7 +90,20 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`context remove`](#context-remove): Remove a context region of an exercise.
 - [`continues add`](#continues-add): Add a further region of the same task, for example where an exercise goes on in the next column or on the next page.
 - [`continues remove`](#continues-remove): Remove a continuation region.
-- [`meta`](#meta): Show or change the title and library folder of the project.
+- [`exercises list`](#exercises-list): List the authoritative book exercises: label, section, page, and whether a solution is attached.
+- [`exercises add`](#exercises-add): Add an authoritative exercise: one printed exercise, with its printed label, in its section.
+- [`exercises mark`](#exercises-mark): Make an exercise you framed an authoritative book exercise: give it the printed label and its section.
+- [`exercises unmark`](#exercises-unmark): Turn an authoritative exercise back into an ordinary one (positional number, can be cut into parts).
+- [`exercises label`](#exercises-label): Change the label (the printed number) of an authoritative exercise.
+- [`exercises section`](#exercises-section): Move an authoritative exercise to another section.
+- [`solution add`](#solution-add): Attach a region where the answer is printed (usually the answer key at the back) to an exercise; hidden from the learner.
+- [`solution list`](#solution-list): List the solution regions of an exercise, or of every exercise that has some.
+- [`solution remove`](#solution-remove): Remove one solution region of an exercise (by index), or all of them.
+- [`solution clear`](#solution-clear): Remove every solution region of an exercise.
+- [`book show`](#book-show): Show the book: its information, its sections with the number of authoritative exercises in each, and the totals.
+- [`book meta`](#book-meta): Show or change what the bundle says about the book: title, library folder, author, series, description, licence, source address and notice.
+- [`book export`](#book-export): Write the book summary (sections with exercise counts, totals, document information) as a plain JSON file.
+- [`meta`](#meta): Show or change the title and library folder of the project (author, licence and notice: `book meta`).
 - [`relink`](#relink): Point the project at the PDF where it now is.
 - [`validate`](#validate): Check the project against every rule of the bundle format; errors name the frame and the fix.
 - [`export`](#export): Write the project as a .mcbundle: the PDF plus its frames and outline, ready for the Android app's library.
@@ -146,7 +167,7 @@ $ mcprep info
 $ mcprep info --json
 ```
 
-With `--json`, `result` is: `{ project: { path, title, folder?, revision, modifiedBy?, updatedAt }, pdf: { path, pageCount, bytes, sha256, pageSizes: [{ width, height, rotation, pages }], textLayer: { checked, withText, withoutText: number[] } }, outline: { pdf: number|null, project: number|null, source? }, frames: { exercises, questions, bookmarks, total, partsOfUnits, byPage } }`
+With `--json`, `result` is: `{ project: { path, title, folder?, revision, modifiedBy?, updatedAt }, pdf: { path, pageCount, bytes, sha256, pageSizes: [{ width, height, rotation, pages }], textLayer: { checked, withText, withoutText: number[] } }, outline: { pdf: number|null, project: number|null, source?, withId? }, frames: { exercises, questions, bookmarks, bookExercises, bookExercisesWithSolution, total, partsOfUnits, byPage } }`
 
 ## lines
 
@@ -202,6 +223,7 @@ Options:
 - `--max-side <px>`: Longer side of the image in pixels (default 1600 for a page, 1400 for a crop).
 - `--scale <px/pt>`: Pixels per point instead of --max-side.
 - `-o, --out <file|folder>`: Where to write the PNG (default: .mcprep-cache next to the project).
+- `--solutions`: With --frames: also draw the solution regions (dashed, "sol 5a"): look at the answer key to check them. They are hidden from the learner; this is for whoever audits the book.
 - `--pdf <file>`: Work on this PDF directly, without a project (no frames, no numbering).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
@@ -213,6 +235,7 @@ Examples:
 ```console
 $ mcprep render 3 --grid 0.1
 $ mcprep render 3 --frames --grid 0.05 --out check/page3.png
+$ mcprep render 211 --frames --solutions
 ```
 
 With `--json`, `result` is: `{ page, path, width, height, scale, view: { left, top, right, bottom }, grid?, frames: number }`
@@ -225,24 +248,26 @@ Render one frame, or any rectangle of a page, to a PNG: the way to check a frame
 mcprep crop [frame] [options]
 ```
 
-Give a frame id, or --page and --rect. With a grid the labels are still page coordinates, so a crop can be read in page fractions. --all writes a crop of every frame (and its continuation and context regions) in one go.
+Give a frame id (or SECTION:LABEL for a book exercise), or --page and --rect. With a grid the labels are still page coordinates, so a crop can be read in page fractions. --all writes a crop of every frame (and its continuation, context and solution regions) in one go; --section limits it to the book exercises of one section. Check the solution regions of a book exercise by looking at them: --region solution:0.
 
 Arguments:
 
-- `frame` (optional): A frame id (omit it when you give --page and --rect, or --all).
+- `frame` (optional): A frame id, or SECTION:LABEL of a book exercise (omit it when you give --page and --rect, or --all).
 
 Options:
 
 - `--page <n>`: Zero-based page (with --rect).
 - `--rect <l,t,r,b>`: The rectangle to crop, as page fractions.
-- `--region main|continues:N|context:N`: Which region of the frame (default main).
+- `--region main|continues:N|context:N|solution:N`: Which region of the frame (default main).
 - `--all`: Crop every frame of the project.
+- `--section <id>`: With --all: only the book exercises filed under this section.
 - `--padding <fraction>`: Page fraction to include around the rectangle (default 0.01).
 - `--grid <step>`: Draw a labelled grid with a line every <step> of the page (0.1 or 0.05). The labels are page coordinates: read positions straight off the image.
 - `--frames`: Draw the project's frames (with their labels E1, E2.1, Q1, B1), continuations and context.
 - `--max-side <px>`: Longer side of the image in pixels (default 1600 for a page, 1400 for a crop).
 - `--scale <px/pt>`: Pixels per point instead of --max-side.
 - `-o, --out <file|folder>`: Where to write the PNG (default: .mcprep-cache next to the project).
+- `--solutions`: With --frames: also draw the solution regions (dashed, "sol 5a"): look at the answer key to check them. They are hidden from the learner; this is for whoever audits the book.
 - `--pdf <file>`: Work on this PDF directly, without a project (no frames, no numbering).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
@@ -254,21 +279,23 @@ Examples:
 ```console
 $ mcprep crop f3
 $ mcprep crop f3 --region context:0 --grid 0.05
+$ mcprep crop 1.2:5a --region solution:0
 $ mcprep crop --page 2 --rect 0.1,0.3,0.9,0.5 --grid 0.05
 $ mcprep crop --all --out check/
+$ mcprep crop --all --section 1.2
 ```
 
 With `--json`, `result` is: `{ crops: [{ frame?, region, page, rect, path, width, height, scale, view }] }`
 
 ## outline
 
-Show the contents the bundle will carry: the project's own outline, or the PDF's.
+Show the contents the bundle will carry (the sections of the book): the project's own outline with ids and exercise counts, or the PDF's.
 
 ```
 mcprep outline [options]
 ```
 
-The app shows the bundle's outline.json as the document's contents instead of reading titles from the PDF. When the project has no outline of its own the bundle carries none and the app reads the PDF's. Sub-commands: `outline pdf` (the PDF's own), `outline derive` (headings found by heuristics), `outline set` (write your own), `outline clear`.
+The app shows the bundle's outline.json as the document's contents instead of reading titles from the PDF. When the project has no outline of its own the bundle carries none and the app reads the PDF's. The entries are the sections of the book: an entry that exercises are filed under has an id, may have the printed label and the top of its heading, and is listed with the number of book exercises under it. Sub-commands: `outline pdf` (the PDF's own), `outline derive` (headings found by heuristics), `outline set` (write your own), `outline add`, `outline update`, `outline delete`, `outline ids` (edit it), `outline clear`.
 
 Options:
 
@@ -284,7 +311,7 @@ $ mcprep outline
 $ mcprep outline --json
 ```
 
-With `--json`, `result` is: `{ source: "project"|"pdf"|"none", entries: [{ title, page, depth }], projectSource?: "pdf"|"derived"|"manual" }`
+With `--json`, `result` is: `{ source: "project"|"pdf"|"none", entries: [{ index, title, page, depth, id?, label?, top?, exercises?, exercisesTotal?, withSolution? }], projectSource?: "pdf"|"derived"|"manual", totals?: { entries, withId, exercises } }; exercises are the book exercises filed under the entry, exercisesTotal with everything below it`
 
 ## outline pdf
 
@@ -353,7 +380,7 @@ Replace the project's outline with entries from a JSON file (or - for standard i
 mcprep outline set <file> [options]
 ```
 
-The JSON is a list of { "title", "page", "depth" } (pages zero-based, depth 0 to 8, a child one deeper than its parent) or an object with an "entries" list.
+The JSON is a list of { "title", "page", "depth", "id"?, "label"?, "top"? } (pages zero-based, depth 0 to 8, a child one deeper than its parent) or an object with an "entries" list. The id is what exercises name as their section, the label the number printed with the heading, the top where the heading starts on its page (0 to 1). --auto-ids gives the entries that have no id one. Exercises that name an id the new outline no longer has make the change an error, so nothing is orphaned.
 
 Arguments:
 
@@ -362,6 +389,7 @@ Arguments:
 Options:
 
 - `--source manual|derived|pdf`: What to record as the origin (default manual).
+- `--auto-ids`: Give every entry that has no id one (as `outline ids` does).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
@@ -371,10 +399,149 @@ Examples:
 
 ```console
 $ mcprep outline set outline.json
+$ mcprep outline set outline.json --auto-ids
 $ echo '[{"title":"1 Sets","page":0,"depth":0}]' | mcprep outline set -
 ```
 
 With `--json`, `result` is: `The usual change report (frames, validation); the outline is in the project.`
+
+## outline add
+
+Add an entry (a section) to the outline.
+
+```
+mcprep outline add --title <text> --page <n> [options]
+```
+
+The entry goes at the end of the outline, or at position --at (from 0). It gets an id unless you give one or say --no-id; the id is what exercises name with --section. Entries are in reading order and a child follows its parent and is one level deeper (a jump is clamped).
+
+Options:
+
+- `--title <text>` (required): The title (1 to 200 characters).
+- `--page <n>` (required): Zero-based page where the heading is.
+- `--depth <0..8>`: Level: 0 for a chapter, 1 for a section in it, ... (default 0).
+- `--id <id>`: Its id ([A-Za-z0-9][A-Za-z0-9._-], up to 60 characters). Default: made from the label or the title.
+- `--no-id`: Do not give it an id (exercises cannot be filed under it).
+- `--label <text>`: The number printed with the heading ("1.1", "Chapter 3"), at most 24 characters.
+- `--top <0..1>`: Where the heading starts on its page, from the top (0 to 1), so that two sections on one page can be told apart.
+- `--at <position>`: Insert at this position of the outline (from 0) instead of at the end.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep outline add --title "1.2 Subtracting integers" --page 17 --depth 1 --label 1.2 --top 0.1
+$ mcprep outline add --title "Appendix" --page 210 --id appendix
+```
+
+With `--json`, `result` is: `The usual change report.`
+
+## outline update
+
+Change an outline entry: its title, page, depth, label, top or id.
+
+```
+mcprep outline update [id] [options]
+```
+
+Name the entry by its id, or by --index when it has none. A new id (--new-id) is taken over by the exercises filed under the old one. --label "" and --top none remove the label and the top. Changing the depth moves only this entry, not the ones below it.
+
+Arguments:
+
+- `id` (optional): The id of the entry (`mcprep outline` lists them).
+
+Options:
+
+- `--index <n>`: The position of the entry in the outline (from 0), for an entry that has no id.
+- `--title <text>`: New title.
+- `--page <n>`: New zero-based page.
+- `--depth <0..8>`: New level.
+- `--new-id <id>`: New id (the exercises filed under the old id follow).
+- `--label <text>`: The number printed with the heading ("1.1", "Chapter 3"), at most 24 characters.
+- `--top <0..1>`: Where the heading starts on its page, from the top (0 to 1), so that two sections on one page can be told apart.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep outline update 1.2 --top 0.12 --label 1.2
+$ mcprep outline update 1.2 --new-id subtracting
+$ mcprep outline update --index 7 --new-id appendix
+```
+
+With `--json`, `result` is: `The usual change report.`
+
+## outline delete
+
+Delete an outline entry.
+
+```
+mcprep outline delete [id] [options]
+```
+
+The entries below it move up one level, or are deleted with it with --subtree. A section that exercises are filed under cannot be deleted: move the exercises first (`exercises section`), or delete them.
+
+Arguments:
+
+- `id` (optional): The id of the entry (`mcprep outline` lists them).
+
+Options:
+
+- `--index <n>`: The position of the entry in the outline (from 0), for an entry that has no id.
+- `--subtree`: Also delete everything below it.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep outline delete 1.2
+$ mcprep outline delete c3 --subtree
+$ mcprep outline delete --index 7
+```
+
+With `--json`, `result` is: `The usual change report.`
+
+## outline ids
+
+Give every outline entry that has no id one (from its printed label, else the number in its title), so that exercises can name it.
+
+```
+mcprep outline ids [options]
+```
+
+Exercises name their section by the id of an outline entry. `outline pdf --adopt`, `outline derive` and `outline set` without ids make entries that exercises cannot name yet; this gives each of them an id: the printed label ("1.2"), else the number at the start of the title ("2.3 Fractions"), else a short form of the title, else s<position>; made unique with a numeric suffix. Entries that already have an id keep it.
+
+Options:
+
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep outline ids
+```
+
+With `--json`, `result` is: `The usual change report (the outline is in the project; `mcprep outline` shows the ids).`
 
 ## outline clear
 
@@ -508,18 +675,20 @@ With `--json`, `result` is: `{ sections: [{ section, label, title, answers, firs
 
 ## frames list
 
-List the frames in reading order with their positional labels (E1, E2.1, Q1, B1).
+List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.
 
 ```
 mcprep frames list [options]
 ```
 
-Labels are computed from position, never stored: page by page, top before bottom, left before right; the parts of one exercise count once, at the position of its first part. Adding a frame earlier in the document renumbers the later ones; use the id to refer to a frame.
+Two kinds of exercise: those you framed yourself have a positional label, computed from position, never stored (page by page, top before bottom, left before right; the parts of one exercise count once, at the position of its first part), and adding a frame earlier in the document renumbers the later ones; authoritative book exercises (authority "book") are listed by SECTION:LABEL, the number the book prints, which never changes, and are marked "book" in the notes. Use the id, or SECTION:LABEL, to refer to a frame.
 
 Options:
 
 - `--page <n>`: Only this zero-based page.
 - `--kind exercise|question|bookmark`: Only this kind.
+- `--authority book|user`: Only authoritative book exercises (book), or only what a person framed for themselves (user: ordinary exercises, questions and bookmarks).
+- `--section <id>`: Only the book exercises filed under this section (an outline entry id).
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
 - `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
 - `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
@@ -530,9 +699,10 @@ Examples:
 ```console
 $ mcprep frames list
 $ mcprep frames list --page 2 --json
+$ mcprep frames list --authority book --section 1.2
 ```
 
-With `--json`, `result` is: `{ frames: [{ id, label, kind, page, rect, unit?, part?, partCount?, continues?, context? }], counts: { exercise, question, bookmark } }`
+With `--json`, `result` is: `{ frames: [{ id, label, kind, authority: "book"|"user", reference?, section?, page, rect, unit?, part?, partCount?, continues?, context?, solution? }], counts: { exercise, question, bookmark }, book: { exercises, withSolution } }; counts are the positional ones (book exercises are not in them)`
 
 ## frames add
 
@@ -555,6 +725,11 @@ Options:
 - `--context <page:l,t,r,b>`: A context region (instruction or background printed elsewhere); repeatable, up to 8. Exercises only.
 - `--continues <page:l,t,r,b>`: A further region of the same task, e.g. on the next page; repeatable, up to 8. Not for parts.
 - `--no-enlarge`: Refuse a rect below the minimum size instead of enlarging it.
+- `--authority book`: Make it an authoritative exercise audited from a book (needs --label and --section; it cannot be a part). `mcprep exercises add` is the same without --kind.
+- `--label <5a>`: With --authority book: the number exactly as the book prints it, without the closing "." or ")" (5, 12, 5a, A.3).
+- `--section <id>`: With --authority book: the id of the outline entry (section) the exercise belongs to (`mcprep outline` lists them).
+- `--solution <page:l,t,r,b>`: A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 8. Exercises only.
+- `--replace`: With --authority book: if the exercise (same section and label) already exists, overwrite it in place, keeping its id, instead of failing: page, rect and continuation are replaced; context and solution are replaced when you give them and kept otherwise.
 - `--dry-run`: Compute and validate the change, but do not write the project.
 - `--force`: Write the change even if it introduces validation errors.
 - `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
@@ -568,9 +743,10 @@ Examples:
 $ mcprep frames add --kind exercise --page 2 --rect 0.08,0.12,0.92,0.31 --snap
 $ mcprep frames add --kind exercise --page 3 --rect 0.08,0.6,0.92,0.95 --continues 4:0.08,0.05,0.92,0.2
 $ mcprep frames add --kind bookmark --page 5 --rect 0.1,0.4,0.9,0.52
+$ mcprep frames add --kind exercise --authority book --label 5a --section 1.2 --page 17 --rect 0.09,0.41,0.91,0.48 --solution 211:0.1,0.52,0.5,0.54
 ```
 
-With `--json`, `result` is: `The change report: { applied, dryRun, created, removed, frames: [...], counts, validation: { ok, errors, warnings, repairs } }`
+With `--json`, `result` is: `The change report: { applied, dryRun, created, replaced, removed, frames: [...], counts, book, validation: { ok, errors, warnings, repairs } }`
 
 ## frames update
 
@@ -815,7 +991,7 @@ Apply many operations at once, atomically, with one validation at the end.
 mcprep frames apply <file> [options]
 ```
 
-The file holds { "operations": [ ... ] } (or just the list). Each operation has an "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, outline.set, outline.add, outline.clear, meta.set, with the same fields as the matching commands. An "add" may carry "ref": "a" and later operations may say "id": "@a" for the frame it created, so you need not guess generated ids. Any failure, or any new validation error, rejects the whole batch and nothing is written. This is how to mark a 60-page sheet in one call.
+The file holds { "operations": [ ... ] } (or just the list). Each operation has an "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, authority.mark, authority.unmark, label.set, section.set, solution.add, solution.remove, solution.set, outline.set, outline.add, outline.update, outline.delete, outline.ids, outline.clear, meta.set, with the same fields as the matching commands. An "add" may carry "ref": "a" and later operations may say "id": "@a" for the frame it created (or replaced), so you need not guess generated ids; a book exercise can also be named "SECTION:LABEL" ("1.2:5a"). An "add" with "authority": "book", "label" and "section" makes an authoritative exercise; applying the same batch twice does not duplicate it (the second time is an error naming the exercise) unless the "add" says "replace": true. Any failure, or any new validation error, rejects the whole batch and nothing is written. This is how to mark a 60-page sheet in one call.
 
 Arguments:
 
@@ -971,9 +1147,424 @@ $ mcprep continues remove f4
 
 With `--json`, `result` is: `The change report.`
 
+## exercises list
+
+List the authoritative book exercises: label, section, page, and whether a solution is attached.
+
+```
+mcprep exercises list [options]
+```
+
+Authoritative exercises are named by the number the book prints (the label) inside the section of the book they belong to. They are listed by section (in the order of the outline) and, within a section, in reading order. Use --without-solution to see which ones still have no answer attached, and --section to look at one section.
+
+Options:
+
+- `--section <id>`: Only the exercises filed under this section (an outline entry id).
+- `--subtree`: With --section: also the exercises of the sections below it.
+- `--page <n>`: Only exercises that start on this zero-based page.
+- `--with-solution`: Only exercises that have a solution region.
+- `--without-solution`: Only exercises that have no solution region.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises list
+$ mcprep exercises list --section 1.2 --json
+$ mcprep exercises list --without-solution
+```
+
+With `--json`, `result` is: `{ exercises: [{ id, label, section, reference, page, rect, context, continues, solution }], count, totals: { exercises, withSolution } }; totals are for the whole project, count for the list`
+
+## exercises add
+
+Add an authoritative exercise: one printed exercise, with its printed label, in its section.
+
+```
+mcprep exercises add --section <id> --label <5a> --page <n> --rect <l,t,r,b> [options]
+```
+
+The same as `frames add --kind exercise --authority book`. An authoritative exercise is a single exercise: it has no parts. The parts of a printed exercise (5a, 5b) are two exercises with two labels, and the statement printed once above them is attached to each as --context. The exercise is identified by its section and label: adding one that exists is an error (so applying the same commands twice does no harm) unless you say --replace, which overwrites it in place and keeps its id. An exercise contains its number and statement and everything up to but not including the next exercise's number.
+
+Options:
+
+- `--section <id>` (required): The id of the outline entry (the section) the exercise belongs to; `mcprep outline` lists them.
+- `--label <5a>` (required): The number exactly as the book prints it, without the closing "." or ")": 5, 12, 5a, A.3, II-4 (1 to 24 characters).
+- `--page <n>` (required): Zero-based page of the main region.
+- `--rect <l,t,r,b>` (required): Left, top, right, bottom as fractions of the page (0..1, origin top-left).
+- `--snap`: Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `--id <id>`: Your own frame id ([A-Za-z0-9_-], up to 40 characters). Default: generated (f1, f2, ...).
+- `--context <page:l,t,r,b>`: The instruction or statement the learner sees and the AI receives with every check (printed once above 5a and 5b, say); repeatable, up to 8.
+- `--continues <page:l,t,r,b>`: A further region of the same exercise, e.g. on the next page; repeatable, up to 8.
+- `--solution <page:l,t,r,b>`: Where the answer is printed in this PDF (the answer key at the back, say): hidden from the learner, used only to grade; repeatable, up to 8.
+- `--no-enlarge`: Refuse a rect below the minimum size instead of enlarging it.
+- `--replace`: If the exercise (same section and label) already exists, overwrite it in place instead of failing, keeping its id: page, rect and continuation are replaced (none given: none left); context and solution are replaced when you give them and kept otherwise (clear them with `context remove` and `solution clear`).
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises add --section 1.2 --label 5a --page 17 --rect 0.09,0.41,0.91,0.48 --snap --context 17:0.09,0.36,0.91,0.41
+$ mcprep exercises add --section 1.2 --label 12 --page 18 --rect 0.09,0.1,0.91,0.2 --solution 211:0.1,0.52,0.5,0.54
+```
+
+With `--json`, `result` is: `The change report: { applied, dryRun, created, replaced, removed, frames: [{ id, label, reference, section, ... }], counts, book, validation }`
+
+## exercises mark
+
+Make an exercise you framed an authoritative book exercise: give it the printed label and its section.
+
+```
+mcprep exercises mark <frame> --label <5a> --section <id> [options]
+```
+
+The exercise keeps its place and its context and solution, loses its positional number (E3) and from now on is named by label and section. It cannot be part of a unit: merge the parts first (`frames merge --unit`).
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+
+Options:
+
+- `--label <5a>` (required): The number exactly as the book prints it (5, 5a, A.3).
+- `--section <id>` (required): The id of the outline entry the exercise belongs to.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises mark f7 --label 5a --section 1.2
+```
+
+With `--json`, `result` is: `The change report.`
+
+## exercises unmark
+
+Turn an authoritative exercise back into an ordinary one (positional number, can be cut into parts).
+
+```
+mcprep exercises unmark <frame> [options]
+```
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+
+Options:
+
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises unmark 1.2:5a
+```
+
+With `--json`, `result` is: `The change report.`
+
+## exercises label
+
+Change the label (the printed number) of an authoritative exercise.
+
+```
+mcprep exercises label <frame> <label> [options]
+```
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+- `label`: The number exactly as the book prints it, without the closing "." or ")".
+
+Options:
+
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises label f12 5b
+```
+
+With `--json`, `result` is: `The change report.`
+
+## exercises section
+
+Move an authoritative exercise to another section.
+
+```
+mcprep exercises section <frame> <section> [options]
+```
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+- `section`: The id of the outline entry (`mcprep outline` lists them).
+
+Options:
+
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises section f12 1.3
+```
+
+With `--json`, `result` is: `The change report.`
+
+## solution add
+
+Attach a region where the answer is printed (usually the answer key at the back) to an exercise; hidden from the learner.
+
+```
+mcprep solution add <frame> --page <n> --rect <l,t,r,b> [options]
+```
+
+Solution regions are of the same PDF as the exercise. They are used only to grade: the learner never sees them with the exercise and they are never sent to a tutor chat. Typically one small region per exercise in the answer key (the line "22) 0"), or one block that answers several exercises (give the same region to each). Up to 8 regions per exercise. Look at the crop afterwards: `mcprep crop <exercise> --region solution:0`.
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+
+Options:
+
+- `--page <n>` (required): Zero-based page of the solution.
+- `--rect <l,t,r,b>` (required): The solution region (page fractions).
+- `--snap`: Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep solution add 1.2:5a --page 211 --rect 0.1,0.52,0.5,0.54 --snap
+$ mcprep solution add f12 --page 211 --rect 0.1,0.52,0.5,0.54
+```
+
+With `--json`, `result` is: `The change report; the frame carries "solution": n.`
+
+## solution list
+
+List the solution regions of an exercise, or of every exercise that has some.
+
+```
+mcprep solution list [frame] [options]
+```
+
+Arguments:
+
+- `frame` (optional): The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a). Without it: every exercise that has solution regions.
+
+Options:
+
+- `--missing`: Instead list the authoritative exercises that have no solution region yet.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep solution list
+$ mcprep solution list 1.2:5a
+$ mcprep solution list --missing
+```
+
+With `--json`, `result` is: `{ solutions: [{ frame, label, reference?, authority, regions: [{ index, page, rect }] }], count, missing?: [{ frame, label, reference }] }`
+
+## solution remove
+
+Remove one solution region of an exercise (by index), or all of them.
+
+```
+mcprep solution remove <frame> [options]
+```
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+
+Options:
+
+- `--index <n>`: Which region (0 is the first); needed when there are several. `solution list` shows the indexes.
+- `--all`: Remove all of them.
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep solution remove 1.2:5a --index 1
+$ mcprep solution remove f12
+```
+
+With `--json`, `result` is: `The change report.`
+
+## solution clear
+
+Remove every solution region of an exercise.
+
+```
+mcprep solution clear <frame> [options]
+```
+
+Arguments:
+
+- `frame`: The exercise: its frame id (f12), or SECTION:LABEL (1.2:5a).
+
+Options:
+
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep solution clear 1.2:5a
+```
+
+With `--json`, `result` is: `The change report.`
+
+## book show
+
+Show the book: its information, its sections with the number of authoritative exercises in each, and the totals.
+
+```
+mcprep book show [options]
+```
+
+The sections are the entries of the outline. For each: its id (what exercises name), the printed label, the page, how many book exercises are filed under it (own), under it and everything below it (total), how many of them have a solution, and the first and last label. With --json the result is the machine summary documented in docs/PROJECT_FILE.md (and `mcprep schema book-summary`); `mcprep book export` writes the same JSON to a file.
+
+Options:
+
+- `--used`: Only the sections that hold exercises, and the entries above them.
+- `--exercises`: In the JSON, also list each section's own exercises (id, label, page, number of solution regions).
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep book show
+$ mcprep book show --used
+$ mcprep book show --json
+```
+
+With `--json`, `result` is: `The summary: { format: "math-canvas-book-summary", version: 1, generator, document: { title, folder?, pageCount, sha256?, bytes?, author?, series?, description?, license?, sourceUrl?, notice? }, sections: [{ index, id?, label?, title, page, top?, depth, parent, exercises, exercisesTotal, withSolution, withSolutionTotal, firstLabel?, lastLabel?, items? }], totals: { sections, sectionsWithId, exercises, withSolution, withoutSolution, unfiled, ordinary: { exercises, questions, bookmarks } } }`
+
+## book meta
+
+Show or change what the bundle says about the book: title, library folder, author, series, description, licence, source address and notice.
+
+```
+mcprep book meta [options]
+```
+
+The licence travels with the file: a licence that asks for attribution needs its notice shown wherever the book is shown, so give --notice the text the licence asks for (who wrote it, under which licence, what was changed). An empty text ("") removes a field. A text that starts with @ is read from that file (--notice @notice.txt); write @@ for a text that really starts with @. Without options the current values are shown.
+
+Options:
+
+- `--title <text>`: The title the library shows (1 to 200 characters).
+- `--folder <A/B>`: Library folder, names separated by "/", at most seven levels.
+- `--author <text>`: Who wrote the work (up to 200 characters).
+- `--series <text>`: The series it belongs to (up to 200 characters).
+- `--description <text>`: What the book is about, in a few sentences (up to 4000 characters).
+- `--license-name <text>`: The licence, for example "CC BY 3.0" (up to 100 characters).
+- `--license-url <url>`: Where the licence is (http or https).
+- `--no-license`: Remove the licence.
+- `--source-url <url>`: Where the work comes from (http or https, up to 500 characters).
+- `--notice <text>`: The text the licence asks to be shown with the work (up to 4000 characters).
+- `--dry-run`: Compute and validate the change, but do not write the project.
+- `--force`: Write the change even if it introduces validation errors.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep book meta --title "Pre-Algebra" --author "A. Author" --license-name "CC BY 3.0" --license-url https://creativecommons.org/licenses/by/3.0/ --source-url https://example.org/the-book
+$ mcprep book meta --notice @notice.txt
+$ mcprep book meta
+```
+
+With `--json`, `result` is: `{ title, folder?, author?, series?, description?, license?: { name, url? }, sourceUrl?, notice? }, and with a change the usual change report`
+
+## book export
+
+Write the book summary (sections with exercise counts, totals, document information) as a plain JSON file.
+
+```
+mcprep book export [options]
+```
+
+The same JSON as `book show --json`, written atomically to a file: a documented, camelCase list of the sections with their exercise and solution counts, pages zero-based. It is made from the project, so it can be written before the bundle is exported; the bundle itself carries the same facts in its manifest, frames and outline.
+
+Options:
+
+- `-o, --out <file.json>`: Where to write it (default: <pdf name>.book.json next to the project).
+- `--exercises`: Also list each section's own exercises (id, label, page, number of solution regions).
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep book export --out build/pre-algebra.book.json
+$ mcprep book export --exercises
+```
+
+With `--json`, `result` is: `{ path, bytes, summary: the summary of `book show` }`
+
 ## meta
 
-Show or change the title and library folder of the project.
+Show or change the title and library folder of the project (author, licence and notice: `book meta`).
 
 ```
 mcprep meta [options]
@@ -1033,7 +1624,7 @@ Check the project against every rule of the bundle format; errors name the frame
 mcprep validate [options]
 ```
 
-Errors are what the importer would reject (exit code 4). Repairs are what it fixes silently (a value a hair outside the page, parts that miss tiling by under 0.002); the writer fixes them too. Warnings are allowed but suspicious: overlapping frames, a frame inside another, a frame thinner than a line, an edge that cuts through a line of text, a running header or footer inside a frame, a unit with one frame.
+Errors are what the importer would reject (exit code 4). Repairs are what it fixes silently (a value a hair outside the page, parts that miss tiling by under 0.002); the writer fixes them too. Warnings are allowed but suspicious: overlapping frames, a frame inside another, a frame thinner than a line, an edge that cuts through a line of text, a running header or footer inside a frame, a unit with one frame. For a book audited as an authority the rules are also: a label and a section with every authoritative exercise, the pair (section, label) unique, every section the id of an outline entry, solution regions only on exercises (at most 8, on pages of the document), valid outline ids, labels and tops; warnings for a label written with the "." or ")" the book prints, an exercise printed in another section than the one it is filed under, and a solution region that lies on the exercise or on another exercise.
 
 Options:
 
@@ -1051,7 +1642,7 @@ $ mcprep validate
 $ mcprep validate --strict --json
 ```
 
-With `--json`, `result` is: `{ ok, errors: Issue[], warnings: Issue[], repairs: Issue[], counts: { exercise, question, bookmark }, numbers: [{ id, label, kind, number, part?, partCount? }] }; an Issue is { severity, code, message, frameId?, unit?, page?, fix? }`
+With `--json`, `result` is: `{ ok, errors: Issue[], warnings: Issue[], repairs: Issue[], counts: { exercise, question, bookmark }, book: { exercises, withSolution }, numbers: [{ id, label, kind, number, part?, partCount? }] }; an Issue is { severity, code, message, frameId?, unit?, page?, fix?, data? }; counts and numbers are the positional ones (authoritative book exercises are in book, named by their label)`
 
 ## export
 
@@ -1083,7 +1674,7 @@ $ mcprep export
 $ mcprep export --out out/analysis1.mcbundle --folder "University/Analysis"
 ```
 
-With `--json`, `result` is: `{ path, bytes, sha256, manifest, counts: { frames, outlineEntries }, issues: Issue[] (repairs and warnings), validation: { errors, warnings, repairs }, importCheck?: { ok, steps } }`
+With `--json`, `result` is: `{ path, bytes, sha256, manifest (with features and the document info when there are any), counts: { frames, outlineEntries }, book: { exercises, withSolution }, issues: Issue[] (repairs and warnings), validation: { errors, warnings, repairs }, importCheck?: { ok, steps } }`
 
 ## inspect-bundle
 
@@ -1109,7 +1700,7 @@ Examples:
 $ mcprep inspect-bundle analysis1.mcbundle
 ```
 
-With `--json`, `result` is: `{ ok, rejection?, errors, repairs, warnings, steps, archive: { bytes, entries }, manifest?, document?, frames?, numbers?, outline? } - the same report as import-check, with everything that was read`
+With `--json`, `result` is: `{ ok, rejection?, errors, repairs, warnings, steps, archive: { bytes, entries }, manifest?, document? (with author, licence, ... when the manifest has them), features?, frames?, numbers? (positional numbers only: authoritative exercises have none), outline?, summary? } - the same report as import-check, with everything that was read; summary is the book summary of `book show` (sections with exercise counts)`
 
 ## import-check
 
@@ -1138,7 +1729,7 @@ $ mcprep import-check analysis1.mcbundle
 $ mcprep import-check analysis1.mcbundle --json
 ```
 
-With `--json`, `result` is: `{ wouldImport: boolean, rejection?: Issue, steps: [{ step, name, status, detail }], errors, repairs, warnings, document?, frames?, numbers?, outline? }`
+With `--json`, `result` is: `{ wouldImport: boolean, rejection?: Issue, steps: [{ step, name, status, detail }], errors, repairs, warnings, document?, features?, frames?, numbers?, outline? }`
 
 ## schema
 
@@ -1150,7 +1741,7 @@ mcprep schema [name] [options]
 
 Arguments:
 
-- `name` (optional): One of bundle-manifest, frames, outline, project. Without a name the available schemas are listed.
+- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary. Without a name the available schemas are listed.
 
 Options:
 

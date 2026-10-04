@@ -5,7 +5,9 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { run } from '@mcprep/cli';
 import { VERSION, readAgentGuide } from '@mcprep/core';
 import { z } from 'zod';
-import { registerBookTools } from './audit-tools.js';
+import { AUDIT_INSTRUCTIONS, registerAuditTools } from './audit-tools.js';
+import { capLists, dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
+import { BOOK_INSTRUCTIONS, registerBookTools } from './book-tools.js';
 
 /**
  * The MCP server: the same operations as the `mcprep` command line, as typed tools with descriptions that teach the
@@ -27,46 +29,13 @@ Conventions: pages are ZERO-BASED (the first page is 0). Positions are fractions
 
 Workflow: create_project (or open_project) -> project_info -> render_page with a grid to understand the layout -> propose -> apply_operations (one atomic batch) -> render_crop for EVERY frame and LOOK at the images -> fix -> validate -> export_bundle -> import_check -> tell the user where the bundle is. Read the resource mcprep://guide (or call get_guide) first: it explains where exercises start and end, how to cut parts, context, continuations, scans and what not to do.
 
-A textbook that is audited once as an authority (its exercises keep the numbers the book prints, its answer key grades them): create_project -> outline_derive_book (look at it, then apply) -> exercises_propose (with solutions=true; look at render_crop images of a sample, then apply) -> solutions_propose when the answers come separately -> validate -> export_bundle -> import_check. What the book prints is what is proposed; every gap, duplicate and doubt is in the result's notes.
-
 Nothing is sent anywhere: the tools make no network calls.`;
-
-type Json = Record<string, unknown>;
-
-interface CliResult {
-  code: number;
-  envelope: { ok: boolean; result?: Json; warnings?: unknown[]; notes?: string[]; error?: { code: string; message: string; hint?: string; issues?: unknown[]; details?: unknown } };
-}
-
-const rect = z
-  .union([
-    z.tuple([z.number(), z.number(), z.number(), z.number()]).describe('[left, top, right, bottom]'),
-    z.object({ left: z.number(), top: z.number(), right: z.number(), bottom: z.number() }),
-  ])
-  .describe('A rectangle in fractions of the page as displayed (0..1, origin top-left, y downwards): [left, top, right, bottom] or { left, top, right, bottom }. Not percent, not points.');
-
-const page = z.number().int().min(0).describe('Zero-based page: the first page is 0.');
-const projectArg = z.string().optional().describe('Path of the project file (name.mcprep.json). Default: the project created or opened earlier in this session (or $MCPREP_PROJECT).');
-const region = z.object({ page, rect }).describe('A region on a page.');
-const snap = z.boolean().optional().describe('Snap to the printed lines: an edge that cuts a line of text moves off it (a line mostly inside is taken whole, mostly outside is left out); a divider moves onto the start of the nearest line.');
-const dryRun = z.boolean().optional().describe('Compute and validate but do not write the project.');
-const force = z.boolean().optional().describe('Write even if the change introduces validation errors (almost never what you want).');
-const frameId = z.string().min(1).describe('The frame id (for example f3), as listed by list_frames. Not the label E3.');
-const kind = z.enum(['exercise', 'question', 'bookmark']).describe('exercise: to solve and be checked; question: to ask the AI tutor about; bookmark: a place worth coming back to (definition, theorem, worked example).');
-
-const rectArg = (value: z.infer<typeof rect>): string => (Array.isArray(value) ? value.join(',') : `${value.left},${value.top},${value.right},${value.bottom}`);
-const regionArg = (value: z.infer<typeof region>): string => `${value.page}:${rectArg(value.rect)}`;
-const flags = (args: { snap?: boolean | undefined; dryRun?: boolean | undefined; force?: boolean | undefined }): string[] => [
-  ...(args.snap === true ? ['--snap'] : []),
-  ...(args.dryRun === true ? ['--dry-run'] : []),
-  ...(args.force === true ? ['--force'] : []),
-];
 
 export function createServer(options: ServerOptions = {}): McpServer {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
   let current: string | undefined = options.project ?? env['MCPREP_PROJECT'];
-  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}` });
 
   async function cli(argv: string[], extra: { stdin?: string; project?: string | undefined } = {}): Promise<CliResult> {
     let out = '';
@@ -98,7 +67,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
       const failure = { ok: false, exitCode: done.code, error: envelope.error, ...(envelope.result ? { result: envelope.result } : {}) };
       return { isError: true, content: [text(failure)], structuredContent: failure };
     }
-    const body = { ...(envelope.result ?? {}), ...(envelope.warnings && envelope.warnings.length > 0 ? { warnings: envelope.warnings } : {}), ...(envelope.notes && envelope.notes.length > 0 ? { notes: envelope.notes } : {}) };
+    const body = capLists({ ...(envelope.result ?? {}), ...(envelope.warnings && envelope.warnings.length > 0 ? { warnings: envelope.warnings } : {}), ...(envelope.notes && envelope.notes.length > 0 ? { notes: envelope.notes } : {}) });
     // validate and import_check report "not ok" through their exit code but are not tool failures.
     return { content: [text(body), ...extraContent], structuredContent: body };
   }
@@ -198,7 +167,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'set_metadata',
     {
       title: 'Set the title and folder',
-      description: 'Changes the title the app library shows and the folder it files the document in. Without title and folder it only returns the current values.',
+      description: 'Changes the title the app library shows and the folder it files the document in. Without title and folder it only returns the current values. The author, series, description, licence, source address and notice of a book are set with book_meta.',
       inputSchema: { project: projectArg, title: z.string().optional(), folder: z.string().optional().describe('Names separated by "/", at most seven levels; "" removes it.') },
       idempotent: true,
     },
@@ -238,12 +207,13 @@ export function createServer(options: ServerOptions = {}): McpServer {
         page,
         grid: z.number().min(0.01).max(0.5).optional().describe('Grid step as a fraction of the page, for example 0.1 or 0.05.'),
         frames: z.boolean().optional().describe('Draw the frames of the project on the page.'),
+        solutions: z.boolean().optional().describe('With frames: also draw the hidden solution regions (dashed, "sol 5a"): use it on the answer-key pages to check where the answers were attached.'),
         max_side: z.number().int().min(200).max(4000).optional().describe('Longer side in pixels (default 1200 here).'),
       },
       readOnly: true,
     },
     async (args) =>
-      imageResult(await cli(['render', String(args.page), '--max-side', String(args.max_side ?? 1200), ...(args.grid ? ['--grid', String(args.grid)] : []), ...(args.frames ? ['--frames'] : [])], { project: projectOf(args) })),
+      imageResult(await cli(['render', String(args.page), '--max-side', String(args.max_side ?? 1200), ...(args.grid ? ['--grid', String(args.grid)] : []), ...(args.frames ? ['--frames'] : []), ...(args.solutions ? ['--solutions'] : [])], { project: projectOf(args) })),
   );
 
   tool(
@@ -251,11 +221,11 @@ export function createServer(options: ServerOptions = {}): McpServer {
     {
       title: 'Render a frame or a rectangle as an image',
       description:
-        'Renders one frame (its main region, or a continuation or context region), or any rectangle of a page, to a PNG and returns it as an image. This is how you CHECK a frame: the exercise number and first words must be at the top, nothing of the next exercise at the bottom, no line cut in half, no header or footer, the figure inside. With grid the labels are still page coordinates. Give "frame" (an id), or "page" and "rect".',
+        'Renders one frame (its main region, or a continuation, context or solution region), or any rectangle of a page, to a PNG and returns it as an image. This is how you CHECK a frame: the exercise number and first words must be at the top, nothing of the next exercise at the bottom, no line cut in half, no header or footer, the figure inside; and for a book exercise region "solution:0" shows the answer that was attached to it. With grid the labels are still page coordinates. Give "frame" (an id, or SECTION:LABEL for a book exercise), or "page" and "rect".',
       inputSchema: {
         project: projectArg,
         frame: frameId.optional(),
-        region: z.string().optional().describe('With frame: main (default), continues:N or context:N (N from 0).'),
+        region: z.string().optional().describe('With frame: main (default), continues:N, context:N or solution:N (N from 0).'),
         page: page.optional(),
         rect: rect.optional(),
         grid: z.number().min(0.005).max(0.5).optional().describe('Grid step as a fraction of the page, for example 0.05 or 0.02.'),
@@ -279,7 +249,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'get_outline',
     {
       title: 'The contents the bundle will carry',
-      description: 'The project\'s own outline if it has one (that goes into the bundle), else the PDF\'s own bookmarks (the bundle then carries none and the app reads the PDF\'s). Entries are { title, page (zero-based), depth }.',
+      description:
+        'The project\'s own outline if it has one (that goes into the bundle), else the PDF\'s own bookmarks (the bundle then carries none and the app reads the PDF\'s). Entries are { index, title, page (zero-based), depth, id?, label?, top? }: the entries are the SECTIONS of the book. With the project\'s own outline each entry also says how many authoritative book exercises are filed under it (exercises) and under it with everything below it (exercisesTotal), and how many of those have a solution (withSolution).',
       inputSchema: { project: projectArg },
       readOnly: true,
     },
@@ -312,11 +283,16 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'set_outline',
     {
       title: 'Write the contents by hand',
-      description: 'Replaces the project\'s outline. Entries are { title (1 to 200 characters), page (zero-based), depth (0 to 8; a child is one deeper than its parent) } in reading order. An empty list stores an empty outline; use clear_outline to remove the project\'s outline altogether.',
-      inputSchema: { project: projectArg, entries: z.array(z.object({ title: z.string(), page, depth: z.number().int().min(0).max(8) })) },
+      description:
+        'Replaces the project\'s outline. Entries are { title (1 to 200 characters), page (zero-based), depth (0 to 8; a child is one deeper than its parent), id?, label?, top? } in reading order. The id is what exercises name as their section (unique; letters, digits, . _ -, starting with a letter or digit), the label is the number printed with the heading ("1.1", "Chapter 3"), the top is where the heading starts on its page (0 to 1, from the top). auto_ids gives the entries without an id one. A change that leaves book exercises filed under an id the new outline no longer has is refused. An empty list stores an empty outline; use clear_outline to remove the project\'s outline altogether. outline_add, outline_update and outline_delete change single entries.',
+      inputSchema: {
+        project: projectArg,
+        entries: z.array(z.object({ title: z.string(), page, depth: z.number().int().min(0).max(8), id: z.string().optional(), label: z.string().max(24).optional(), top: z.number().min(0).max(1).optional() })),
+        auto_ids: z.boolean().optional().describe('Give every entry that has no id one (from its label, else the number in its title).'),
+      },
       idempotent: true,
     },
-    async (args) => toResult(await cli(['outline', 'set', '-'], { project: projectOf(args), stdin: JSON.stringify(args.entries) })),
+    async (args) => toResult(await cli(['outline', 'set', '-', ...(args.auto_ids ? ['--auto-ids'] : [])], { project: projectOf(args), stdin: JSON.stringify(args.entries) })),
   );
 
   tool(
@@ -368,11 +344,21 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'list_frames',
     {
       title: 'List the frames with their labels',
-      description: 'All frames in reading order with id, positional label (E2.1, Q1, B3: computed, never stored), kind, page, rect, unit, part, and the number of context and continuation regions.',
-      inputSchema: { project: projectArg, page: page.optional(), kind: kind.optional() },
+      description:
+        'All frames in reading order with id, label, kind, authority, page, rect, unit, part, and the number of context, continuation and solution regions. Two kinds of exercise: those a person framed for themselves have a positional label (E2.1, Q1, B3: computed, never stored; authority "user"); authoritative book exercises (authority "book") are named by the number the book prints and the section they belong to (reference "1.2:5a"). counts are the positional ones; book says how many book exercises there are.',
+      inputSchema: {
+        project: projectArg,
+        page: page.optional(),
+        kind: kind.optional(),
+        authority: z.enum(['book', 'user']).optional().describe('Only authoritative book exercises (book), or only what a person framed for themselves (user).'),
+        section: z.string().optional().describe('Only the book exercises filed under this section (an outline entry id).'),
+      },
       readOnly: true,
     },
-    async (args) => toResult(await cli(['frames', 'list', ...(args.page !== undefined ? ['--page', String(args.page)] : []), ...(args.kind ? ['--kind', args.kind] : [])], { project: projectOf(args) })),
+    async (args) =>
+      toResult(
+        await cli(['frames', 'list', ...(args.page !== undefined ? ['--page', String(args.page)] : []), ...(args.kind ? ['--kind', args.kind] : []), ...(args.authority ? ['--authority', args.authority] : []), ...(args.section ? ['--section', args.section] : [])], { project: projectOf(args) }),
+      ),
   );
 
   tool(
@@ -554,7 +540,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     {
       title: 'Apply many operations atomically',
       description:
-        'Applies a list of operations in one atomic batch with ONE validation at the end: any failure, or any new validation error, rejects the whole batch and writes nothing. This is how to mark a 60-page sheet in one call. Each operation has "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, outline.set, outline.add, outline.clear, meta.set, with the fields of the matching tools (rect as [l,t,r,b] or an object; page zero-based). An "add" may carry "ref": "a"; later operations may use "id": "@a" for the frame it created, so you need not guess generated ids. The "operations" returned by propose can be passed as they are.',
+        'Applies a list of operations in one atomic batch with ONE validation at the end: any failure, or any new validation error, rejects the whole batch and writes nothing. This is how to mark a 60-page sheet in one call. Each operation has "op": add, update, delete, move, split, merge, dividers, area, context.add, context.remove, context.set, continues.add, continues.remove, authority.mark, authority.unmark, label.set, section.set, solution.add, solution.remove, solution.set, outline.set, outline.add, outline.update, outline.delete, outline.ids, outline.clear, meta.set, with the fields of the matching tools (rect as [l,t,r,b] or an object; page zero-based). An "add" may carry "ref": "a"; later operations may use "id": "@a" for the frame it created (or replaced), so you need not guess generated ids; a book exercise can also be named "SECTION:LABEL" ("1.2:5a"). An "add" with "authority": "book", "label" and "section" makes an authoritative book exercise (no "kind" needed; it cannot have a "unit"; "solution" lists regions of the answer key); applying the same batch twice does not duplicate it, the second time is an error naming the exercise, unless the "add" says "replace": true. The "operations" returned by propose can be passed as they are.',
       inputSchema: {
         project: projectArg,
         operations: z.array(z.object({ op: z.string().describe('The operation name.') }).passthrough()).describe('The operations, applied in order.'),
@@ -572,7 +558,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     {
       title: 'Validate against the bundle format',
       description:
-        'Checks the project against every rule of the bundle format. Errors (what the importer would reject; each names the frame id and the fix), repairs (what the importer fixes silently) and warnings (allowed but suspicious: overlaps, an edge cutting a line of text, a header inside a frame, ...). ok=false means errors. A failed validation is a result, not a tool failure.',
+        'Checks the project against every rule of the bundle format. Errors (what the importer would reject; each names the frame id and the fix), repairs (what the importer fixes silently) and warnings (allowed but suspicious: overlaps, an edge cutting a line of text, a header inside a frame, ...). For a book also: a label and a section with every book exercise, (section, label) unique, every section the id of an outline entry, solution regions only on exercises, valid outline ids; warnings for a label written with the "." or ")" the book prints, an exercise printed in another section than the one it is filed under, a solution region lying on the exercise or on another exercise. ok=false means errors. A failed validation is a result, not a tool failure.',
       inputSchema: { project: projectArg, text: z.boolean().optional().describe('Also run the checks that read the printed lines (default true).') },
       readOnly: true,
     },
@@ -584,7 +570,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     {
       title: 'Export the .mcbundle',
       description:
-        'Validates, then writes the bundle (the PDF byte for byte plus frames and outline) atomically and reads it back with the importer\'s own checks; a bundle that fails them is removed. Errors in the project stop the export. Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.',
+        'Validates, then writes the bundle (the PDF byte for byte plus frames and outline, and for a book the sections, the book exercises, their hidden solution regions and the author, licence and notice from book_meta) atomically and reads it back with the importer\'s own checks; a bundle that fails them is removed. Errors in the project stop the export. A project with book exercises must be exported with its own outline (the default). Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.',
       inputSchema: {
         project: projectArg,
         out: z.string().optional().describe('Where to write the bundle (name.mcbundle).'),
@@ -600,7 +586,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'inspect_bundle',
     {
       title: 'Look inside a bundle',
-      description: 'Reads a .mcbundle: manifest, entries, frames with their labels, outline, and every problem the importer would find.',
+      description: 'Reads a .mcbundle: manifest (features, author, licence, notice), entries, frames with their labels (a book exercise by SECTION:LABEL), the sections with the number of exercises in each (summary), and every problem the importer would find.',
       inputSchema: { file: z.string().describe('Path of the .mcbundle.') },
       readOnly: true,
       project: false,
@@ -636,15 +622,16 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'get_schema',
     {
       title: 'A JSON Schema of the files',
-      description: 'The JSON Schema of bundle-manifest, frames, outline or project files.',
-      inputSchema: { name: z.enum(['bundle-manifest', 'frames', 'outline', 'project']) },
+      description: 'The JSON Schema of bundle-manifest, frames, outline or project files, or of the book summary (book_show, book_export).',
+      inputSchema: { name: z.enum(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary']) },
       readOnly: true,
       project: false,
     },
     async (args) => toResult(await cli(['schema', args.name], { project: '' })),
   );
 
-  registerBookTools({ tool, cli, toResult: toResult as never, projectOf, projectArg });
+  registerBookTools({ tool, cli, toResult, projectOf });
+  registerAuditTools({ tool, cli, toResult, projectOf });
 
   server.registerResource(
     'agent-guide',

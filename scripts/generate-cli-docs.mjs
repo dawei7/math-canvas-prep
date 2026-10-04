@@ -22,7 +22,11 @@ Run it from the repository as \`npx mcprep <command>\` or \`node packages/cli/bi
   the right, \`y\` downwards, all between 0 and 1. A rectangle is written \`left,top,right,bottom\` on the command line and
   \`{ "left": .., "top": .., "right": .., "bottom": .. }\` in JSON (an array \`[l,t,r,b]\` is accepted as input).
 - **Labels** such as \`E4.2\`, \`Q1\`, \`B3\` are computed from position and never stored. Refer to a frame by its **id**
-  (\`f3\`), which does not change when other frames are added.
+  (\`f3\`), which does not change when other frames are added. An authoritative **book exercise** (audited from a book,
+  \`authority: "book"\`) has no such label: it is named by the number the book prints and its section, \`SECTION:LABEL\`
+  (\`1.2:5a\`), which every command that takes a frame accepts, and it is never cut into parts.
+- **Sections** are the entries of the outline; an entry that exercises are filed under has an \`id\`. \`mcprep book show\` lists them with
+  the number of exercises in each. See chapter 14 of the [agent guide](AGENT_GUIDE.md).
 - **The project** is \`--project <file>\` (or a folder holding exactly one), else \`$MCPREP_PROJECT\`, else the only
   \`*.mcprep.json\` in the current folder.
 - **Changes are atomic.** A command that writes the project reads it fresh under a lock, applies the change in memory,

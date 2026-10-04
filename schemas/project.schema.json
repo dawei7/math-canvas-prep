@@ -31,7 +31,21 @@
       "type": "object",
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "folder": { "type": "string" }
+        "folder": { "type": "string" },
+        "author": { "type": "string", "maxLength": 200 },
+        "series": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "license": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+            "url": { "type": "string", "pattern": "^https?://\\S+$", "maxLength": 500 }
+          },
+          "additionalProperties": false
+        },
+        "sourceUrl": { "type": "string", "pattern": "^https?://\\S+$", "maxLength": 500 },
+        "notice": { "type": "string", "maxLength": 4000 }
       },
       "additionalProperties": false
     },

@@ -1,0 +1,118 @@
+{
+  "format": "math-canvas-book-summary",
+  "version": 1,
+  "generator": {
+    "name": "math-canvas-prep",
+    "version": "0.2.0"
+  },
+  "document": {
+    "title": "Pre-Algebra Workbook",
+    "pageCount": 4,
+    "folder": "Books/Algebra",
+    "author": "A. Author",
+    "series": "Prerequisites",
+    "license": {
+      "name": "CC BY 3.0",
+      "url": "https://creativecommons.org/licenses/by/3.0/"
+    },
+    "sourceUrl": "https://example.org/the-workbook",
+    "notice": "Attribution: A. Author, Pre-Algebra Workbook, CC BY 3.0. Changes: marked for study, nothing else.",
+    "sha256": "523591c14eb5a7b0a7675adb080e5261a5fdd1fc52d88a59deff4ffe2cbb3d62",
+    "bytes": 5553
+  },
+  "sections": [
+    {
+      "index": 0,
+      "id": "1",
+      "title": "Chapter 1 Integers",
+      "page": 0,
+      "depth": 0,
+      "parent": null,
+      "exercises": 0,
+      "exercisesTotal": 8,
+      "withSolution": 0,
+      "withSolutionTotal": 8
+    },
+    {
+      "index": 1,
+      "id": "1.1",
+      "label": "1.1",
+      "title": "1.1 Adding integers",
+      "page": 0,
+      "top": 0.2577,
+      "depth": 1,
+      "parent": 0,
+      "exercises": 4,
+      "exercisesTotal": 4,
+      "withSolution": 4,
+      "withSolutionTotal": 4,
+      "firstLabel": "1",
+      "lastLabel": "3b"
+    },
+    {
+      "index": 2,
+      "id": "1.2",
+      "title": "1.2 Subtracting integers",
+      "page": 1,
+      "depth": 1,
+      "parent": 0,
+      "exercises": 4,
+      "exercisesTotal": 4,
+      "withSolution": 4,
+      "withSolutionTotal": 4,
+      "firstLabel": "1",
+      "lastLabel": "4"
+    },
+    {
+      "index": 3,
+      "id": "2",
+      "title": "Chapter 2 Fractions",
+      "page": 2,
+      "depth": 0,
+      "parent": null,
+      "exercises": 0,
+      "exercisesTotal": 2,
+      "withSolution": 0,
+      "withSolutionTotal": 2
+    },
+    {
+      "index": 4,
+      "id": "2.1",
+      "title": "2.1 Equivalent fractions",
+      "page": 2,
+      "depth": 1,
+      "parent": 3,
+      "exercises": 2,
+      "exercisesTotal": 2,
+      "withSolution": 2,
+      "withSolutionTotal": 2,
+      "firstLabel": "1",
+      "lastLabel": "2"
+    },
+    {
+      "index": 5,
+      "id": "Answers",
+      "title": "Answers",
+      "page": 3,
+      "depth": 0,
+      "parent": null,
+      "exercises": 0,
+      "exercisesTotal": 0,
+      "withSolution": 0,
+      "withSolutionTotal": 0
+    }
+  ],
+  "totals": {
+    "sections": 6,
+    "sectionsWithId": 6,
+    "exercises": 10,
+    "withSolution": 10,
+    "withoutSolution": 0,
+    "unfiled": 0,
+    "ordinary": {
+      "exercises": 0,
+      "questions": 0,
+      "bookmarks": 0
+    }
+  }
+}

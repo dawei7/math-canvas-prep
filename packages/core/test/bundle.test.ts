@@ -8,6 +8,7 @@ import { ZipArchive, bytesSource, entryFromBytes, zipToBytes } from '../src/bund
 import type { Frame } from '../src/model/types.js';
 import { buildPdf } from '../src/testing/pdf-writer.js';
 import { buildSampleSheet } from '../src/testing/sample.js';
+import { VERSION } from '../src/version.js';
 import { frame, rect, rejected, tempDir } from './helpers.js';
 
 const sample = buildSampleSheet();
@@ -348,7 +349,7 @@ describe('the writer', () => {
       format: 'math-canvas-bundle',
       version: 1,
       createdAt: '2026-10-03T12:00:00Z',
-      generator: { name: 'math-canvas-prep', version: '0.1.0', targets: 'math-canvas-bundle/1' },
+      generator: { name: 'math-canvas-prep', version: VERSION, targets: 'math-canvas-bundle/1' },
       document: { title: 'Sheet', fileName: 'sheet.pdf', pdf: 'document.pdf', sha256: sha(sample.pdf), bytes: sample.pdf.length, pageCount: 3, folder: 'Uni/Analysis' },
       frames: 'frames.json',
       outline: 'outline.json',

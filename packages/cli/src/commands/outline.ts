@@ -6,30 +6,26 @@ import { plural, table } from '../format.js';
 import type { CommandContext, CommandSpec } from '../types.js';
 import { BOOK_WORD_OPTIONS, runBookDerive } from './audit.js';
 import { GLOBAL_OPTIONS, applyAndReport } from './common.js';
+import { describeProjectOutline, outlineTable, outlineViews } from './outline-edit.js';
 
 const rows = (entries: readonly OutlineEntry[]): string[][] => entries.map((entry) => [String(entry.page), `${'  '.repeat(entry.depth)}${entry.title}`, String(entry.depth)]);
 const HEADERS = ['page', 'title', 'depth'];
 
 export const outline: CommandSpec = {
   name: 'outline',
-  summary: 'Show the contents the bundle will carry: the project\'s own outline, or the PDF\'s.',
+  summary: "Show the contents the bundle will carry (the sections of the book): the project's own outline with ids and exercise counts, or the PDF's.",
   description:
-    'The app shows the bundle\'s outline.json as the document\'s contents instead of reading titles from the PDF. When the project has no outline of its own the bundle carries none and the app reads the PDF\'s. Sub-commands: `outline pdf` (the PDF\'s own), `outline derive` (headings found by heuristics), `outline set` (write your own), `outline clear`.',
+    "The app shows the bundle's outline.json as the document's contents instead of reading titles from the PDF. When the project has no outline of its own the bundle carries none and the app reads the PDF's. The entries are the sections of the book: an entry that exercises are filed under has an id, may have the printed label and the top of its heading, and is listed with the number of book exercises under it. Sub-commands: `outline pdf` (the PDF's own), `outline derive` (headings found by heuristics), `outline set` (write your own), `outline add`, `outline update`, `outline delete`, `outline ids` (edit it), `outline clear`.",
   options: [...GLOBAL_OPTIONS],
   examples: ['mcprep outline', 'mcprep outline --json'],
-  output: '{ source: "project"|"pdf"|"none", entries: [{ title, page, depth }], projectSource?: "pdf"|"derived"|"manual" }',
+  output: '{ source: "project"|"pdf"|"none", entries: [{ index, title, page, depth, id?, label?, top?, exercises?, exercisesTotal?, withSolution? }], projectSource?: "pdf"|"derived"|"manual", totals?: { entries, withId, exercises } }; exercises are the book exercises filed under the entry, exercisesTotal with everything below it',
   async run(context) {
     const session = await context.session();
-    if (session.project.outline) {
-      const entries = session.project.outline.entries;
-      return {
-        result: { source: 'project', projectSource: session.project.outline.source, entries },
-        text: `The project's own outline (${session.project.outline.source}, ${plural(entries.length, 'entry', 'entries')}); it goes into the bundle:\n${table(rows(entries), HEADERS)}`,
-      };
-    }
+    if (session.project.outline) return describeProjectOutline(session.project);
     const pdf = await (await session.document()).outline();
     if (pdf) {
-      return { result: { source: 'pdf', entries: pdf }, text: `The project has no outline of its own; the bundle will carry none and the app reads the PDF's (${plural(pdf.length, 'entry', 'entries')}):\n${table(rows(pdf), HEADERS)}` };
+      const views = outlineViews(pdf);
+      return { result: { source: 'pdf', entries: views }, text: `The project has no outline of its own; the bundle will carry none and the app reads the PDF's (${plural(pdf.length, 'entry', 'entries')}). Adopt it with \`outline pdf --adopt\` to edit it and to give its entries ids:\n${outlineTable(views)}` };
     }
     return { result: { source: 'none', entries: [] }, text: 'Neither the project nor the PDF has an outline. Try `mcprep outline derive`.' };
   },
@@ -98,12 +94,16 @@ async function readJsonArgument(context: CommandContext, source: string): Promis
 
 export const outlineSet: CommandSpec = {
   name: 'outline set',
-  summary: 'Replace the project\'s outline with entries from a JSON file (or - for standard input).',
-  description: 'The JSON is a list of { "title", "page", "depth" } (pages zero-based, depth 0 to 8, a child one deeper than its parent) or an object with an "entries" list.',
+  summary: "Replace the project's outline with entries from a JSON file (or - for standard input).",
+  description: 'The JSON is a list of { "title", "page", "depth", "id"?, "label"?, "top"? } (pages zero-based, depth 0 to 8, a child one deeper than its parent) or an object with an "entries" list. The id is what exercises name as their section, the label the number printed with the heading, the top where the heading starts on its page (0 to 1). --auto-ids gives the entries that have no id one. Exercises that name an id the new outline no longer has make the change an error, so nothing is orphaned.',
   writes: true,
   args: [{ name: 'file', description: 'A JSON file, or - for standard input.', required: true }],
-  options: [{ name: 'source', type: 'string', value: 'manual|derived|pdf', description: 'What to record as the origin (default manual).' }, ...GLOBAL_OPTIONS],
-  examples: ['mcprep outline set outline.json', 'echo \'[{"title":"1 Sets","page":0,"depth":0}]\' | mcprep outline set -'],
+  options: [
+    { name: 'source', type: 'string', value: 'manual|derived|pdf', description: 'What to record as the origin (default manual).' },
+    { name: 'auto-ids', type: 'boolean', description: 'Give every entry that has no id one (as `outline ids` does).' },
+    ...GLOBAL_OPTIONS,
+  ],
+  examples: ['mcprep outline set outline.json', 'mcprep outline set outline.json --auto-ids', "echo '[{\"title\":\"1 Sets\",\"page\":0,\"depth\":0}]' | mcprep outline set -"],
   output: 'The usual change report (frames, validation); the outline is in the project.',
   async run(context) {
     const raw = await readJsonArgument(context, context.args[0] as string);
@@ -111,7 +111,11 @@ export const outlineSet: CommandSpec = {
     if (!Array.isArray(entries)) throw usage('The outline must be a list of entries, or an object with an "entries" list.');
     const source = stringOption(context.options, 'source');
     if (source !== undefined && !['manual', 'derived', 'pdf'].includes(source)) throw usage('--source must be manual, derived or pdf.');
-    return applyAndReport(context, [{ op: 'outline.set', entries: entries as OutlineEntry[], ...(source !== undefined ? { source: source as 'manual' | 'derived' | 'pdf' } : {}) }], 'replaced the project outline');
+    return applyAndReport(
+      context,
+      [{ op: 'outline.set', entries: entries as OutlineEntry[], ...(source !== undefined ? { source: source as 'manual' | 'derived' | 'pdf' } : {}) }, ...(flag(context.options, 'auto-ids') ? [{ op: 'outline.ids' as const }] : [])],
+      'replaced the project outline',
+    );
   },
 };
 

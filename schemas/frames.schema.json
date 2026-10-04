@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/dawei7/math-canvas-prep/schemas/frames.schema.json",
   "title": "frames.json of a Math Canvas bundle (and the frames of a project file)",
-  "description": "The marked regions of a PDF. Coordinates are fractions of the page as displayed (after /Rotate), origin top-left. This schema checks shapes and ranges; the tools also check what a schema cannot say: every rect at least 0.02 wide and 0.01 tall, pages inside the document, and the parts of one unit tiling one area per page (see docs/BUNDLE_FORMAT.md). It is stricter than the reader on purpose: it flags unknown fields so that typos are caught.",
+  "description": "The marked regions of a PDF. Coordinates are fractions of the page as displayed (after /Rotate), origin top-left. This schema checks shapes and ranges; the tools also check what a schema cannot say: every rect at least 0.02 wide and 0.01 tall, pages inside the document, the parts of one unit tiling one area per page, the pair (section, label) being unique and every section naming an outline entry (see docs/BUNDLE_FORMAT.md). It is stricter than the reader on purpose: it flags unknown fields so that typos are caught.",
   "type": "object",
   "required": ["version", "frames"],
   "properties": {
@@ -13,6 +13,12 @@
   "$defs": {
     "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
     "id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,40}$" },
+    "sectionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$", "description": "The id of an outline entry." },
+    "label": {
+      "type": "string",
+      "pattern": "^[\\p{L}\\p{N}][\\p{L}\\p{N} ._\\-()/]{0,23}$",
+      "description": "The number as the book prints it, without the closing . or ): 5, 5a, A.3. 1 to 24 characters: a letter or digit, then letters, digits, spaces and . _ - ( ) /"
+    },
     "rect": {
       "type": "object",
       "required": ["left", "top", "right", "bottom"],
@@ -43,15 +49,24 @@
         "page": { "type": "integer", "minimum": 0, "description": "Zero-based page of the main region." },
         "rect": { "$ref": "#/$defs/rect" },
         "continues": { "$ref": "#/$defs/regions", "description": "Further regions of the same task, in reading order. Not allowed together with unit." },
-        "unit": { "$ref": "#/$defs/id", "description": "Frames that share a unit are the parts of one exercise. Only exercises." },
-        "context": { "$ref": "#/$defs/regions", "description": "Instruction, question or background that belongs to this exercise, wherever it is printed. Only exercises." }
+        "unit": { "$ref": "#/$defs/id", "description": "Frames that share a unit are the parts of one exercise. Only exercises; never an authoritative exercise." },
+        "context": { "$ref": "#/$defs/regions", "description": "Instruction, question or background that belongs to this exercise, wherever it is printed. Shown to the learner and sent to the AI. Only exercises." },
+        "authority": { "const": "book", "description": "An authoritative exercise: audited from the book and named by its printed label. Only exercises; needs label and section." },
+        "label": { "$ref": "#/$defs/label" },
+        "section": { "$ref": "#/$defs/sectionId", "description": "The id of the outline entry the authoritative exercise belongs to." },
+        "solution": { "$ref": "#/$defs/regions", "description": "Where the solution is printed in the same document. Hidden from the learner; used only to grade. Only exercises." }
       },
       "additionalProperties": false,
+      "dependentRequired": {
+        "authority": ["label", "section"],
+        "label": ["authority"],
+        "section": ["authority"]
+      },
       "dependentSchemas": {
-        "unit": { "properties": { "continues": false } }
+        "unit": { "properties": { "continues": false, "authority": false } }
       },
       "if": { "properties": { "kind": { "enum": ["question", "bookmark"] } }, "required": ["kind"] },
-      "then": { "properties": { "unit": false, "context": false } }
+      "then": { "properties": { "unit": false, "context": false, "authority": false, "solution": false } }
     }
   }
 }

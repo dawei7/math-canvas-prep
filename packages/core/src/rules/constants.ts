@@ -29,6 +29,9 @@ export const LIMITS = {
   labelPattern: /^[\p{L}\p{N}][\p{L}\p{N} ._\-()/]{0,23}$/u,
   /** The id of an outline entry, which a frame's `section` names. */
   sectionIdPattern: /^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/,
+  sectionIdMax: 60,
+  /** An outline entry's printed number ("1.1", "Chapter 3"): 1 to this many characters. */
+  outlineLabelMax: 24,
   /** At most this many `solution` regions per frame (the same number as `continues` and `context`). */
   maxSolutionRegions: 8,
   /** Texts about the work itself (manifest `document`). */

@@ -5,6 +5,7 @@
  */
 export * from './model/types.js';
 export * from './model/rect.js';
+export * from './model/authority.js';
 export * from './model/numbering.js';
 export * from './model/overlay.js';
 export * from './rules/constants.js';
@@ -14,6 +15,10 @@ export * from './rules/units.js';
 export * from './rules/lint.js';
 export * from './rules/outline.js';
 export * from './rules/document.js';
+export * from './rules/info.js';
+export * from './rules/book.js';
+export * from './book/sections.js';
+export * from './book/summary.js';
 export * from './geometry/snap.js';
 export * from './pdf/lines.js';
 export * from './propose/index.js';

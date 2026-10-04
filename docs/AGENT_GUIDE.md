@@ -2,7 +2,9 @@
 
 This guide is for an AI agent that has to **mark a mathematics PDF** with Math Canvas Prep: find every exercise, cut exercises into
 parts, attach the context they need, mark questions and bookmarks, check the result by looking at it, and export a bundle.
-Read it once from top to bottom; the checklist at the end is for every PDF. (`mcprep guide` prints this text.)
+Read it once from top to bottom; the checklist at the end is for every PDF. (`mcprep guide` prints this text.) If the task is to
+**audit a whole book as an authority** (exercises that keep the numbers the book prints, sections, answers from the answer key),
+read chapter 14 as well: it replaces the free numbering of this guide with the book's own.
 
 ## 1. What you produce, and who uses it
 
@@ -19,6 +21,8 @@ opens the PDF and finds your marks as work items:
 | **context** (attached to an exercise) | The instruction, question or background printed elsewhere. It is shown first when the exercise is shown and goes to the AI with every check. |
 | **question** | A passage the learner wants to ask the AI tutor about. |
 | **bookmark** | A place worth coming back to (a definition, a theorem, a worked example), with a sheet for the learner's own notes. Never graded. |
+| **book exercise** (authoritative) | An exercise audited from a book once, named by the number the book prints (`5a`, `A.3`) inside its section. Never cut into parts, never renumbered; chapter 14. |
+| **solution** (hidden, attached to an exercise) | A region of the same PDF (the answer key) used only to grade. The learner does not see it with the exercise. Chapter 14. |
 
 Quality of marking decides quality of grading: a frame that cuts an exercise in half, includes the next exercise, or omits the
 instruction makes the AI grade the wrong thing. That is why this guide insists on *looking at the result*.
@@ -318,6 +322,8 @@ Mixed documents are common (typeset pages and scanned pages): `propose` works on
   through a line of text), `includes-header-footer`, `context-overlaps-frame`, `unit-single`, `no-frames`. Fix them unless you
   have a reason.
 
+The extra rules about book exercises, sections and solutions (and their codes) are in 14.6.
+
 A command that would introduce an error is refused (`E_REJECTED`, exit code 4) and writes nothing; `--force` writes anyway (do not,
 unless you intend to fix it in the next command). `--dry-run` previews any change.
 
@@ -351,6 +357,7 @@ removed. The result lists repairs and warnings. Then tell the user, briefly:
 - Do not edit the PDF, and do not copy the PDF into other places than the bundle. Do not upload anything.
 - Do not mark questions the user did not ask for.
 - Do not export with errors by forcing: fix them.
+- Auditing a whole book as an authority has rules of its own (labels as printed, no parts, sections, hidden solutions): 14.7.
 
 ## 12. Recipes
 
@@ -375,7 +382,9 @@ exercise that continues on the next page and a definition as a bookmark.
 ```
 
 Operations: `add`, `update`, `delete`, `move`, `split`, `merge`, `dividers`, `area`, `context.add`, `context.remove`, `context.set`,
-`continues.add`, `continues.remove`, `outline.set`, `outline.add`, `outline.clear`, `meta.set`. Their fields are the options of the
+`continues.add`, `continues.remove`, `outline.set`, `outline.add`, `outline.clear`, `meta.set`, and for books (chapter 14)
+`authority.mark`, `authority.unmark`, `label.set`, `section.set`, `solution.add`, `solution.remove`, `solution.set`,
+`outline.update`, `outline.delete`, `outline.ids`. Their fields are the options of the
 matching commands (`mcprep help frames split`, ...). Apply with `mcprep frames apply batch.json` (or `-` for standard input);
 `--dry-run` first if you like.
 
@@ -443,3 +452,165 @@ mcprep frames update f1 --rect 0.08,0.115,0.92,0.305
 - [ ] Contents: PDF bookmarks adopted, or derived and checked, or written by hand.
 - [ ] `export` done and `import-check` says it would be accepted.
 - [ ] The user is told where the bundle is, the counts, the uncertainties and the pages that need a look.
+
+## 14. Auditing a book as an authority
+
+Chapters 1 to 13 are about exercises a person frames for themselves: their numbers are free and positional (`E1`, `E2.1`),
+they can be cut into parts, and they change when a frame is added before them. This chapter is about the other kind: a
+book (usually one with a free licence) that is **audited once, on a computer, and then offered to many learners as an
+authority**. Every exercise of such a book has an address that never changes: the number the book prints. You produce that
+address, the sections the book is divided into, the context each exercise needs and the answer it is graded against.
+
+### 14.1 Two kinds of exercise
+
+| | Ordinary exercise | Authoritative (book) exercise |
+| --- | --- | --- |
+| Who makes it | A person, for themselves (in the app or with `frames add`). | You, auditing the book (`exercises add`). |
+| Number | Positional, computed (`E4.2`), renumbered when frames are added. | The **label** the book prints (`5a`, `12`, `A.3`), stored, never renumbered. |
+| Where | Anywhere on the pages. | In a **section** of the book (an outline entry with an id). |
+| Parts | Can be cut into parts (`frames split`): units. | **No parts.** `5a` and `5b` are two exercises with two labels. |
+| Name in commands | The frame id (`f12`). | The frame id, or `SECTION:LABEL` (`1.2:5a`). |
+| In the file | no `authority` | `"authority": "book"`, `label`, `section` |
+
+Rules that follow from the difference, and that the tools enforce:
+
+- **One exercise per printed item.** The printed exercise "5. Compute: (a) 3 + 4, (b) 7 - 2" is **two** book exercises, `5a` and
+  `5b`, each framed on its own part. Never cut a book exercise into parts: `frames split`, `dividers`, `area` and `merge`
+  refuse it (`E_AUTHORITY`), and a book exercise cannot have a `unit`.
+- **The statement they share is context.** The text "5. Compute:" is attached as `--context` to **both** `5a` and `5b`. Context
+  is what the learner sees with the exercise and what the AI receives with every check. Give each part only what it needs.
+- **The label is what the book prints**, without the closing `.` or `)`: the book prints "5." or "5)" and the label is `5`; part
+  (a) of exercise 5 is `5a`; an appendix exercise "A.3" is `A.3`; "II-4" is `II-4`. 1 to 24 characters: a letter or digit first,
+  then letters, digits, spaces and `. _ - ( ) /`. **Never make a label up** and never number by position: if the book skips
+  numbers, so do you. A label with the dot still on it is accepted but warned about (`label-style`); the commands drop it for you.
+- **The pair (section, label) is unique.** A book that starts again at 1 in every practice set needs one section per set. Adding
+  an exercise that exists is an error (`E_DUPLICATE_EXERCISE`), so that applying the same batch twice does no harm.
+- **Context is not solution.** *Context* (`--context`) is the instruction, shown to the learner and sent to the AI. *Solution*
+  (`--solution`, `solution add`) is a region **of the same PDF**, typically the answer key at the back, that **only the grader**
+  receives: hidden from the learner, never shown with the exercise, never sent to a tutor chat. A solution printed in another
+  file or on a web page is outside the format: leave it out.
+- Questions and bookmarks stay what they are; a document may mix book exercises with exercises a person added.
+
+### 14.2 Sections are the outline
+
+The sections are the entries of the document's contents (the outline), exactly as in a table of contents: chapters, then the
+sections in them. An entry that exercises are filed under has an **id** (`1.2`, `c3`: letters, digits, `. _ -`, unique), may
+have the printed **label** (`1.2`, `Chapter 3`) and the **top** of its heading on its page (0 to 1) so that two sections on one
+page can be told apart. A section runs from its heading to the next heading of the same or a lower depth.
+
+```console
+mcprep outline pdf --adopt          # the book's own bookmarks as the outline (or: outline derive --apply, or outline set outline.json)
+mcprep outline ids                  # give every entry an id: its printed label, else the number in its title
+mcprep outline                      # ids, labels, tops and the number of exercises under each entry
+mcprep outline update 1.2 --top 0.12 --label 1.2   # fix a heading's position or label
+mcprep outline add --title "Review exercises" --page 31 --depth 1 --id review --label R
+```
+
+- Choose sections the way the book numbers its exercises: if every practice set starts at 1, each set is a section; if numbering
+  runs through a chapter, the chapter is the section. An exercise is filed under the **deepest** entry it is printed in.
+- Entries without an id cannot hold exercises. `outline set outline.json --auto-ids` writes a whole outline with ids in one go.
+- `section-mismatch` warns when an exercise is printed in another section than the one it is filed under: look at the page, then
+  either `exercises section <frame> <id>` or correct the heading's `page` and `top`.
+- Renaming an id (`outline update 1.2 --new-id subtracting`) takes the exercises along; a section with exercises cannot be
+  deleted (`E_SECTION_IN_USE`).
+
+### 14.3 The workflow, in order
+
+1. **Create the project and look.** `mcprep init book.pdf --title "Pre-Algebra" --folder "Books/Algebra"`, `mcprep info`, then
+   `mcprep render <page> --grid 0.1` on a few pages: where do the chapters start, how are exercises numbered, where is the
+   answer key (page numbers of the **PDF**, zero-based, not the printed ones).
+2. **Say what the book is.** `mcprep book meta --author "A. Author" --series "Prerequisites" --license-name "CC BY 3.0"
+   --license-url https://creativecommons.org/licenses/by/3.0/ --source-url https://example.org/the-book --notice @notice.txt`.
+   Copy the licence and the attribution **exactly** from the book's own front matter or licence page; never invent them. A licence
+   that asks for attribution travels with the bundle, and the app shows the notice.
+3. **Sections.** Adopt or write the outline, give it ids (14.2), and check it against the page images.
+4. **Exercises, section by section.** Find where each printed exercise starts and ends exactly as in chapters 5 and 6 (start a little
+   above the line that carries the number, end before the next number, figures inside, no headers or footers), then
+   `mcprep exercises add --section 1.2 --label 5a --page 17 --rect 0.09,0.41,0.91,0.48 --snap --context 17:0.09,0.36,0.91,0.41`.
+   A task that goes on over the page: `--continues <page>:l,t,r,b`. For a whole section write one batch (`mcprep frames apply
+   batch.json`, one atomic call with one validation; each operation `{ "op": "add", "authority": "book", "section": "1.2",
+   "label": "5a", "page": 17, "rect": [..], "context": [..], "solution": [..] }`); the `ref` and `@name` mechanism of 12 works too.
+5. **Solutions.** Find each answer in the answer key and attach it: `mcprep solution add 1.2:5a --page 211 --rect
+   0.1,0.52,0.5,0.54 --snap`, or pass `--solution 211:l,t,r,b` to `exercises add`. One small region per exercise (the line
+   "22) 0"), or one block for several exercises: give each the same region. Exercises the key does not answer simply have none
+   (`mcprep solution list --missing` lists them; they are not an error).
+6. **Look at everything.** `mcprep crop --all --section 1.2` writes one PNG per region: the exercise, its continuations, its
+   context and its solution. `mcprep render 211 --frames --solutions` draws the labelled exercises and the solution regions on a
+   page. Open the images (14.4).
+7. **Validate.** `mcprep validate`: zero errors; read every warning (14.6).
+8. **Compare with the book.** `mcprep book show` lists the sections with the number of exercises in each, how many have a
+   solution, and the first and last label (`1 .. 24`). Does the last label match the last number printed in that section? Are
+   numbers missing that the book does print? `mcprep exercises list --section 1.2` and `mcprep solution list --missing` find them.
+9. **Export.** `mcprep export` (the bundle carries the sections, the exercises, the hidden solutions and the book's
+   information), `mcprep import-check book.mcbundle`, `mcprep inspect-bundle book.mcbundle`, and `mcprep book export --out
+   book.book.json` for the plain JSON summary of the sections with their counts (format: `mcprep schema book-summary`).
+10. **Tell the user** the path of the bundle and the project, the number of sections and of exercises (and how many have a
+    solution), what the licence and notice say, the sections or pages you were unsure about, and the numbers the book skips.
+
+The MCP tools have the same names as the commands: `exercises_add`, `exercises_list`, `solution_add`, `book_show`, `book_meta`,
+`outline_add`, `outline_ids`, ... and `apply_operations` takes the same batch.
+
+### 14.4 What to check by looking at the crops
+
+- [ ] The exercise crop starts with the **number the book prints**, and that is the label you gave it (`5a` starts at "(a)").
+- [ ] Nothing of the next exercise is at the bottom, no line is cut in half, no running header or footer is inside, the figure is inside.
+- [ ] For `5a` and `5b` the **context** crop shows the shared statement ("5. Compute:") on **both**, and the exercise crops do not repeat it.
+- [ ] The **solution** crop shows the answer to **this** label (not its neighbour's), complete, and not the next answer. In a dense key
+      make the region as small as the answer line, or use one block for exercises that share it.
+- [ ] A continuation crop starts where the text goes on and ends before the next exercise.
+- [ ] On the page image (`render --frames --solutions`) the labels run in the order of the book and no exercise is missing or twice.
+
+### 14.5 Changing things, and running things twice
+
+- `exercises label <frame> <label>`, `exercises section <frame> <section>`: change the number or the section. A label that is taken in
+  the section is refused naming both exercises. A batch may swap two labels: duplicates are judged once, at the end.
+- `exercises mark <frame> --label 5a --section 1.2` turns an exercise a person framed into a book exercise (it must not be part of a
+  unit: `frames merge --unit` first); `exercises unmark <frame>` turns it back into an ordinary one.
+- `frames update <frame> --rect ...` moves or resizes a book exercise (not `area`); `context add/remove`, `continues add/remove`,
+  `solution add/remove/clear` change its regions; `frames delete <frame>` removes it.
+- **Applying the same batch twice does not duplicate anything**: the second time is an error naming the first exercise
+  (`E_DUPLICATE_EXERCISE`) and nothing is written. To redo exercises on purpose add `"replace": true` (`--replace`): the exercise
+  keeps its frame id; page, rect and continuation are replaced; context and solution are replaced when you list them (an empty list
+  clears them) and kept otherwise.
+- A change that would break the book (an exercise left without a section, a duplicate label) is refused as a whole; `--dry-run`
+  shows the issues, `--force` writes anyway (do not).
+
+### 14.6 Rules and errors that come with books
+
+| You see | It means | Do |
+| --- | --- | --- |
+| `E_AUTHORITY` | You tried to cut, resize as parts or merge a book exercise, or to make a question authoritative. | One exercise per printed item; context for what they share (14.1). |
+| `E_AUTHORITY_UNIT` / `authority-unit` | A book exercise was made part of a unit. | Frame each printed item on its own: no `unit`. |
+| `E_LABEL` / `bad-label`, `label-missing` | The label is empty, too long or uses characters the format does not allow. | The number as the book prints it: `5`, `5a`, `A.3`. |
+| `E_SECTION` / `bad-section`, `section-missing` | The section is not an id. | The id of an outline entry (`mcprep outline`). |
+| `section-unknown` | The section is not the id of any outline entry (or the project has no outline). | `outline add`/`outline ids`, or `exercises section`. |
+| `duplicate-exercise` / `E_DUPLICATE_EXERCISE` | Two exercises are the same (section, label). | A label of its own, or delete the copy, or `--replace`. |
+| `solution-not-exercise`, `too-many-regions` | A solution on a question or bookmark, or more than 8 regions. | Solutions only on exercises; merge neighbouring regions. |
+| `E_SOLUTION` | A solution operation that cannot work (no such region, more than 8). | `solution list` shows the indexes. |
+| `outline-bad-id`, `outline-duplicate-id`, `outline-bad-label`, `outline-bad-top` | An outline entry's id, label or top is wrong. | `outline update`. |
+| `E_SECTION_IN_USE` | A section with exercises cannot lose its id or be deleted. | Move the exercises first (`exercises section`). |
+| `E_OUTLINE_MODE` | `export --outline pdf` or `none` with book exercises. | Export with the project's own outline (the default). |
+| `E_META` / `info-bad-url`, `info-too-long` | The author, licence, address or notice cannot go into a bundle. | `http(s)` addresses, texts within the limits. |
+| `label-style` (warning) | The label ends with the `.` or `)` the book prints after the number. | `exercises label <frame> 5`. |
+| `section-mismatch` (warning) | The exercise is printed in another section than the one it is filed under. | `exercises section`, or correct the section's `page` and `top`. |
+| `solution-overlaps-frame`, `solution-is-exercise` (warnings) | The solution region lies on the exercise itself, or is another exercise's region. | Point it at the answer key. |
+
+### 14.7 Do not
+
+- Do not number exercises by position, make labels up, or "tidy" the book's numbers (`1a` stays `1a`, a skipped number stays skipped).
+- Do not cut a book exercise into parts, give it a `unit`, or put the statement of `5a` into `5b`'s frame instead of context.
+- Do not put the answer key in `context` (the learner would see it) and do not put an instruction into `solution` (nobody would see it).
+- Do not attach solutions from another file or from the web, and do not guess an answer region: look at the key.
+- Do not invent the licence, the author or the notice, and do not drop the notice the licence asks for.
+- Do not rebuild the outline with `outline set` once exercises exist without keeping the ids they name.
+
+### 14.8 Checklist for a book
+
+- [ ] `book meta`: author, licence name and address, source address and the notice the licence asks for, copied from the book.
+- [ ] Outline = the sections of the book, every entry that holds exercises has an id; headings with `top` where two sections share a page.
+- [ ] Every printed exercise is one book exercise with the label the book prints, in the section it is printed in; parts are separate
+      exercises with the shared statement as context; continuations attached.
+- [ ] Every answer of the key is attached as a solution to its exercise; the exercises without one are known.
+- [ ] Every region **looked at** (`crop --all --section ...`): exercise, context, continuation, solution.
+- [ ] `validate`: zero errors, warnings understood; `book show` compared with the book; `export` and `import-check` done.
+- [ ] The user is told where the bundle is, the counts per section, the licence, and what you were unsure about.

@@ -1,5 +1,5 @@
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { projectArg, type ToolApi } from './args.js';
 
 /**
  * The tools that audit a book (chapters and sections, numbered exercises with their instruction, the answers of the
@@ -7,22 +7,10 @@ import { z } from 'zod';
  * `solutions propose`, so the two can never disagree; the result of the command is returned as it is.
  */
 
-interface Reply {
-  code: number;
-  envelope: { ok: boolean };
-}
+/** The order of an audit with proposals, for the instructions of the server (after the paragraph on authoritative exercises). */
+export const AUDIT_INSTRUCTIONS = `
 
-export interface BookToolApi {
-  tool: <Shape extends z.ZodRawShape>(
-    name: string,
-    config: { title: string; description: string; inputSchema: Shape; readOnly?: boolean; destructive?: boolean; idempotent?: boolean; project?: boolean },
-    handler: (args: z.infer<z.ZodObject<Shape>>) => Promise<CallToolResult>,
-  ) => void;
-  cli: (argv: string[], extra?: { stdin?: string; project?: string | undefined }) => Promise<Reply>;
-  toResult: (done: never) => CallToolResult;
-  projectOf: (args: { project?: string | undefined }) => string | undefined;
-  projectArg: z.ZodOptional<z.ZodString>;
-}
+Proposals for a whole book. Instead of framing every printed exercise by hand: outline_derive_book (read it, then apply: the sections get ids and labels), exercises_propose with solutions=true (read the notes, look at render_crop images of a sample, then apply=true), solutions_propose for answers that were not matched, validate, book_show, book_meta, export_bundle, import_check. What the book prints is what is proposed; every gap, duplicate and doubt is in the result's notes.`;
 
 const words = {
   chapter_words: z.string().optional().describe('Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.'),
@@ -40,9 +28,7 @@ const wordFlags = (args: { chapter_words?: string | undefined; practice_words?: 
 ];
 const patternFlags = (patterns: readonly string[] | undefined): string[] => (patterns ?? []).flatMap((pattern) => ['--item-pattern', pattern]);
 
-export function registerBookTools(api: BookToolApi): void {
-  const { tool, cli, projectOf, projectArg } = api;
-  const toResult = api.toResult as (done: Reply) => CallToolResult;
+export function registerAuditTools({ tool, cli, toResult, projectOf }: ToolApi): void {
 
   tool(
     'outline_derive_book',

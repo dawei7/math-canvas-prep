@@ -2,12 +2,14 @@ import { stat, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { checkBundle, type BundleReport } from './bundle/reader.js';
 import { writeBundle, type BundleWriteResult } from './bundle/writer.js';
+import { isAuthoritative } from './model/authority.js';
 import type { Frame, OutlineEntry, PageText, TextLine } from './model/types.js';
 import { PdfDocument, type TextOptions } from './pdf/document.js';
-import { applyOperations, type BatchResult, type Operation } from './project/ops.js';
+import { applyOperations, findFrame, type BatchResult, type Operation } from './project/ops.js';
 import type { Project } from './project/model.js';
 import { createProjectFile, readProjectFile, resolvePdfPath, withProjectLock, writeProjectFile, type CreateOptions } from './project/store.js';
 import { validateProject, type ProjectValidation } from './project/validate.js';
+import { pickDocumentInfo } from './rules/info.js';
 import { McPrepError, type Issue } from './rules/issues.js';
 
 /**
@@ -36,12 +38,20 @@ export interface ApplyOutcome {
   project: Project;
 }
 
-const sameIssue = (a: Issue, b: Issue): boolean => a.code === b.code && a.frameId === b.frameId && a.message === b.message;
+/** What makes two issues the same one: the code, the frame and the message. */
+const issueKey = (item: Issue): string => `${item.code}\u0000${item.frameId ?? ''}\u0000${item.message}`;
+
+/** Every page a frame has a region on: its own, its continuations, its context and its solution. */
+function addPagesOf(frame: Frame, pages: Set<number>): void {
+  pages.add(frame.page);
+  frame.continues?.forEach((region) => pages.add(region.page));
+  frame.context?.forEach((region) => pages.add(region.page));
+  frame.solution?.forEach((region) => pages.add(region.page));
+}
 
 function pagesMentioned(project: Project, operations: readonly Operation[]): number[] {
   const pages = new Set<number>();
   const refPages = new Map<string, number>();
-  const frameById = new Map(project.frames.map((frame) => [frame.id, frame]));
   const regionPages = (value: unknown): void => {
     if (!Array.isArray(value)) return;
     for (const region of value) {
@@ -54,10 +64,11 @@ function pagesMentioned(project: Project, operations: readonly Operation[]): num
     if (typeof record['page'] === 'number') pages.add(record['page']);
     regionPages(record['continues']);
     regionPages(record['context']);
+    regionPages(record['solution']);
     regionPages(record['regions']);
     const id = record['id'];
     if (typeof id === 'string') {
-      const known = id.startsWith('@') ? refPages.get(id.slice(1)) : frameById.get(id)?.page;
+      const known = id.startsWith('@') ? refPages.get(id.slice(1)) : findFrame(project, id)?.page;
       if (known !== undefined) pages.add(known);
     }
     if (op.op === 'add' && op.ref !== undefined) refPages.set(op.ref, op.page);
@@ -158,14 +169,15 @@ export class ProjectSession {
         linesFor: (page): readonly TextLine[] | undefined => text.get(page)?.lines,
       });
       const before = validateProject(current);
+      // The checks that read the printed lines look at the pages this batch touched: frames it did not change keep their
+      // identity, so the pages of new and changed frames are the ones to read (a book of hundreds of pages would otherwise
+      // be read again for every command). `validate` reads them all.
+      const known = new Set<Frame>(current.frames);
       const touched = new Set<number>();
-      for (const frame of batch.project.frames) {
-        touched.add(frame.page);
-        frame.continues?.forEach((region) => touched.add(region.page));
-        frame.context?.forEach((region) => touched.add(region.page));
-      }
-      const validation = validateProject(batch.project, await this.textFor([...touched]));
-      const introduced = validation.errors.filter((error) => !before.errors.some((old) => sameIssue(old, error)));
+      for (const frame of batch.project.frames) if (!known.has(frame)) addPagesOf(frame, touched);
+      const validation = validateProject(batch.project, await this.textFor([...touched].filter((page) => page >= 0 && page < current.pdf.pageCount)));
+      const before_errors = new Set(before.errors.map(issueKey));
+      const introduced = validation.errors.filter((error) => !before_errors.has(issueKey(error)));
       const rejected = introduced.length > 0 && options.force !== true;
       if (rejected || options.dryRun === true) {
         return { applied: false, rejected, batch, validation, introduced, project: batch.project };
@@ -181,11 +193,7 @@ export class ProjectSession {
     const project = this.project;
     if (options.text === false) return validateProject(project);
     const pages = new Set<number>();
-    for (const frame of project.frames) {
-      pages.add(frame.page);
-      frame.continues?.forEach((region) => pages.add(region.page));
-      frame.context?.forEach((region) => pages.add(region.page));
-    }
+    for (const frame of project.frames) addPagesOf(frame, pages);
     return validateProject(project, await this.textFor([...pages].filter((page) => page >= 0 && page < project.pdf.pageCount)));
   }
 
@@ -214,10 +222,17 @@ export class ProjectSession {
     }
     const pdf = await this.document();
     const target = resolve(outPath ?? join(dirname(this.projectPath), `${basename(this.pdfPath, extname(this.pdfPath))}.mcbundle`));
-    const outline = await this.outlineFor(options.outline ?? 'project');
+    const mode = options.outline ?? 'project';
+    if (mode !== 'project' && this.project.frames.some(isAuthoritative)) {
+      throw new McPrepError('E_OUTLINE_MODE', `The project has authoritative exercises, which are filed under the sections of the project's own outline; --outline ${mode} would leave them without sections.`, {
+        hint: 'Export with the default `--outline project`, or adopt the PDF\'s bookmarks into the project first (`mcprep outline pdf --adopt`, then `mcprep outline ids`).',
+      });
+    }
+    const outline = await this.outlineFor(mode);
     const frames: Frame[] = this.project.frames;
     const write = await writeBundle(target, {
       pdfPath: this.pdfPath,
+      info: pickDocumentInfo(this.project.meta),
       title: options.title ?? this.project.meta.title,
       ...((options.folder ?? this.project.meta.folder) !== undefined ? { folder: (options.folder ?? this.project.meta.folder) as string } : {}),
       pageCount: pdf.pageCount,

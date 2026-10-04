@@ -5,7 +5,7 @@
   "createdAt": "2026-10-03T12:00:00Z",
   "updatedAt": "2026-10-03T12:00:00Z",
   "modifiedBy": "cli",
-  "generator": { "name": "math-canvas-prep", "version": "0.1.0" },
+  "generator": { "name": "math-canvas-prep", "version": "0.2.0" },
   "pdf": {
     "path": "sample.pdf",
     "sha256": "d95704c2108654641c21351481ba4315986bc68218f3be45fbfe4a6d674695f1",
