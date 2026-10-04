@@ -65,7 +65,7 @@ the first step that progress.md does not show as done. Do not repeat a step that
 
 ```text
 The audit of {PDF} in {WORK} has passed the gate without the visual pass. Do Phase C of docs/AGENT_RUNBOOK.md only: draw the contact sheets of every exercise
-and every answer, look at every sheet, write one entry of the visual record for every exercise from what its cell shows, repair every defect, draw the
+and every answer, look at every sheet, write the visual record from what each cell shows (one small file for each sheet in WORK/visual, one entry for every exercise), repair every defect, draw the
 repaired sheets again, list the sheets you looked at and run the gate with --sheets-seen and --visual. Your final message lists the sheets you looked at and
 every defect you repaired.
 ```

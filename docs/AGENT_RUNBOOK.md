@@ -41,7 +41,7 @@ Write these down once and never change them:
 | `SIDECAR` | `NAME.meta.json` next to the PDF, if it exists |
 | `REF` | a reference list (JSON), if the task gives one |
 | `PATTERNS` | the `--item-pattern` options the book needs (section 8); none unless the book needs them |
-| `GATE` | the options every gate call carries: `--ink PATTERNS`, and `--reference "REF"` (with `--chapter-offset N` when the sidecar gives `referenceChapterOffset`) when there is a reference list. Always the same, so that every call sees the same findings |
+| `GATE` | the options every gate call carries: `PATTERNS`, and `--reference "REF"` (with `--chapter-offset N` when the sidecar gives `referenceChapterOffset`) when there is a reference list. Always the same, so that every call sees the same findings |
 | `ME` | your name for the notes (`--by`), for example the model's name |
 
 **One surface for the whole run**: the command line (`mcprep ...`, every command with `--project "P"`) or the MCP server (tool names in
@@ -105,8 +105,7 @@ Take them from the sidecar. Without a sidecar read the text of the first four pa
 
 ## 3. Phase B: the gate loop
 
-**B1.** `mcprep audit gate --ink PATTERNS [--reference "REF" [--chapter-offset N]] --project "P"` (this is `GATE` of section 1; **never leave out `--ink`**: it is the
-check of the edges, and without it a region that cuts a letter passes). It lists what is **open** (neither repaired nor acknowledged), grouped by code, and exits 0 only
+**B1.** `mcprep audit gate PATTERNS [--reference "REF" [--chapter-offset N]] --project "P"` (this is `GATE` of section 1; the pixel check of the edges, which finds a region that cuts a letter, a line of a figure or the border of a box, is part of every gate call: never add `--no-ink`). It lists what is **open** (neither repaired nor acknowledged), grouped by code, and exits 0 only
 when nothing is open.
 
 **B2.** Work through the open findings **by code, in the order of the table in section 7**. For each finding: look at it (`mcprep crop SECTION:LABEL
@@ -119,7 +118,7 @@ with more exercises than the reference lists, a remark printed between two exerc
 findings cannot be acknowledged at all and `audit ack` refuses them: `label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`,
 `section-unknown`, `section-page`, `span-gap`, `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`,
 `solution-section-mismatch`, `region-holds-item`; repair them. For the others:
-`mcprep audit ack --code CODE --ref REF --page N --quote "TEXT" --reason "SENTENCE" --by "ME" --ink PATTERNS [--reference "REF" ...] --project "P"`, where `--page` is the zero-based page of the finding,
+`mcprep audit ack --code CODE --ref REF --page N --quote "TEXT" --reason "SENTENCE" --by "ME" PATTERNS [--reference "REF" ...] --project "P"`, where `--page` is the zero-based page of the finding,
 `--quote` (4 to 60 characters) is a piece of the text printed on that page (copy it from `mcprep lines N`; a piece of the finding's own message is refused), and
 `--reason` says in your own words what the book prints and where (at least ten characters, not the text of the finding). A note for a whole section needs
 `--count N`. You cannot confirm your own notes: they stay `confirmed: false` until somebody with another name runs `audit confirm` (Phase D).
@@ -137,8 +136,10 @@ skipped, however many exercises there are**: the work is long on purpose, one sh
 each cell with its instruction (blue), its own region (red), its continuation (orange) and its answer (green), and `sheets.json`; a sheet is closed before it
 gets too tall to read, so there may be more than the number of exercises divided by 6.
 
-**C2. Look and write the visual record.** Open the sheets one after the other, none skipped. For each cell append one entry to `WORK/visual.json` (a JSON list;
-the format is `mcprep schema visual`):
+**C2. Look and write the visual record, one sheet at a time.** Open the sheets one after the other, none skipped. For sheet N (the references of its cells are listed in
+`WORK/sheets/sheets.json`): look at it, write ONE small file `WORK/visual/sheet-NNN.json` (three digits, `sheet-001.json`) that holds a JSON list with one entry for each cell of that
+sheet, append `C2 sheet N done` to `WORK/progress.md`, and go on to the next sheet. A folder of small files keeps every write short and lets a run be resumed; the format is
+`mcprep schema visual`. An entry:
 `{"ref": "SECTION:LABEL", "startsWith": "<the first three words printed after the number, as you read them in the cell>", "instruction": true|false,
 "answerStartsWith": "<the number at the start of the green box, or empty>", "ok": true|false, "defect": "<CODE or a word, only when ok is false>"}`.
 Write **what the cell shows, not what you expect**: a cell without a blue box is `"instruction": false`. A cell is `ok` only when you can see the label at the top of the
@@ -147,10 +148,10 @@ of its exercise, is whole and holds nothing of the next answer. Defect words: CU
 MISSING-INSTRUCTION, LABEL, ANSWER-CUT, ANSWER-WRONG, ANSWER-MISSING, ANSWER-EXTRA, OTHER.
 
 **C3. Repair** every entry with `ok: false` with section 7, draw its sheet again (`mcprep exercises sheets --out "WORK/sheets" --solutions --per-sheet 6 --sheet N
---project "P"`), look at it, and change its entry to what the cell shows now.
+--project "P"`), look at it, and change its entry (in the file of its sheet) to what the cell shows now.
 
 **C4. The gate with the record.** List the sheets you looked at in `WORK/sheets/seen.txt` (for example `1-36`), then
-`mcprep audit gate --ink PATTERNS [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual.json" --project "P"`. An entry that does not fit the project is
+`mcprep audit gate PATTERNS [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --project "P"`. An exercise without an entry is `visual-missing` (it names the sheets whose exercises have none); an entry that does not fit the project is
 `visual-mismatch` (the cell was not looked at, or the exercise changed): look again. A record with `ok: false` is `visual-defect`. Neither can be acknowledged.
 
 An agent that cannot look at images does Phase B only, says so in the report ("no visual pass: the model cannot see images"), and the certificate shows that the
@@ -158,9 +159,9 @@ visual record is missing; a person or another agent then finishes Phase C with t
 
 ## 5. Phase D: certificate, review, export, report
 
-1. `mcprep audit gate --ink PATTERNS [--reference "REF" ...] --visual "WORK/visual.json" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
+1. `mcprep audit gate PATTERNS [--reference "REF" ...] --visual "WORK/visual" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
    `unconfirmed` left: go on at 2. Anything else open (a missing visual record included): back to Phase B or C. Without Phase C the book is not finished: do not report it as passed.
-2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" --ink PATTERNS [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
+2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
    here for them: **somebody with another name** looks at each and runs `mcprep audit confirm --by NAME --all` (or `--ref REF --code CODE`), then `--final` is run again.
 3. `mcprep export --out "BUNDLE" --project "P"`; it says whether the certificate is current and how many acknowledgements are not yet confirmed. A later change makes the
    certificate stale: run the gate again.
@@ -174,11 +175,10 @@ Coordinates are fractions of the page as displayed, origin top-left, `left,top,r
 --project "P"`: every line has its box. For the region of one exercise use exactly these formulas, then `--snap`:
 
 - `left` = the smallest left of the lines of its column minus 0.01; `right` = the largest right plus 0.01;
-- `top` = the top of its first line minus 0.004 (a tall letter, a box border or a bracket reaches above the box of the text line; the edge must lie in white, `--ink` says whether it does);
+- `top` = the top of its first line minus 0.004 (a tall letter, a box border or a bracket reaches above the box of the text line; the edge must lie in white, the gate says whether it does);
 - `bottom` = the smaller of (the top of the next label, instruction or heading in the same column minus 0.004) and (the bottom of its own last line plus
   0.006); never below its own last line;
-- a figure or a tall formula (a matrix, a fraction) that stands above or below the line: take the whole figure, then check the edge with `mcprep audit
-  gate --ink` (an edge must lie in white);
+- a figure or a tall formula (a matrix, a fraction) that stands above or below the line: take the whole figure, then run `mcprep audit gate` (an edge must lie in white);
 - the instruction printed once above a group: its lines the same way, attached with `--context`; the regions of a neighbour that already has it:
   `mcprep exercises list --section S --regions --project "P"` prints them as `page:left,top,right,bottom`: copy them (`mcprep context add REF --page P --rect l,t,r,b`
   for each region);
@@ -213,7 +213,7 @@ Order: errors first, in this order. `REF` is `SECTION:LABEL`. After each repair:
 | `context-overlaps-frame` | warning | an instruction region touches an exercise | Move the instruction's region off the exercise (`context remove` and `context add` with the formulas of section 6); a context shared by several exercises is attached to each. |
 | `continuation-limit` | warning | an exercise already holds 8 continuation regions and text follows | The book spans more than the format allows: acknowledge with the pages; do not cut the exercise. |
 | `solution-order` | warning | answers of a section are not in the order of their labels | Usually a column layout: look at the crops; acknowledge when the key prints them that way. |
-| `edge-on-ink` | warning | a region edge runs through printed ink | Move that edge into the white: `frames update REF --rect ...` (or `solution`/`continues` regions) with the edge moved by the gap between the lines; run `audit gate --ink` again. |
+| `edge-on-ink` | warning | a region edge runs through printed ink | Move that edge into the white: `frames update REF --rect ...` (or `solution`/`continues` regions) with the edge moved by the gap between the lines; run `audit gate` again. |
 | `region-open-end` | warning | text goes on directly below the region of an inline exercise | The exercise is longer than its region: extend `bottom` (or add a continuation) so that the region ends where its text ends. |
 | `stray-frame` | warning | an ordinary frame lies in the audited book | Look at it; delete it (`frames delete ID`) unless the book needs it. |
 | `reference-count`, `reference-missing`, `reference-extra`, `reference-title` | warning | the audited sections or counts differ from the reference | `mcprep book compare REF --details "WORK/compare.json"`. For each: count the printed exercises on the pages. Missed: add. The book prints more or fewer than the reference lists: acknowledge with `--count 1` and the reason (the printed number and the page). |
@@ -239,7 +239,7 @@ have a practice set. Write the option you used into `WORK/progress.md` and the r
 This is the slow way to perfection and it always works. Do it for every section that has a practice set and no, or wrong, proposals. When the book repeats one
 regular shape (one exercise to a page, a keyword in front of every number), a short script is the sensible way: read each page with `mcprep lines PAGE --json`, apply
 the formulas of section 6 (a figure or a table has no text lines: the region runs to the last ink of the page, and an edge must lie in a white row, which
-`--ink` checks), write the ONE batch file below and apply it. Say in the report (heading Layout) which rule the script used.
+the gate checks), write the ONE batch file below and apply it. Say in the report (heading Layout) which rule the script used.
 
 1. Find the practice set: its pages from the contents (`outline derive` prints the practice pages), else search `mcprep lines PAGE --json` for the heading.
 2. For each page: `mcprep lines PAGE --json --project "P"`. An exercise starts at a line whose text starts with the label pattern of the book.
