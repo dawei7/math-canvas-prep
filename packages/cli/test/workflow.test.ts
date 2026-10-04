@@ -169,7 +169,7 @@ describe('from proposals to a bundle the importer accepts', () => {
 describe('the documents the tool carries', () => {
   it('prints the JSON schemas', async () => {
     const cli = await workspace({ init: false });
-    expect((await cli(['schema'])).json.result.schemas).toEqual(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary']);
+    expect((await cli(['schema'])).json.result.schemas).toEqual(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary', 'verify']);
     const frames = await cli(['schema', 'frames']);
     expect(frames.code).toBe(0);
     expect((frames.json.result.schema as { title: string }).title).toContain('frames.json');

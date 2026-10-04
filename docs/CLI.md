@@ -76,6 +76,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`propose`](#propose): Suggest exercises, parts, context and bookmarks from the printed text (offline heuristics, nothing is applied).
 - [`exercises propose`](#exercises-propose): Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).
 - [`solutions propose`](#solutions-propose): Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.
+- [`exercises verify`](#exercises-verify): Check the audited exercises against the text layer of the PDF, without looking: the same list for every agent.
 - [`frames list`](#frames-list): List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.
 - [`frames add`](#frames-add): Add a frame: an exercise, a question or a bookmark.
 - [`frames update`](#frames-update): Change the page, rectangle or kind of a frame.
@@ -682,6 +683,38 @@ $ mcprep solutions propose --replace --apply
 ```
 
 With `--json`, `result` is: `{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise, added, unchanged, changed }, changed: string[] (SECTION:LABEL of exercises whose solution differs from the proposal), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has dryRun, created, replaced, removed, book and validation`
+
+## exercises verify
+
+Check the audited exercises against the text layer of the PDF, without looking: the same list for every agent.
+
+```
+mcprep exercises verify [options]
+```
+
+Reads the project on disk and the text layer of its PDF (no pixels, no network) and reports what a person would find by looking at the crops, in a fixed order (errors, warnings, infos; by code; by the order of the book): an exercise whose region does not start with its number (read at the left margin, so a numerator or a figure label above the number does not count), an answer region that holds another number, regions that lie on each other or are the same, a region that is too large, too narrow or too small, an unknown section or a page outside its section, numbers that are missing, repeated, out of order in their column or far above the rest of their section, and sections with few or no answers. Every finding has a code, a severity, the reference of the exercise (SECTION:LABEL), the page, a message and the evidence (the first 40 characters found, the numbers measured). The codes, their thresholds and what to do about each are in docs/AUDIT_A_BOOK.md. `--details FILE` writes the whole report (format math-canvas-verify, see `mcprep schema verify`); the JSON result carries the first 300 findings and says how many it left out. The exit code is 4 when there is a finding of the severity `--fail-on` names or a worse one (default: an error). Nothing is changed.
+
+Options:
+
+- `--section <id>`: Only the exercises filed under this section (an outline entry id); repeat the option, or separate the ids with commas. Ordinary exercises are then left out.
+- `--details <file>`: Write the whole report as JSON (every finding, every section), in the format math-canvas-verify.
+- `--fail-on error|warning|none`: Exit with code 4 when there is a finding of this severity or a worse one: error (the default), warning, or none (always 0).
+- `--item-pattern <regex>`: How the number of an exercise or an answer starts a line, for a book that does not print `5.`, `5)` or `(5)`: a regular expression with the label as printed in group 1 (the same option as `exercises propose`); repeatable. It adds to what is read by default.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises verify
+$ mcprep exercises verify --section 1.2 --section 1.3
+$ mcprep exercises verify --details verify.json --fail-on warning
+$ mcprep exercises verify --json
+```
+
+With `--json`, `result` is: `{ format: "math-canvas-verify", version: 1, summary: { exercises, authoritative, sections, solutions, errors, warnings, infos }, findings: [{ code, severity, ref, page, message, evidence }] (the first 300; findingsOmitted: n says how many more the --details file has), sections: [{ id, label, exercises, firstLabel, lastLabel, withSolution, gaps, duplicates }] }; the exit code is 4 when --fail-on is met`
 
 ## frames list
 
@@ -1751,7 +1784,7 @@ mcprep schema [name] [options]
 
 Arguments:
 
-- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary. Without a name the available schemas are listed.
+- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify. Without a name the available schemas are listed.
 
 Options:
 

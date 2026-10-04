@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { AUDIT_INSTRUCTIONS, registerAuditTools } from './audit-tools.js';
 import { capLists, dryRun, flags, force, frameId, kind, page, projectArg, rect, rectArg, region, regionArg, snap, type CliResult } from './args.js';
 import { BOOK_INSTRUCTIONS, registerBookTools } from './book-tools.js';
+import { VERIFY_INSTRUCTIONS, registerVerifyTools } from './verify-tools.js';
 
 /**
  * The MCP server: the same operations as the `mcprep` command line, as typed tools with descriptions that teach the
@@ -35,7 +36,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const env = options.env ?? process.env;
   const cwd = options.cwd ?? process.cwd();
   let current: string | undefined = options.project ?? env['MCPREP_PROJECT'];
-  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}` });
+  const server = new McpServer({ name: 'math-canvas-prep', version: VERSION }, { instructions: `${INSTRUCTIONS}${BOOK_INSTRUCTIONS}${AUDIT_INSTRUCTIONS}${VERIFY_INSTRUCTIONS}` });
 
   async function cli(argv: string[], extra: { stdin?: string; project?: string | undefined } = {}): Promise<CliResult> {
     let out = '';
@@ -622,8 +623,8 @@ export function createServer(options: ServerOptions = {}): McpServer {
     'get_schema',
     {
       title: 'A JSON Schema of the files',
-      description: 'The JSON Schema of bundle-manifest, frames, outline or project files, or of the book summary (book_show, book_export).',
-      inputSchema: { name: z.enum(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary']) },
+      description: 'The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) or of the report of exercises_verify.',
+      inputSchema: { name: z.enum(['bundle-manifest', 'frames', 'outline', 'project', 'book-summary', 'verify']) },
       readOnly: true,
       project: false,
     },
@@ -632,6 +633,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
 
   registerBookTools({ tool, cli, toResult, projectOf });
   registerAuditTools({ tool, cli, toResult, projectOf });
+  registerVerifyTools({ tool, cli, toResult, projectOf });
 
   server.registerResource(
     'agent-guide',

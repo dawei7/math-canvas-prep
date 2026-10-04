@@ -12,6 +12,7 @@ import { info, init, meta, relink } from './commands/project.js';
 import { propose } from './commands/propose.js';
 import { solutionAdd, solutionClear, solutionList, solutionRemove } from './commands/solution.js';
 import { validate } from './commands/validate.js';
+import { exercisesVerify } from './commands/verify.js';
 import type { CommandSpec } from './types.js';
 
 /** Every command, in the order the help lists them (the order of a typical session). */
@@ -33,6 +34,7 @@ export const COMMANDS: CommandSpec[] = [
   propose,
   exercisesPropose,
   solutionsPropose,
+  exercisesVerify,
   framesList,
   framesAdd,
   framesUpdate,

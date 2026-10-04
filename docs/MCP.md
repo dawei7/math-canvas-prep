@@ -108,7 +108,7 @@ write reads the file fresh under a lock; the desktop app asks which version to k
 
 ## Tool reference
 
-52 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+53 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
 
 ### `create_project`
 
@@ -427,11 +427,11 @@ The guide for agents that mark a PDF: coordinate system with a worked example, w
 
 ### `get_schema` (read-only)
 
-The JSON Schema of bundle-manifest, frames, outline or project files, or of the book summary (book_show, book_export).
+The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export) or of the report of exercises_verify.
 
 Arguments:
 
-- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary")
+- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify")
 
 ### `exercises_list` (read-only)
 
@@ -673,3 +673,14 @@ Arguments:
 - `replace` (boolean): Overwrite the solution of an exercise that has a different one; without it that exercise is kept and listed in "changed".
 - `dry_run` (boolean): Compute and validate but do not write the project.
 - `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
+
+### `exercises_verify` (read-only)
+
+A text-only quality check of an audited book, the same list for every agent (no images, no network): reads the exercises stored in the project and the text layer of the PDF and reports what a person would find by looking at the crops. Findings come in a fixed order (errors, warnings, infos; by code; by the order of the book), each as { code, severity, ref (SECTION:LABEL), page (zero-based), message, evidence }. Codes: label-not-first (the region does not start with its number, read at the left margin; or its left edge cuts the number), no-text, solution-label-missing (the answer region does not hold the label as the start of an item), solution-no-text, overlap (regions of two exercises lie on each other), context-overlaps-frame, duplicate-region, region-size (taller than 0.45, narrower than 0.05 or smaller than 0.002 in area), section-unknown, section-page, gap (numbers missing in a section), duplicate, non-numeric-label, order (a label out of order in its column), no-solution (a section with no or few answers) and label-outlier. The result also has summary (counts) and sections (per section: exercises, first and last label, withSolution, gaps, duplicates). Fix every error (crop the exercise with render_crop, then update_frame, exercises_label, exercises_section, solution_add), look at the warnings, and call it again until there are no errors. It changes nothing. details_file writes the whole report; the result carries the first 300 findings and findingsOmitted says how many it left out. The exit code of the command is 4 when fail_on is met, which is a result here, not a failure.
+
+Arguments:
+
+- `sections` (string[]): Only the exercises filed under these sections (outline entry ids, "1.2"); default all. Ordinary exercises are then left out.
+- `details_file` (string): Write the whole report (every finding) as JSON to this file (format math-canvas-verify).
+- `fail_on` ("error" | "warning" | "none"): The severity from which the command line would exit with code 4 (default error). The result is the same.
+- `item_patterns` (string[]): For a book that does not print "5.", "5)" or "(5)": regular expressions with the label as printed in group 1 (as for exercises_propose); they add to what is read by default.

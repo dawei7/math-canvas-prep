@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/verify.schema.json",
+  "title": "The report of a text-only check of an audited book (mcprep exercises verify --json and --details)",
+  "description": "What a person would find by looking at the crops of an audited book, found from the project and the text layer of its PDF: the same list for every agent that runs the check on the same project. Findings come in a fixed order: errors, warnings, infos; within a severity by code (the order of the table in docs/AUDIT_A_BOOK.md); then in the order of the book. Pages are zero-based. Plain JSON, camelCase.",
+  "type": "object",
+  "required": ["format", "version", "summary", "findings", "sections"],
+  "properties": {
+    "format": { "const": "math-canvas-verify" },
+    "version": { "const": 1 },
+    "summary": {
+      "type": "object",
+      "required": ["exercises", "authoritative", "sections", "solutions", "errors", "warnings", "infos"],
+      "properties": {
+        "exercises": { "type": "integer", "minimum": 0, "description": "Exercise frames checked: the authoritative ones and, without a section filter, the ordinary ones." },
+        "authoritative": { "type": "integer", "minimum": 0 },
+        "sections": { "type": "integer", "minimum": 0, "description": "Sections that hold exercises (the length of `sections`)." },
+        "solutions": { "type": "integer", "minimum": 0, "description": "Authoritative exercises with a solution region." },
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 },
+        "infos": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "severity", "ref", "page", "message", "evidence"],
+        "properties": {
+          "code": {
+            "enum": [
+              "label-not-first",
+              "no-text",
+              "solution-label-missing",
+              "solution-no-text",
+              "overlap",
+              "context-overlaps-frame",
+              "duplicate-region",
+              "region-size",
+              "section-unknown",
+              "section-page",
+              "gap",
+              "duplicate",
+              "non-numeric-label",
+              "order",
+              "no-solution",
+              "label-outlier"
+            ]
+          },
+          "severity": { "enum": ["error", "warning", "info"] },
+          "ref": { "type": "string", "minLength": 1, "description": "SECTION:LABEL of the exercise; the section id alone for a finding about a whole section; the frame id for an exercise a person framed." },
+          "page": { "type": ["integer", "null"], "minimum": 0, "description": "The zero-based page to look at, or null." },
+          "message": { "type": "string", "description": "A sentence for a person." },
+          "evidence": { "type": "string", "description": "What the finding rests on: the first 40 characters of the text found, the numbers measured." }
+        },
+        "additionalProperties": false
+      }
+    },
+    "findingsOmitted": { "type": "integer", "minimum": 1, "description": "Only in the printed result of the command (not in the --details file): how many findings were left out after the first 300." },
+    "sections": {
+      "type": "array",
+      "description": "The sections that hold exercises, in the order of the outline (sections the outline does not have follow, by id).",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "exercises", "firstLabel", "lastLabel", "withSolution", "gaps", "duplicates"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": ["string", "null"], "description": "The number printed with the section's heading, when its outline entry has one." },
+          "exercises": { "type": "integer", "minimum": 1 },
+          "firstLabel": { "type": ["string", "null"], "description": "Of the first exercise of the section in reading order." },
+          "lastLabel": { "type": ["string", "null"] },
+          "withSolution": { "type": "integer", "minimum": 0 },
+          "gaps": { "type": "array", "items": { "type": "string" }, "description": "The numbers between the first and the last that no exercise has (labels that start with an integer; strays left out)." },
+          "duplicates": { "type": "array", "items": { "type": "string" }, "description": "Labels that two or more exercises of the section have." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
