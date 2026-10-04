@@ -12,7 +12,8 @@ This page is the contract. The reference implementation of reading, validating a
 
 ## 1. The container
 
-- A ZIP archive, extension `.mcbundle`, UTF-8 entry names, no encryption, no directories, deflate or stored.
+- A ZIP archive, extension `.mcbundle`, UTF-8 entry names, no encryption, no directories, deflate or stored. A stored entry
+  has its size in its entry header, not after its data: a reader reads the archive as a stream and rejects one that does not.
 - Exactly these entries (names are case-sensitive and fixed):
 
 | Entry | Required | What it is |
@@ -22,9 +23,14 @@ This page is the contract. The reference implementation of reading, validating a
 | `frames.json` | yes | The marked regions (section 3). May hold an empty list. |
 | `outline.json` | no | A table of contents (section 4). |
 
-- Any other entry is ignored and never extracted. A reader must not use entry names as file paths.
+- Any other entry is ignored and never extracted, with one exception: an entry whose name has a `..` segment (a part
+  between slashes that is exactly `..`), starts with `/` or has a backslash makes the **whole bundle invalid**, and a reader
+  rejects it (such a name could leave its folder when the archive is unpacked, and Android 14 and later cannot read past
+  it). A reader must not use entry names as file paths.
 - Limits a reader enforces (reject the bundle when exceeded): at most 16 entries, `document.pdf` at most 512 MiB, each
   JSON entry at most 16 MiB, the whole archive at most 600 MiB.
+- A JSON entry is UTF-8 text (a leading byte order mark is ignored) whose objects and lists nest at most 32 levels deep; a
+  reader rejects bytes that are not UTF-8 and deeper nesting.
 
 ## 2. `bundle.json`
 
@@ -60,11 +66,16 @@ This page is the contract. The reference implementation of reading, validating a
   in version 1 files; readers ignore fields they do not know.
 - `document.title` is what the library shows (1 to 200 characters after trimming). `fileName` is informational.
 - `document.sha256`, `bytes` and `pageCount` must match `document.pdf`; a reader verifies the hash and rejects the bundle
-  on a mismatch (a damaged or tampered file).
+  on a mismatch (a damaged or tampered file). `sha256` is written in lowercase hex (a reader rejects upper case, since it
+  compares the text as written), `bytes` is a whole number of at least 1 and `pageCount` a whole number from 1 to 2147483647.
 - `document.folder` is optional: where the document is filed in the library, as names separated by `/`, at most seven
   levels. A reader cleans every name (no control characters or `/`, trimmed, at most 60 characters) and drops levels beyond
-  the seventh.
+  the seventh. It is text: a reader rejects a folder of any other kind.
 - `outline` is omitted when there is no `outline.json`.
+- The entry names of section 1 are fixed. Where the manifest gives them, `document.pdf` is `"document.pdf"`, `frames` is
+  `"frames.json"` and `outline` is `"outline.json"`; a reader rejects a manifest that names any other entry, and one that
+  names `outline.json` when the archive has none. A JSON `null` counts as left out. An `outline.json` that the manifest does
+  not name is read all the same.
 - `document.author`, `series` (each at most 200 characters), `description`, `notice` (each at most 4000), `license.name` (at most
   100), `license.url` and `sourceUrl` (http or https, at most 500) describe the work itself and are all optional. A reader
   shows author, licence and notice where it shows the document's details: a licence that asks for attribution travels with the file.
@@ -131,7 +142,7 @@ This page is the contract. The reference implementation of reading, validating a
 | `unit` | no | Frames that share a `unit` id are the **parts** of one exercise ((a), (b), (c) become 1.1, 1.2, 1.3). Only `exercise` frames can have one. |
 | `context` | no | At most 8 regions holding the instruction, question or background that belongs to this exercise, wherever it is printed (it may be on another page). It is shown first when the exercise is shown and goes to the AI with every check. Only `exercise` frames can have context. |
 | `authority` | no | `"book"`: an **authoritative exercise**, audited from the book and numbered the way the book numbers it (see "Authoritative exercises"). Only `exercise` frames. Absent: an ordinary exercise, framed by a person for themselves. |
-| `label` | with `authority` | The exercise's number exactly as the book prints it, without the closing `.` or `)`: `5`, `12`, `5a`, `A.3`, `II-4`. 1 to 24 characters: a letter or digit first, then letters, digits, spaces and the characters `. _ - ( ) /` (regular expression `^[\p{L}\p{N}][\p{L}\p{N} ._\-()/]{0,23}$`). Tools warn about a label that ends in `.` or `)` (apart from a closed `(a)`). |
+| `label` | with `authority` | The exercise's number exactly as the book prints it, without the closing `.` or `)`: `5`, `12`, `5a`, `A.3`, `II-4`. 1 to 24 characters: a letter or digit first, then letters, digits, spaces and the characters `. _ - ( ) /` (regular expression `^[\p{L}\p{N}][\p{L}\p{N} ._\-()/]{0,23}$`). Tools warn about a label that ends in `.` or `)` (apart from a closed `(a)`). A reader drops such a closing `.` or `)` before it checks the label (`5.` becomes `5`) and keeps the label so; it drops one character, and the spaces before it, and changes nothing else (`5..` becomes `5.`). |
 | `section` | with `authority` | The `id` of the outline entry (section 4) the exercise belongs to. |
 | `solution` | no | At most 8 regions **of the same document** where the solution or answer of this exercise is printed (for example the answer key at the back of the same PDF). **Hidden**: never shown with the exercise, never sent to a tutor chat, used only to grade. Only `exercise` frames. |
 
@@ -152,8 +163,9 @@ themselves stay **ordinary** (free, positional numbers). The two kinds can live 
 - An authoritative frame is a **single exercise**: no `unit`. The parts of an exercise (`5a`, `5b`) are two exercises with
   two labels; what they share is `context`. It may have `continues`, `context` and `solution`.
 - `label` and `section` are required together with `authority` and are not allowed without it.
-- The pair (`section`, `label`) is unique in the file. A section is the unit in which the book numbers its exercises: a
-  book that starts again at 1 in every practice set needs one section for each set.
+- The pair (`section`, `label`) is unique in the file, the label being the one a reader keeps (`5` and `5.` are the same
+  label). A section is the unit in which the book numbers its exercises: a book that starts again at 1 in every practice set
+  needs one section for each set.
 - `section` names an outline entry by `id` (section 4), so a bundle with authoritative exercises carries `outline.json`
   with those ids.
 - Authoritative exercises do **not** take part in the positional numbering below and are not counted by it. A reader names one
@@ -245,8 +257,8 @@ A book prepared as an authority names its sections with `id`, `label` and `top`:
 
 ## 5. Importing: what a reader does
 
-1. Open the archive, apply the limits, find the four entry names; ignore the rest.
-2. Parse `bundle.json`, check `format` and `version`.
+1. Open the archive, apply the limits, find the four entry names; ignore the rest, but reject an unsafe entry name (section 1).
+2. Parse `bundle.json`, check `format`, `version`, the document block and the entry names it gives (section 2).
 3. Stream `document.pdf` once while computing SHA-256 and compare with the manifest; check `bytes`.
 4. Open the PDF; its page count must equal `pageCount` (a password-protected PDF may not be openable: then `pageCount` is trusted).
 5. Parse and validate `frames.json` (section 3, including the rules of authoritative exercises and solution regions) and

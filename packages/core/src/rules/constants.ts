@@ -46,6 +46,10 @@ export const LIMITS = {
     maxPdfBytes: 512 * 1024 * 1024,
     maxJsonBytes: 16 * 1024 * 1024,
     maxArchiveBytes: 600 * 1024 * 1024,
+    /** Objects and lists nested deeper than this in a JSON entry are refused before the entry is parsed. */
+    maxJsonNesting: 32,
+    /** `document.pageCount` is a 32-bit signed number in the app. */
+    maxPageCount: 2147483647,
   },
 } as const;
 

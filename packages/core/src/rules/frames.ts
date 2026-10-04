@@ -1,3 +1,4 @@
+import { dropClosingPunctuation } from '../model/authority.js';
 import { isBelowMinimum, rectHeight, rectWidth } from '../model/rect.js';
 import { AUTHORITIES, FRAME_KINDS, type Authority, type Frame, type FrameKind, type Rect, type Region } from '../model/types.js';
 import { AUTHORING, LIMITS } from './constants.js';
@@ -23,7 +24,11 @@ export interface CheckOptions {
 export interface CheckResult {
   /** The frames after repairs. Only meaningful when no issue is an error. */
   frames: Frame[];
-  /** Errors and repairs, in the order they were found. */
+  /**
+   * Errors and repairs, in the order they were found, and one kind of warning that needs the frame as it was written: a
+   * label that ends with the punctuation the book prints (`label-style`; the importer drops it and the frame holds the label
+   * without it).
+   */
   issues: Issue[];
 }
 
@@ -140,7 +145,9 @@ function readFrame(item: unknown, index: number, state: ReadState): Frame | unde
     }
     return raw;
   };
-  const label = readText('label');
+  const written = readText('label');
+  /** The label as the importer keeps it (see below); only an authoritative exercise has one. */
+  let label: string | undefined;
   const section = readText('section');
 
   let unit: string | undefined;
@@ -203,15 +210,27 @@ function readFrame(item: unknown, index: number, state: ReadState): Frame | unde
         }),
       );
     }
-    if (label === undefined) {
+    if (written === undefined) {
       issues.push(issue('error', 'label-missing', `${name} is an authoritative exercise but has no label.`, { ...base, fix: 'Give it the number the book prints, for example --label 5a.' }));
-    } else if (!LIMITS.labelPattern.test(label)) {
-      issues.push(
-        issue('error', 'bad-label', `The label of ${name} (${JSON.stringify(label)}) must be 1 to ${LIMITS.labelMax} characters: it starts with a letter or digit and continues with letters, digits, spaces and . _ - ( ) /`, {
-          ...base,
-          fix: 'Write the number exactly as the book prints it, without the closing "." or ")": 5, 5a, A.3.',
-        }),
-      );
+    } else {
+      // The importer drops the "." or ")" the book prints after a number before it checks and keeps the label, so a label
+      // is judged, and its (section, label) pair compared, in that form. It is named in a message as it was written.
+      label = dropClosingPunctuation(written);
+      if (!LIMITS.labelPattern.test(label)) {
+        issues.push(
+          issue('error', 'bad-label', `The label of ${name} (${JSON.stringify(written)}) must be 1 to ${LIMITS.labelMax} characters: it starts with a letter or digit and continues with letters, digits, spaces and . _ - ( ) /`, {
+            ...base,
+            fix: 'Write the number exactly as the book prints it, without the closing "." or ")": 5, 5a, A.3.',
+          }),
+        );
+      } else if (label !== written) {
+        issues.push(
+          issue('warning', 'label-style', `The label of ${name} (${JSON.stringify(written)}) ends with a "${written.endsWith('.') ? '.' : ')'}", the punctuation the book prints after the number and not part of the label; the importer drops it and keeps ${JSON.stringify(label)}.`, {
+            ...base,
+            fix: `Write it as the bare number: \`mcprep exercises label ${name} ${JSON.stringify(label)}\`.`,
+          }),
+        );
+      }
     }
     if (section === undefined) {
       issues.push(issue('error', 'section-missing', `${name} is an authoritative exercise but has no section.`, { ...base, fix: 'Give it the id of the outline entry (the section) it belongs to, for example --section 1.2.' }));
@@ -224,7 +243,7 @@ function readFrame(item: unknown, index: number, state: ReadState): Frame | unde
       );
     }
   } else {
-    if (label !== undefined) {
+    if (written !== undefined) {
       issues.push(issue('error', 'label-without-authority', `${name} has a label but no authority; only authoritative exercises have one.`, { ...base, fix: 'Add "authority": "book" (and a section), or remove the label.' }));
     }
     if (section !== undefined) {
