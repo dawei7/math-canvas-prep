@@ -38,7 +38,7 @@ Write these down once and never change them:
 | `MCPREP` | the command that runs the tool on the command line surface: `node REPOSITORY/packages/cli/bin/mcprep.js` with the absolute path of the clone the task names. Wherever this runbook writes `mcprep`, run `MCPREP` (inside the clone, `npx mcprep` is the same program) |
 | `PDF` | the absolute path of the book |
 | `NAME` | the file name of the PDF without `.pdf` |
-| `WORK` | an absolute path of a new folder for everything you write (never the PDF's own folder) |
+| `WORK` | an absolute path of a new folder for everything you write (make it if it does not exist; never the PDF's own folder) |
 | `P` | `WORK/NAME.mcprep.json` (the project) |
 | `BUNDLE` | `WORK/NAME.mcbundle` |
 | `SIDECAR` | `NAME.meta.json` next to the PDF, if it exists |
@@ -50,7 +50,7 @@ Write these down once and never change them:
 **One surface for the whole run**: the command line (`mcprep ...`, every command with `--project "P"`) or the MCP server (tool names in
 section 12). Do not mix them.
 
-**Start the call log first**, so that two runs can be compared: CLI: set the environment variable `MCPREP_CALL_LOG` to
+**Start the call log before your first `mcprep` call**, so that two runs can be compared: CLI: set the environment variable `MCPREP_CALL_LOG` to
 `WORK/calls.jsonl` (bash: `export MCPREP_CALL_LOG="WORK/calls.jsonl"`; PowerShell: `$env:MCPREP_CALL_LOG = "WORK/calls.jsonl"`; if your shell does not keep
 environment variables from one call to the next, put the assignment in front of every `mcprep` command: `MCPREP_CALL_LOG="WORK/calls.jsonl" mcprep ...`); MCP:
 start the server with `--call-log "WORK/calls.jsonl"`.
@@ -59,7 +59,8 @@ start the server with `--call-log "WORK/calls.jsonl"`.
 interrupted, whoever continues reads that file and goes on at the first step that is not there.
 
 **Calls.** Anything that only reads (`lines`, `render`, `crop`, `info`, `pages sheets`, `exercises census`, `outline` without `--apply`, your own scripts over their output) is
-allowed whenever you need it to find out what the book prints. The calls that CHANGE the project are the ones this runbook lists, and the options of a gate call are always the same
+allowed whenever you need it to find out what the book prints. The calls that CHANGE the project are the ones this runbook lists, among them the outline commands (`outline add`,
+`outline update`, `outline delete`, `outline set`, `outline ids`: the outline must equal the contents the book prints, section 1A and A5), and the options of a gate call are always the same
 (`GATE`), so that every call sees the same findings.
 
 **Sidecar** (all keys optional): `title`, `folder`, `author`, `series`, `description`, `license {name, url}`, `sourceUrl`, `notice`,
@@ -102,7 +103,7 @@ picture write ONE small file `WORK/survey/pages-0001.json` (its number) that say
 `kind` is one of: `exercises` (the page holds an exercise or part of one: a set at the end of a section or chapter, or exercises inside the text), `answers` (answers or worked
 solutions of exercises, and no exercise), `both` (exercises and answers on one page), `text` (exposition, worked examples, figures: no exercise of the book), `blank` (empty, a divider,
 a picture only), `front` (title, copyright, preface, contents), `back` (index, bibliography, glossary, appendices that are neither exercises nor answers). Every page of the book gets
-exactly one kind. An exercise is an item with a printed label (a number, a letter, `1.2`, `Exercise 3`) that the book asks the learner to solve, wherever it stands: at the end of a section,
+exactly one kind. `WORK/survey/` holds ONLY the survey record and your notes: every `.json` file in it is read as a survey record (the `note` of an entry is at most 120 characters, `mcprep schema survey`), so put line dumps, data files and scripts into `WORK/scratch/` and write your notes as `.md` files. An exercise is an item with a printed label (a number, a letter, `1.2`, `Exercise 3`) that the book asks the learner to solve, wherever it stands: at the end of a section,
 in a chapter list, inside the text. An example the book works out for the reader is `text`; so is an item without a printed label (a "guided practice" or "try it" box): it is no exercise
 of the bundle (the learner can frame it in the app), but write it into `layout.md` and the report. When a picture leaves you unsure about a page, look at that page at reading size (S3)
 before you write it down. A book of 1,000 pages is 125 pictures: that is the work, do it.
@@ -126,7 +127,7 @@ regular. Check the census against your pages: every page you marked `exercises` 
 set of yours or explained (a bibliography, the steps of a method, a list in the exposition).
 
 **S5. The plan.** Write `WORK/survey/plan.md`: how you will produce the exercises. (a) A draft from `exercises propose`, which you may use only for the sets whose labels and counts it
-reproduces exactly (check three of them against the pages). (b) A script of your own that reads the lines of the pages and writes one batch file: the sensible way for a regular layout
+reproduces exactly (check three of them against the pages); for many layouts it reads nothing, and (b) is then the normal way. (b) A script of your own that reads the lines of the pages and writes one batch file: the sensible way for a regular layout
 (section 9). (c) By hand with `exercises add` for what is left. Whatever you choose, the census is the target: at the end of Phase A the project holds exactly the exercises of the census.
 
 ## 2. Phase A: the sections and the exercises (A3 to A9; A1 and A2 are in section 1A)
@@ -134,12 +135,13 @@ reproduces exactly (check three of them against the pages). (b) A script of your
 **A3. What the book says about itself.** One call, only the options you know, in this order: author, series, description, licence name,
 licence address, source address, notice:
 `mcprep book meta --author "..." --license-name "..." --license-url "..." --source-url "..." --notice "..." --project "P"`.
-Take them from the sidecar. Without a sidecar read the text of the first four pages, always these four calls in this order and no others: `mcprep lines 0
+Take them from the sidecar. For a fact the sidecar does not give (it may hold only a title and a folder), and without a sidecar, read the text of the first four pages, always these four calls in this order and no others: `mcprep lines 0
 --pdf "PDF"`, `mcprep lines 1 --pdf "PDF"`, `mcprep lines 2 --pdf "PDF"`, `mcprep lines 3 --pdf "PDF"`, and use only what they say in so many words (an author after
 "by" or a copyright line, a Creative Commons or other licence line, a web address), never anything from memory. Nothing found: skip the `book meta` call.
 
 **A4. Look at the sections.** `mcprep outline derive --book [OPTIONS] --project "P"` without `--apply`; OPTIONS are the sidecar's `options` as flags
-(`--chapter-words`, `--practice-words`, `--answer-words`). Read the first line, the table (confidence, practice set) and the notes.
+(`--chapter-words`, `--practice-words`, `--answer-words`). Read the table (confidence, practice set) and the notes, not the count in the first line: it counts what the tool found, also when it fell back to
+the generic heading detection (the note under the table says so), and that draft can hold title lines, author lines and the lines of the printed contents as "sections".
 - Sections found = 0: the book prints no numbered sections. Try `mcprep outline pdf --adopt --project "P"` then `mcprep outline ids --project "P"`
   (the PDF's own bookmarks); if the PDF has none, `mcprep outline add --title "TITLE" --page 0 --depth 0 --id all --project "P"` (one section for the
   whole book). Say which you did in the report, and go on at A6.
@@ -148,7 +150,7 @@ Take them from the sidecar. Without a sidecar read the text of the first four pa
 **A5. Store the sections.** The same call with `--apply`. Then compare the sections with your census: every exercise set of the census needs a section that its exercises can be filed under. When
 the book heads a set with a heading the contents do not list (the contents print "Chapter review", the page heads its set "1.4 Exercises"), add that heading as a section yourself, with the number
 the book prints: `mcprep outline add --title "Exercises" --label "1.4" --id 1.4 --page P --top T --depth 1 --at POSITION --project "P"` (`--top` is where the heading starts on its page, from
-`mcprep lines`; `--at` keeps the outline in reading order: `mcprep outline` lists the positions). A section the book prints in its pages is a section; one the book does not print is not.
+`mcprep lines`; `--at` keeps the outline in reading order: `mcprep outline` lists the positions). A section the book prints in its pages is a section; one the book does not print is not: delete what the draft stored and the book does not print (`mcprep outline delete ID`, or `mcprep outline delete --index N` for an entry that has no id), correct depth, title, page, label or id of the rest (`mcprep outline update ID --depth D --page P --label L --new-id ID2`; sibling headings need the same depth), and compare the outline with the printed contents and with your `structure.md` before you go on.
 
 **A6. Frame the exercises, as your plan says (S5); the census is the target.**
 - (a) A draft: `mcprep exercises propose --solutions [OPTIONS] --details "WORK/propose.json" --project "P"` without `--apply` (add `--max-items N` only when the sidecar says
@@ -180,7 +182,7 @@ with more exercises than the reference lists, a remark printed between two exerc
 findings cannot be acknowledged at all and `audit ack` refuses them: `label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`,
 `section-unknown`, `section-page`, `span-gap`, `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`,
 `solution-section-mismatch`, `region-holds-item`, `survey-missing`, `survey-overlap`, `survey-range`, `survey-uncovered`, `survey-unmarked`; repair them. For the others:
-`mcprep audit ack --code CODE --ref REF --page N --quote "TEXT" --reason "SENTENCE" --by "ME" PATTERNS [--reference "REF" ...] --project "P"`, where `--page` is the zero-based page of the finding,
+`mcprep audit ack --code CODE --ref REF --page N --quote "TEXT" --reason "SENTENCE" --by "ME" PATTERNS --survey "WORK/survey" [--reference "REF" ...] --project "P"`, where `--page` is the zero-based page of the finding,
 `--quote` (4 to 60 characters) is a piece of the text printed on that page (copy it from `mcprep lines N`; a piece of the finding's own message is refused), and
 `--reason` says in your own words what the book prints and where (at least ten characters, not the text of the finding). A note for a whole section needs
 `--count N`. You cannot confirm your own notes: they stay `confirmed: false` until somebody with another name runs `audit confirm` (Phase D).
@@ -204,7 +206,7 @@ gate call on the largest book takes about 20 seconds. If your shell stops comman
 sheet, append `C2 sheet N done` to `WORK/progress.md`, and go on to the next sheet. A folder of small files keeps every write short and lets a run be resumed; the format is
 `mcprep schema visual`. An entry:
 `{"ref": "SECTION:LABEL", "startsWith": "<the first three words printed after the number, as you read them in the cell>", "instruction": true|false,
-"answerStartsWith": "<the number at the start of the green box, or empty>", "ok": true|false, "defect": "<CODE or a word, only when ok is false>"}`.
+"answerStartsWith": "<the number at the start of the green box without brackets or dots (1 for [1] or 1.), or empty>", "ok": true|false, "defect": "<CODE or a word, only when ok is false>"}`.
 Write **what the cell shows, not what you expect**: a cell without a blue box is `"instruction": false`. A cell is `ok` only when you can see the label at the top of the
 exercise, the whole statement, no line cut in half, nothing of the next exercise, the right instruction, the whole continuation, and an answer that starts with the label
 of its exercise, is whole and holds nothing of the next answer. Defect words: CUT-TOP, CUT-BOTTOM, SWALLOWS-NEXT, MISSING-PART, EXTRA-TEXT, WRONG-INSTRUCTION,
@@ -222,9 +224,9 @@ visual record is missing; a person or another agent then finishes Phase C with t
 
 ## 5. Phase D: certificate, review, export, report
 
-1. `mcprep audit gate PATTERNS --survey "WORK/survey" [--reference "REF" ...] --visual "WORK/visual" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
+1. `mcprep audit gate PATTERNS --survey "WORK/survey" [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
    `unconfirmed` left: go on at 2. Anything else open (a missing survey or visual record included): back to Phase S, B or C. Without Phase S and Phase C the book is not finished: do not report it as passed.
-2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS --survey "WORK/survey" [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
+2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS --survey "WORK/survey" [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
    here for them: **somebody with another name** looks at each and runs `mcprep audit confirm --by NAME --all` (or `--ref REF --code CODE`), then `--final` is run again.
 3. `mcprep export --out "BUNDLE" --project "P"`; it says whether the certificate is current and how many acknowledgements are not yet confirmed. A later change makes the
    certificate stale: run the gate again.
@@ -237,11 +239,13 @@ visual record is missing; a person or another agent then finishes Phase C with t
 Coordinates are fractions of the page as displayed, origin top-left, `left,top,right,bottom`. Read the text of a page with `mcprep lines PAGE --json
 --project "P"`: every line has its box. For the region of one exercise use exactly these formulas, then `--snap`:
 
-- `left` = the smallest left of the lines of its column minus 0.01; `right` = the largest right plus 0.01;
+- `left` = the smallest left of the lines of the exercise itself (not of a heading above it that stands further left) minus 0.01; `right` = the largest right plus 0.01;
 - `top` = the top of its first line minus 0.004 (a tall letter, a box border or a bracket reaches above the box of the text line; the edge must lie in white, the gate says whether it does);
 - `bottom` = the smaller of (the top of the next label, instruction or heading in the same column minus 0.004) and (the bottom of its own last line plus
   0.006); never below its own last line;
 - a figure or a tall formula (a matrix, a fraction) that stands above or below the line: take the whole figure, then run `mcprep audit gate` (an edge must lie in white);
+- a box drawn round the exercise: the pixel check accepts a region that holds the border whole or none of it, and cuts it in between. Take the box whole (every edge just outside its border, in white,
+  as the gate names the position), and when text runs out of the box take the whole box and the overflow;
 - the instruction printed once above a group: its lines the same way, attached with `--context`; the regions of a neighbour that already has it:
   `mcprep exercises list --section S --regions --project "P"` prints them as `page:left,top,right,bottom`: copy them (`mcprep context add REF --page P --rect l,t,r,b`
   for each region);
@@ -274,7 +278,7 @@ Order: errors first, in this order. `REF` is `SECTION:LABEL`. After each repair:
 | `gap` | warning | numbers are missing between the first and the last | Search the pages for the missing label (`mcprep lines PAGE --json`). Printed but not framed: `exercises add`. Not printed: acknowledge, with the page where the numbers jump. |
 | `order`, `label-outlier` | warning | a label is out of order in its column, or very large | A misread label: `exercises label REF NEWLABEL`. Otherwise acknowledge what the book prints. |
 | `no-solution` | info or warning | a section has no answers at all, or too few | List the exercises without an answer (`mcprep exercises list --without-solution --section S`). For each: look for its answer in the key. Printed: `solution add`. Not printed (a key of selected answers): acknowledge with `--count`. |
-| `text-left-behind` | warning | text of the exercise zone lies outside every region | Find the exercise above it: extend its region (`frames update`) or `continues add`; or the text is a heading or remark of the book: acknowledge. A running head that changes with the chapter (the tools know only the ones that repeat on many pages) or an imprint page is such a case: one note for each finding, the quote is the head itself. |
+| `text-left-behind` | warning | text of the exercise zone lies outside every region | Find the exercise above it: extend its region (`frames update`) or `continues add`; or the text is a heading or remark of the book: acknowledge. A running head that changes with the chapter (the tools know only the ones that repeat on many pages) or an imprint page is such a case: one note for each finding, the quote is the head itself. A set that stands in the middle of a chapter, with body text on the pages after it (the tool counts those pages to the zone of the set), is such a case too: one note for each page, reason "the chapter goes on after its set", the quote a piece of that body text. |
 | `answer-clipped` | warning | an answer goes on below or beside its region | Extend the answer's region (`solution remove REF --index I` then `solution add`) or add a region for the rest. |
 | `context-overlaps-frame` | warning | an instruction region touches an exercise | Move the instruction's region off the exercise (`context remove` and `context add` with the formulas of section 6); a context shared by several exercises is attached to each. |
 | `continuation-limit` | warning | an exercise already holds 8 continuation regions and text follows | The book spans more than the format allows: acknowledge with the pages; do not cut the exercise. |
@@ -317,7 +321,7 @@ the gate checks), write the ONE batch file below and apply it. Say in the report
 
 ## 10. The report (always these headings, in this order)
 
-1. **Book**: title, PDF path, SHA-256 (from `import-check`), pages, text layer (pages without), licence/author/notice stated or not.
+1. **Book**: title, PDF path, SHA-256 (`mcprep import-check --json "BUNDLE"`, `document.sha256`), pages, text layer (pages without), licence/author/notice stated or not.
 2. **Result**, exactly one of: `PERFECT` (`audit gate --final` exit 0); `PASSED, awaiting confirmation of N acknowledgements` (everything else done, only `unconfirmed` is left);
    `NOT FINISHED` followed by what is missing (for example the visual pass: say how many of the exercises have an entry); the STOP code. No other wording. Then: chapters,
    sections, exercises, exercises with an answer; the gate certificate path.
