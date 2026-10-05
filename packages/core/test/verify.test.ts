@@ -222,6 +222,35 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(refs(make('6', 0.605))).toEqual(['s:6']);
   });
 
+  it('places a label in the middle of a joined row from the right end of the line, past the gap between the columns', () => {
+    // "47. ... side48 . [T] The total cost in": the gap between the columns is not in the text, so the share of the characters would
+    // place 48 too far left; measured from the right end with the usual width of a character it lies inside the region of 48.
+    const page: PageText = {
+      page: 0,
+      size: { width: 595, height: 842, rotation: 0 },
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: '47. Two vehicles start out traveling side48 . [T] The total cost in', rect: { left: 0.1, top: 0.2, right: 0.56, bottom: 0.215 }, fontSize: 8, column: 0, chars: 67 },
+        { text: 'hundreds of dollars, to produce x', rect: { left: 0.36, top: 0.22, right: 0.56, bottom: 0.235 }, fontSize: 8, column: 0, chars: 33 },
+        { text: 'thousand jars of mayonnaise is given', rect: { left: 0.36, top: 0.24, right: 0.576, bottom: 0.255 }, fontSize: 8, column: 0, chars: 36 },
+        // A row joined across both columns whose centre falls inside the region of 49 below: it does not start that region.
+        { text: 'that is also connected to the ground. apartment and', rect: { left: 0.1, top: 0.3, right: 0.62, bottom: 0.315 }, fontSize: 8, column: 0, chars: 51 },
+        { text: '49 . [T] You are moving into a new', rect: { left: 0.36, top: 0.28, right: 0.6, bottom: 0.295 }, fontSize: 8, column: 0, chars: 34 },
+      ],
+    };
+    const make = (label: string, top: number, bottom: number): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [{ id: 'c', kind: 'exercise', page: 0, rect: { left: 0.355, top, right: 0.62, bottom }, authority: 'book', label, section: 's' }],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    const refs = (project: Project): string[] => verifyProject(project, lookup).findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref);
+    expect(refs(make('48', 0.195, 0.26))).toEqual([]);
+    expect(refs(make('50', 0.195, 0.26))).toEqual(['s:50']);
+    expect(refs(make('49', 0.275, 0.32))).toEqual([]);
+  });
+
   it('trusts the pieces of a joined line over the line: a region on the wrong column does not hold its label through the whole line', () => {
     const left = { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 };
     const right = { left: 0.55, top: 0.2, right: 0.75, bottom: 0.22 };

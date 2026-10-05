@@ -1,7 +1,7 @@
 import type { Rect } from '../model/types.js';
 import { draft, measure, type Draft, type Exercise } from './common.js';
 import { excerpt, labelSpan, rowHasItem, rowStartsWithLabel } from './labels.js';
-import type { PageIndex, RegionText } from './regions.js';
+import type { PageIndex, PageLines, RegionText } from './regions.js';
 import { VERIFY_LIMITS } from './types.js';
 
 /**
@@ -32,17 +32,33 @@ function cutsNumber(text: RegionText, region: Rect, label: string): boolean {
 /** How far the estimated place of a number may lie left of the region's edge (the place is estimated from the share of the characters). */
 const TAIL_SLACK = 0.015;
 
+/** The usual width of one character on a page: the median over its pieces of 20 characters or more (a whole line has no gap in it then). */
+const charWidths = new WeakMap<PageLines, number>();
+function charWidth(page: PageLines): number {
+  let width = charWidths.get(page);
+  if (width === undefined) {
+    const widths = page.pieces.filter((piece) => piece.text.length >= 20).map((piece) => (piece.rect.right - piece.rect.left) / piece.text.length).sort((a, b) => a - b);
+    width = widths.length === 0 ? 0 : (widths[Math.floor(widths.length / 2)] as number);
+    charWidths.set(page, width);
+  }
+  return width;
+}
+
 /**
- * A line that comes into the region from the left ends with the label as an item ("... is leaning against a 6 .", "shown:142 ."),
- * and the label, placed by its share of the characters, lies inside the region: the text layer joined the row of items into one line.
+ * A line that comes into the region from the left holds the label as an item ("... is leaning against a 6 .", "side48 . [T] The
+ * total cost", "68 . Slope passes through 69 . Slope passes through"), and the label, placed from the right end of the line by the
+ * usual width of a character (the gap between the columns is not in the text), lies inside the region: the text layer joined the row
+ * of items into one line.
  */
-function endsWithLabel(line: { text: string; rect: Rect }, region: Rect, label: string): boolean {
+function holdsLabel(line: { text: string; rect: Rect }, region: Rect, label: string, width: number): boolean {
+  if (width <= 0) return false;
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = new RegExp(`(?:^|[^\\d.])(\\(?${escaped}\\s?[.)])\\s*$`).exec(line.text);
-  if (!match) return false;
-  const tail = line.text.length - (match.index + match[0].indexOf(match[1] as string));
-  const start = line.rect.right - ((line.rect.right - line.rect.left) * tail) / line.text.length;
-  return start >= region.left - TAIL_SLACK;
+  for (const match of line.text.matchAll(new RegExp(`(?:^|[^\\d.])(\\(?${escaped}\\s?[.)])(?=\\s|$)`, 'g'))) {
+    const at = (match.index as number) + match[0].indexOf(match[1] as string);
+    const start = line.rect.right - (line.text.length - at) * width;
+    if (start >= region.left - TAIL_SLACK && start <= region.right) return true;
+  }
+  return false;
 }
 
 /** An exercise's own region: the first row at its left margin starts with its label. */
@@ -73,7 +89,7 @@ export function checkExerciseText(exercises: readonly Exercise[], index: PageInd
     const ok =
       (text.margin !== undefined && rowStartsWithLabel(text.margin, label, patterns)) ||
       text.straddling.some((line) => rowHasItem(line, label, patterns)) ||
-      text.entering.some((line) => endsWithLabel(line, frame.rect, label));
+      text.entering.some((line) => holdsLabel(line, frame.rect, label, charWidth(page)));
     const cut = ok && cutsNumber(text, frame.rect, label);
     if (ok && !cut) continue;
     drafts.push(

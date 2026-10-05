@@ -32,6 +32,8 @@ const SAME_ROW = 0.5;
 export const MARGIN = 0.012;
 /** A line whose centre is outside a region but that covers this much of its width runs into it (two exercises joined into one line). */
 const STRADDLE = 0.4;
+/** A piece that starts this far left of a region's edge comes in from the left (a line joined across columns); a cut number is narrower. */
+const FROM_OUTSIDE = 0.03;
 
 export interface RegionText {
   /** Pieces of text inside the region, from top to bottom (running headers and footers left out). */
@@ -172,8 +174,12 @@ export class PageLines {
       .filter((piece) => (topmost === undefined ? piece.rect.top <= region.top + 2 * (piece.rect.bottom - piece.rect.top) : sameRow(piece.rect, topmost) || piece.rect.top <= topmost.top))
       .map((piece) => ({ text: piece.text, rect: piece.rect }));
     if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' '), lines: 0, entering };
-    const leftmost = Math.min(...inside.map((piece) => piece.rect.left));
-    const first = inside.find((piece) => piece.rect.left <= leftmost + MARGIN) as Piece;
+    // A piece that starts well left of the region is a line joined across the columns that comes in from the left: the region's
+    // own text starts at its edge, so such a piece is not at its margin (unless the region holds nothing else).
+    const own = inside.filter((piece) => piece.rect.left >= region.left - FROM_OUTSIDE);
+    const starts = own.length > 0 ? own : inside;
+    const leftmost = Math.min(...starts.map((piece) => piece.rect.left));
+    const first = starts.find((piece) => piece.rect.left <= leftmost + MARGIN) as Piece;
     const band = first.rect;
     const row = inside
       .filter((piece) => {
