@@ -112,8 +112,9 @@ boxed exercise, the first page of the answer key and a middle page of it, worked
 `WORK/survey/layout.md` in your own words: where the exercises stand (end of every section, end of a chapter, inside the text); how an exercise starts (its label exactly as printed:
 `5.`, `5)`, `(5)`, `1.2`, `Exercise 1.2`, `Aufgabe 3`, a letter ...); how the numbers run (again in each set, on through a chapter, chapter-relative); what comes with an exercise (an
 instruction printed once above a group and how far it reaches, parts, figures, tables, data notes, hints, marks of difficulty); where the answers are (in this PDF? for every exercise, only
-the odd ones, selected ones, worked solutions elsewhere, none); two columns; exercises that run over a page; anything unusual. If some exercises carry no number, say how you will
-recognise them.
+the odd ones, selected ones, worked solutions elsewhere, none); two columns; exercises that run over a page; anything unusual. Numbered lines that are NOT exercises are the traps of a layout
+(footnotes that a book collects at the end of a set and numbers on through the chapter, numbered steps of a method, references, the items of an answer key): name them in `layout.md`, so that
+you never frame one. If some exercises carry no number, say how you will recognise them.
 
 **S4. The census.** For every exercise set of the book write one line into `WORK/survey/census.md`: the section (its id), the pages, the first and the last label, how many exercises the
 set has (count the labels the book prints; a gap in the numbering is yours to explain), and where its answers are. The sum is what the book prints. With a reference list, compare section by
