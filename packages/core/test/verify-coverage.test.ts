@@ -779,6 +779,22 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
   });
 
+  it('does not take a footnote given to an earlier exercise for the instruction of the next one', async () => {
+    const make = (size: number): Workbook => {
+      const book = new Workbook(2);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      // Exercise 2 has a mark whose footnote is printed at the foot of the page, below exercise 3; exercise 4 starts the next page.
+      const footnote = around(0, 72, 790, { width: 400 });
+      for (let n = 1; n <= 3; n += 1) book.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1), n === 2 ? { extra: { context: [footnote] } } : {});
+      for (let n = 4; n <= 5; n += 1) book.exercise('a', String(n), 1, 72, 100 + 40 * (n - 4));
+      book.text(0, 72, 790, '9 A map that takes functions to functions is called an operator.', size);
+      return book;
+    };
+    expect(codes(await check(make(7)))).not.toContain('context-inconsistent');
+    // The same line in the size of the text is an instruction printed right above exercise 4.
+    expect(refs(await check(make(11)), 'context-inconsistent')).toEqual(['a:4']);
+  });
+
   it('does not take a numbered heading in bold for an instruction', async () => {
     const book = new Workbook(2);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);

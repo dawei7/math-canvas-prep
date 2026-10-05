@@ -98,6 +98,23 @@ function headingBetween(run: Run, from: number, to: number, rect: Rect): boolean
   return false;
 }
 
+/** A footnote stands below this share of the page and is set at most this share of the body size. */
+const FOOTNOTE_FROM = 0.6;
+const FOOTNOTE_SIZE = 0.9;
+
+/**
+ * True when the region holds only a footnote: every piece of text in it lies in the lower part of the page and is set smaller than the
+ * text. A footnote given to the exercise whose mark it explains is printed at the foot of the page, below later exercises; it is never
+ * the instruction of the exercise that follows it.
+ */
+function isFootnote(run: Run, page: number, rect: Rect): boolean {
+  const lines = run.index.page(page);
+  const body = lines.bodySize;
+  if (body <= 0 || rect.top < FOOTNOTE_FROM - 0.02) return false;
+  const pieces = lines.pieces.filter((piece) => !piece.headerFooter && piece.rect.top >= rect.top - 0.004 && piece.rect.bottom <= rect.bottom + 0.004);
+  return pieces.length > 0 && pieces.every((piece) => piece.fontSize > 0 && piece.fontSize <= FOOTNOTE_SIZE * body);
+}
+
 /** True when a line that tells what to do is printed between two places (positions as `pos`), in the column of the rect, and is in no region of an exercise. */
 function instructionBetween(run: Run, from: number, to: number, page: number, rect: Rect): boolean {
   for (let at = Math.max(0, Math.floor(from)); at <= Math.floor(to) && at <= page; at += 1) {
@@ -256,7 +273,7 @@ export function checkContexts(run: Run): Draft[] {
         const across = Math.min(rect.right, frame.rect.right) - Math.max(rect.left, frame.rect.left);
         return rect.right - rect.left >= 0.6 || across >= 0.3 * Math.min(rect.right - rect.left, frame.rect.right - frame.rect.left);
       };
-      const above = [...printed.entries()].filter(([, entry]) => entry.at >= from && entry.at < top - 1e-6 && relevant(entry.rect));
+      const above = [...printed.entries()].filter(([, entry]) => entry.at >= from && entry.at < top - 1e-6 && relevant(entry.rect) && !isFootnote(run, entry.page, entry.rect));
 
       // (a) An instruction printed right above this exercise, which other exercises have and this one does not.
       const lacking = above.filter(([id]) => !ownKeys.has(id));
