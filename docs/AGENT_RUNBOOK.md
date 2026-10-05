@@ -23,8 +23,8 @@ Perfect is what the **book prints**. The audit is perfect when:
    exercise whose answer the book does not print has none;
 5. the sections are the contents the book prints (labels, titles, pages);
 6. the numbers of a reference list, if there is one, are met, or every difference is explained by the book with its page;
-7. nothing is silent: **`audit gate --final` exits with 0**: nothing is open, every exercise has an entry in the visual record that fits the
-   project, and every acknowledgement was confirmed by somebody else.
+7. nothing is silent: **`audit gate --final` exits with 0**: nothing is open, every page of the book has an entry in the survey record and every exercise has an entry in the visual
+   record, both fitting the project, and every acknowledgement was confirmed by somebody else.
 
 The tools propose; the harness checks everything that can be checked without looking; you repair what it finds and look at what it
 cannot see. The gate is the definition of done.
@@ -143,7 +143,10 @@ Take them from the sidecar. Without a sidecar read the text of the first four pa
   whole book). Say which you did in the report, and go on at A6.
 - Otherwise every note and every entry with confidence below 0.9 goes into the report.
 
-**A5. Store the sections.** The same call with `--apply`.
+**A5. Store the sections.** The same call with `--apply`. Then compare the sections with your census: every exercise set of the census needs a section that its exercises can be filed under. When
+the book heads a set with a heading the contents do not list (the contents print "Chapter review", the page heads its set "1.4 Exercises"), add that heading as a section yourself, with the number
+the book prints: `mcprep outline add --title "Exercises" --label "1.4" --id 1.4 --page P --top T --depth 1 --at POSITION --project "P"` (`--top` is where the heading starts on its page, from
+`mcprep lines`; `--at` keeps the outline in reading order: `mcprep outline` lists the positions). A section the book prints in its pages is a section; one the book does not print is not.
 
 **A6. Frame the exercises, as your plan says (S5); the census is the target.**
 - (a) A draft: `mcprep exercises propose --solutions [OPTIONS] --details "WORK/propose.json" --project "P"` without `--apply` (add `--max-items N` only when the sidecar says
