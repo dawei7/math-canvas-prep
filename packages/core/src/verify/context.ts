@@ -177,6 +177,9 @@ export function checkContexts(run: Run): Draft[] {
           if (n === undefined || !namesNumber(named, n)) continue;
           if (pos(exercise.frame.page, exercise.frame.rect.top) < at - 1e-6) continue;
           if (isCovered(piece, page, exercise)) continue;
+          // A line inside the text of another exercise is part of that exercise ("numbers 1 to 36" in the statement of exercise 4,
+          // "questions 13 and 14" in a part of exercise 15), not an instruction: it is judged like the instructions of `context-not-nearest`.
+          if (coveredShare(piece.rect, run.covering(page).filter((region) => region.kind === 'exercise' || region.kind === 'continues')) >= VERIFY_LIMITS.coveredShare) continue;
           drafts.push(
             draft(
               'context-missing',

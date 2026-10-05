@@ -223,6 +223,24 @@ describe('spans: an exercise that goes on over page breaks', () => {
     expect(all(report, 'text-left-behind')).toEqual([]);
   });
 
+  it('does not take a table above two columns for the text between the foot of one column and the top of the next', async () => {
+    // Exercise 1 starts at the foot of the left column and goes on at the top of the right one; above the right column stands a table.
+    const make = (above: string, y: number): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      const one = book.exercise('a', '1', 0, 72, 700, { words: 'Show that the sequence converges and' });
+      book.text(0, 330, 100, 'find its limit when the first term is one.');
+      one.continues = [around(0, 330, 100, { width: 200 })];
+      book.exercise('a', '2', 0, 72, 300);
+      book.text(0, 330, y, above);
+      return book;
+    };
+    // 40 points above the continuation: a table, not part of the exercise.
+    expect(refs(await check(make('Result 2.7183', 60)), 'span-gap')).toEqual([]);
+    // A line directly above the continuation, in no region: the first line of the exercise left out of the span.
+    expect(refs(await check(make('the ratio is one half and', 85)), 'span-gap')).toEqual(['a:1']);
+  });
+
   it('takes a footnote at the foot of the page for text left behind, not for a gap in the span', async () => {
     const book = new Workbook(2);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
@@ -358,6 +376,18 @@ describe('instructions: the context of an exercise', () => {
     const report = await check(book);
     expect(refs(report, 'context-missing')).toEqual(['a:2', 'a:3']);
     expect(all(report, 'context-missing')[0]).toMatchObject({ severity: 'error', page: 0 });
+  });
+
+  it('does not take a line inside the text of another exercise for an instruction that names exercises', async () => {
+    const { book, frames } = small();
+    // "Problems 2 - 6 are similar" is the second line of the statement of exercise 1, in its region.
+    book.text(0, 72, 115, 'Problems 2 - 6 are similar to this one.', 11);
+    (frames[0] as Frame).rect = { ...(frames[0] as Frame).rect, bottom: (frames[0] as Frame).rect.bottom + 0.02 };
+    expect(refs(await check(book), 'context-missing')).toEqual([]);
+    // The same line printed between the exercises, in no region, is an instruction that names them.
+    const loose = small();
+    loose.book.text(0, 72, 118, 'Problems 2 - 6 are similar to this one.', 11, BOLD);
+    expect(refs(await check(loose.book), 'context-missing').length).toBeGreaterThan(0);
   });
 
   it('is quiet when the instruction is attached, or is part of the exercise own region', async () => {

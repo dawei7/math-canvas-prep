@@ -4,6 +4,7 @@ import type { Frame, PageText, Rect } from '../src/model/types.js';
 import { newProject, type Project } from '../src/project/model.js';
 import { buildAuthoritySample } from '../src/testing/authority-sample.js';
 import { VERIFY_CODES, VERIFY_FORMAT, VERIFY_VERSION, type VerifyCode, type VerifyFinding, type VerifyReport } from '../src/verify/types.js';
+import { PageIndex } from '../src/verify/regions.js';
 import { pagesToVerify, verifyProject, type PageSource } from '../src/verify/verify.js';
 import { rejected } from './helpers.js';
 import { COVERAGE_CODES, Workbook, around, pagesOf, sectionEntries } from './verify-helpers.js';
@@ -249,6 +250,27 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(refs(make('48', 0.195, 0.26))).toEqual([]);
     expect(refs(make('50', 0.195, 0.26))).toEqual(['s:50']);
     expect(refs(make('49', 0.275, 0.32))).toEqual([]);
+  });
+
+  it('takes a title with its page number glued to it for a running head, on the row where the pages around it have their page numbers', () => {
+    const row = { top: 0.1249, bottom: 0.1361 };
+    const size = { width: 595, height: 842, rotation: 0 };
+    const numbered = (index: number, extra: PageText['lines'] = []): PageText => ({
+      page: index,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [{ text: String(50 + index), rect: { left: 0.26, right: 0.28, ...row }, fontSize: 10, column: 0, chars: 2, headerFooter: true }, ...extra],
+    });
+    const glued = { text: '9.3. CENTRAL LIMIT THEOREM FOR CONTINUOUS INDEPENDENT TRIALS51', rect: { left: 0.17, right: 0.8, ...row }, fontSize: 10, column: 0, chars: 63 };
+    // The page itself has no lone page number (it is joined to the title), as the reader gives it.
+    const own = (line: PageText['lines'][number]): PageText => ({ page: 1, size, columns: 1, hasText: true, lines: [line] });
+    const flagged = (pages: PageText[]): boolean | undefined => new PageIndex((number) => pages[number]).page(1).pieces.find((piece) => piece.text.startsWith('9.3.'))?.headerFooter;
+    expect(flagged([numbered(0), own(glued), numbered(2)])).toBe(true);
+    // The pages around it have no page number on that row: it is a line of the page.
+    expect(flagged([{ ...numbered(0), lines: [] }, own(glued), { ...numbered(2), lines: [] }])).toBe(false);
+    // A title without a number in it is not taken for a head by this rule.
+    expect(flagged([numbered(0), own({ ...glued, text: '9.3. CENTRAL LIMIT THEOREM FOR CONTINUOUS INDEPENDENT TRIALS' }), numbered(2)])).toBe(false);
   });
 
   it('says label-in-word, not label-not-first, when the number is in the first row glued to other text', () => {

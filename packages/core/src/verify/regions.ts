@@ -133,12 +133,25 @@ export class PageLines {
       const text = blur(piece.text);
       return lines.some((line) => Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && blur(line.text) === text);
     };
+    // Whether the neighbour page has a running head or a page number (a line the reader flagged) on the row of this piece; undefined when it was not read.
+    const headRow = (piece: Piece, offset: number): boolean | undefined => {
+      const lines = near.get(offset);
+      if (!lines) return undefined;
+      return lines.some((line) => line.headerFooter === true && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && Math.abs(line.rect.bottom - piece.rect.bottom) <= SAME_PLACE);
+    };
     for (const piece of this.lines) {
       if (piece.headerFooter || !hasWords(piece.text) || startsLikeNumber(piece.text)) continue;
       if (piece.rect.bottom > HEAD_BAND && piece.rect.top < 1 - HEAD_BAND) continue;
       const before = [repeats(piece, -1), repeats(piece, -2)];
       const after = [repeats(piece, 1), repeats(piece, 2)];
-      if ((before[0] && before[1]) || (before[0] && after[0]) || (after[0] && after[1])) piece.headerFooter = true;
+      if ((before[0] && before[1]) || (before[0] && after[0]) || (after[0] && after[1])) {
+        piece.headerFooter = true;
+        continue;
+      }
+      // A head of a page that is a different one on every page (a section title) with its page number in the same line ("... TRIALS51"): the
+      // reader flags a lone page number, not one that is joined to the head, and it is the row where the pages next to this one have theirs.
+      const rows = [headRow(piece, -1), headRow(piece, 1)].filter((row) => row !== undefined);
+      if (rows.length > 0 && rows.every((row) => row === true) && /(?:^\d{1,4}\s)|(?:\d{1,4}$)/.test(piece.text)) piece.headerFooter = true;
     }
   }
 

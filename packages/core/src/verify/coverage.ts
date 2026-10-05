@@ -27,10 +27,10 @@ const height = (piece: Piece): number => Math.max(1e-6, piece.rect.bottom - piec
 
 const escapeWord = (word: string): string => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** A heading that names answers ("Warm-up Answers", "Answers - Chapter 1"): the words the audit stops a practice set at and reads the key by. */
 /** A footnote stands below this share of the page and is set at most this share of the body size. */
 const FOOTNOTE_FROM = 0.6;
 const FOOTNOTE_SIZE = 0.9;
+/** A heading that names answers ("Warm-up Answers", "Answers - Chapter 1"): the words the audit stops a practice set at and reads the key by. */
 const ANSWER_HEADING = new RegExp(`(?:${[...DEFAULT_BOOK_PATTERNS.stopWords, ...DEFAULT_BOOK_PATTERNS.answerWords].map((word) => word.trim().split(/\s+/).map(escapeWord).join('\\s+')).join('|')})`, 'iu');
 
 function median(values: readonly number[]): number {
@@ -117,6 +117,8 @@ interface Gap {
   after: number;
   /** The pages the gap touches and whether a piece of a page lies in it. */
   pages: number[];
+  /** Called once for a page before its pieces are asked about: the pieces of the page and whether a piece lies in a region. */
+  prepare?(page: number, pieces: readonly Piece[], covered: (piece: Piece) => boolean): void;
   has(page: number, piece: Piece): boolean;
 }
 
@@ -135,7 +137,25 @@ function gapsOf(exercise: Exercise): Gap[] {
         const span: Rect = { left: Math.min(a.rect.left, b.rect.left), right: Math.max(a.rect.right, b.rect.right), top: a.rect.bottom, bottom: b.rect.top };
         result.push({ frame: exercise, after: i, pages: [a.page], has: (page, piece) => page === a.page && piece.rect.top >= span.top - SMALL && piece.rect.bottom <= span.bottom + SMALL && xOverlap(piece, span) >= 0.5 * (piece.rect.right - piece.rect.left) });
       } else if (b.rect.left >= a.rect.right - 0.02) {
-        result.push({ frame: exercise, after: i, pages: [a.page], has: (page, piece) => page === a.page && (below(piece, a.rect) || above(piece, b.rect)) });
+        // The exercise goes on at the top of the next column: what lies between is what stands under its first region and what stands directly
+        // above its continuation (a chain of lines upward from it, each at most a block gap from the next, not through a region), not
+        // everything above it in that column (a table or a figure above a block of two columns is no part of the flow).
+        let flow = new Set<Piece>();
+        result.push({
+          frame: exercise,
+          after: i,
+          pages: [a.page],
+          prepare: (_page, pieces, covered) => {
+            flow = new Set<Piece>();
+            let edge = b.rect.top;
+            for (const piece of pieces.filter((candidate) => above(candidate, b.rect)).sort((x, y) => y.rect.bottom - x.rect.bottom)) {
+              if (covered(piece) || edge - piece.rect.bottom > VERIFY_LIMITS.blockGap * height(piece)) break;
+              flow.add(piece);
+              edge = Math.min(edge, piece.rect.top);
+            }
+          },
+          has: (page, piece) => page === a.page && (below(piece, a.rect) || flow.has(piece)),
+        });
       }
     } else if (a.page < b.page) {
       const pages: number[] = [];
@@ -224,6 +244,7 @@ export function checkCoverage(run: Run): Draft[] {
     const kinds = run.kinds(page);
     const regions = run.covering(page);
     const band = bands.get(page);
+    for (const gap of gapsByPage.get(page) ?? []) gap.prepare?.(page, lines.pieces, (piece) => coveredShare(piece.rect, regions) >= VERIFY_LIMITS.coveredShare);
     for (const piece of lines.pieces) {
       const kind = kinds.kind(piece);
       if (kind === 'heading') answerBlock = ANSWER_HEADING.test(piece.text);
