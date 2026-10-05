@@ -223,6 +223,94 @@ describe('cleaning the edges of the regions of one page', () => {
   });
 });
 
+describe('the boundary between two regions that stand one above the other', () => {
+  // Two answers in one column: the upper one has its text in 345..380, its box ends at the boundary (399); the lower one starts at 400. The
+  // tall glyph of the lower one (a bracket of its first line) reaches up to 392, so the boundary cuts it from either side.
+  const stacked = (extra: Box[] = []) => {
+    const picture = ink(blank(), [230, 345, 700, 380], [400, 392, 404, 420], [230, 410, 700, 440], ...extra);
+    const page = pageOf(lineOf('1) above', [220, 340, 780, 399]), lineOf('2) below', [220, 398, 780, 445]));
+    return { picture, page, above: item([200, 300, 799, 399], 'solution'), below: item([200, 400, 799, 520], 'solution') };
+  };
+
+  it('is one row of the gap between the last ink of the upper region and the first ink of the lower one, for both edges together', () => {
+    const { picture, page, above, below } = stacked();
+    expect(cuts(picture, above.rect, 'bottom')).toBe(true);
+    expect(cuts(picture, below.rect, 'top')).toBe(true);
+    cleanPage(picture, page, [above, below]);
+    // The gap is rows 381..392 (the text ends at 380, the glyph starts at 392), its middle is 387; but the box of the upper line (340..399)
+    // is cut through its middle by any edge up to 387 (the rule of `clips-line`), so the boundary is the next row.
+    expect(at.bottom(above)).toBe(387);
+    expect(at.top(below)).toBe(388);
+    expect(cuts(picture, above.rect, 'bottom')).toBe(false);
+    expect(cuts(picture, below.rect, 'top')).toBe(false);
+    // The other edges stay as they were.
+    expect([at.top(above), at.left(above), at.right(above), at.bottom(below), at.left(below), at.right(below)]).toEqual([300, 200, 799, 520, 200, 799]);
+  });
+
+  it('is idempotent: a boundary on a clear row is not moved again', () => {
+    const { picture, page, above, below } = stacked();
+    cleanPage(picture, page, [above, below]);
+    const once = [{ ...above.rect }, { ...below.rect }];
+    expect(cleanPage(picture, page, [above, below])).toBe(0);
+    expect([above.rect, below.rect]).toEqual(once);
+  });
+
+  it('leaves the boundary where it is when the ink of the upper region hangs down beside the first ink of the lower one: no row separates them', () => {
+    // A line of the upper region (a shaft of its figure, x 500..503) goes down to 410, and the lower region starts its text at 405 further left.
+    const picture = ink(blank(), [230, 345, 400, 365], [500, 340, 503, 410], [230, 405, 450, 430]);
+    const page = pageOf(lineOf('1) above', [220, 340, 420, 372]), lineOf('2) below', [220, 402, 780, 432]));
+    const above = item([200, 300, 799, 399], 'solution');
+    const below = item([200, 400, 799, 520], 'solution');
+    expect(cuts(picture, above.rect, 'bottom')).toBe(true);
+    const before = [{ ...above.rect }, { ...below.rect }];
+    expect(cleanPage(picture, page, [above, below])).toBe(0);
+    expect([above.rect, below.rect]).toEqual(before);
+  });
+
+  it('stays near where it was when no ink of the upper region lies near the boundary: the middle of an open stretch is no place for it', () => {
+    // The text of the upper region is far above (305..325); the glyph of the lower one starts at 392. The edge goes just above the glyph.
+    const picture = ink(blank(), [230, 305, 700, 325], [400, 392, 404, 420], [230, 410, 700, 440]);
+    const page = pageOf(lineOf('1) above', [220, 300, 780, 399]), lineOf('2) below', [220, 398, 780, 445]));
+    const above = item([200, 300, 799, 399], 'solution');
+    const below = item([200, 400, 799, 520], 'solution');
+    cleanPage(picture, page, [above, below]);
+    expect(at.top(below)).toBe(392);
+    expect(at.bottom(above)).toBe(391);
+    expect(cuts(picture, below.rect, 'top')).toBe(false);
+  });
+
+  it('finds the gap although a thin rule runs through the whole stretch beside the text: a rule that no boundary can avoid belongs to neither region', () => {
+    const { picture, page, above, below } = stacked([[210, 250, 210, 560]]);
+    expect(cuts(picture, below.rect, 'top')).toBe(true);
+    cleanPage(picture, page, [above, below]);
+    expect(at.top(below)).toBe(388);
+    expect(at.bottom(above)).toBe(387);
+  });
+
+  it('does not touch a boundary whose edges cut nothing, whatever the gap', () => {
+    const picture = ink(blank(), [230, 345, 700, 380], [230, 420, 700, 440]);
+    const page = pageOf(lineOf('1) above', [220, 340, 780, 385]), lineOf('2) below', [220, 415, 780, 445]));
+    const above = item([200, 300, 799, 399], 'solution');
+    const below = item([200, 400, 799, 520], 'solution');
+    const before = [{ ...above.rect }, { ...below.rect }];
+    expect(cleanPage(picture, page, [above, below])).toBe(0);
+    expect([above.rect, below.rect]).toEqual(before);
+  });
+
+  it('keeps to the rule of validate that an edge does not cut through the middle of the box of a line: no such row is no row', () => {
+    // The upper line is a short one (box 380..399, ink 382..385); the gap is rows 386..392, and every row of it lies in the middle of that box
+    // (from 384 to 396 an edge cuts through it): the boundary of the two regions stays, though a row of the gap is clear of ink.
+    const picture = ink(blank(), [230, 382, 700, 385], [400, 392, 404, 420], [230, 410, 700, 440]);
+    const page = pageOf(lineOf('1) above', [220, 380, 780, 399]), lineOf('2) below', [220, 398, 780, 445]));
+    const above = item([200, 300, 799, 399], 'solution');
+    const below = item([200, 400, 799, 520], 'solution');
+    expect(cuts(picture, below.rect, 'top')).toBe(true);
+    cleanPage(picture, page, [above, below]);
+    expect(at.top(below)).toBe(400);
+    expect(cuts(picture, below.rect, 'top')).toBe(true);
+  });
+});
+
 describe('cleaning the regions of the proposals of a book', () => {
   const exercise = (page: number, rect: Rect, extra: Record<string, unknown> = {}) => ({ page, rect, context: [], ...extra });
 

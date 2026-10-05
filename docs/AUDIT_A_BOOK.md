@@ -108,6 +108,14 @@ that cuts printed ink to the nearest row or column that does not, by the very me
 - No move makes a region smaller or taller than `region-size` allows. Two regions of one kind that lie on each other after the moves get one
   row or column between their texts, or their edges stay as they were. A region that would have an edge cutting ink after all its moves, which
   it did not have before, is left as it was.
+- Two regions of one kind that stand one above the other in the same columns share a boundary, the bottom edge of the upper one and the top
+  edge of the lower one. Where such an edge still cuts ink after the moves above (an edge that moves alone either takes in the text of its
+  neighbour or leaves a piece of its own), the audit finds the gap between the **last ink of the upper region and the first ink of the lower
+  one** (each piece of printed ink belongs to the region on whose side most of it lies; a thin rule that runs through the whole stretch
+  belongs to neither) and puts both edges on the row of that gap that is clear for both and nearest to its middle, with the same rules for
+  the text of both regions, a row that does not cut through the middle of the box of a line (`clips-line` of `validate`) and no region
+  thinner than a line of text (`thin-frame`). When the ink of the upper region hangs down beside the first ink of the lower one (the arrow of a figure that
+  reaches down beside the number of the next exercise) no row separates them, and the boundary stays: no rectangle avoids that cut.
 - An edge that cuts nothing is never touched: a book without such edges comes back exactly as proposed, and running it again proposes the
   same regions (so `--apply` twice stores nothing new).
 
@@ -675,8 +683,10 @@ project after the last run (`mcprep ... --project results/<name>/<name>-audited.
 - In rows of an answer key that are set very tight, the edge of a region can still touch the first line of the next answer: the audit
   moves an edge out of ink where a clean row or column lies within reach (see "Where the edges go: ink"), and the ink check counts what is
   left. Three classes stay: lines or answers with fewer than three pixels of white between them (at 2 pixels per point), figures or
-  brackets that interlock (the big bracket of one exercise reaching up between the lines of the exercise above), and a grid of graphs
-  whose frames touch (the labels of a graph that stand under it are its own when the ink of the graph reaches them).
+  brackets that interlock (the big bracket of one exercise reaching up between the lines of the exercise above), a figure of one exercise
+  that hangs down beside the number of the next one (the boundary between the two regions cuts it wherever it stands, and a region that
+  holds the hanging part would lie on the next one), and a grid of graphs whose frames touch (the labels of a graph that stand under it
+  are its own when the ink of the graph reaches them).
 - Pages without a text layer (scans) cannot be read: frame them by eye (AGENT_GUIDE section 8).
 - An instruction is read from a bold line, from a line that names its items ("For Exercises 1-4", "Use the picture for questions
   13-16", "... listed in Exercises 41 - 52:", anywhere in a paragraph that stands at the margin and is followed by the item it names, also in a

@@ -1,4 +1,4 @@
-import type { PageText, Rect } from '../model/types.js';
+import type { PageText, Rect, TextLine } from '../model/types.js';
 import { edgeInkOf, type DarkPicture } from '../verify/edge-ink.js';
 import { VERIFY_LIMITS } from '../verify/types.js';
 import type { BookExercises } from './exercises.js';
@@ -22,6 +22,9 @@ import type { BookSolutions } from './solutions.js';
  *   size check (`region-size`) allows;
  * - two regions of one kind that were cut by the same ink and now lie on each other share one row (or column) between their texts, or
  *   their edges stay where they were;
+ * - the boundary of two regions of one kind that stand one above the other (the bottom edge of the upper one, the top edge of the lower one)
+ *   that still cuts ink after that goes to one row of the gap between the last ink of the one and the first ink of the other, for both edges
+ *   together (`stack`); when the ink of the upper region hangs down beside the first ink of the lower one there is no such row and it stays;
  * - a region that has an edge cutting ink after all that, which it did not have before, is left as it was.
  *
  * An edge that cuts no ink is never touched, so a book that has none comes back as it was.
@@ -41,6 +44,9 @@ export const OWN_SHARE = 0.6;
 
 /** Printed pixels of the text of neighbours that a move out may take in: a graze of an antialiased glyph, not a stroke. */
 export const FOREIGN_PIXELS = 2;
+
+/** The height under which `validate` calls a frame thinner than one line of text. */
+const THIN_FRAME = 0.015;
 
 /** A region keeps this much room from the sizes of `region-size` (the rectangle is written with four decimals). */
 const SIZE_MARGIN = 1.02;
@@ -152,10 +158,10 @@ function stripOf(px: Pixels, side: Side, position: number): Pixels {
 }
 
 /** The printed pixels of a stretch of the page that lie in the box of a piece of text that is not part of the region. */
-function foreignInk(picture: DarkPicture, pieces: readonly Piece[], work: Work, strip: Pixels): number {
+function foreignInk(picture: DarkPicture, pieces: readonly Piece[], work: Work, strip: Pixels, except?: ReadonlySet<Piece>): number {
   let count = 0;
   for (const piece of pieces) {
-    if (work.own.has(piece)) continue;
+    if (work.own.has(piece) || except?.has(piece)) continue;
     const x0 = Math.max(strip.x0, piece.box.x0);
     const x1 = Math.min(strip.x1, piece.box.x1);
     const y0 = Math.max(strip.y0, piece.box.y0);
@@ -178,8 +184,8 @@ function insideShare(piece: Piece, px: Pixels, picture: DarkPicture, vertical: b
  * Whether the region would take in a piece of text that is not part of it when a side moves out to a position: printed pixels of such a
  * piece lie in the rows or columns the edge crosses, or the text check would read a piece as inside the region that it did not read so.
  */
-function takesIn(pieces: readonly Piece[], work: Work, side: Side, position: number, picture: DarkPicture): boolean {
-  if (foreignInk(picture, pieces, work, stripOf(work.px, side, position)) > FOREIGN_PIXELS) return true;
+function takesIn(pieces: readonly Piece[], work: Work, side: Side, position: number, picture: DarkPicture, except?: ReadonlySet<Piece>): boolean {
+  if (foreignInk(picture, pieces, work, stripOf(work.px, side, position), except) > FOREIGN_PIXELS) return true;
   const moved = withPosition(work.px, side, position);
   for (const piece of pieces) {
     if (work.own.has(piece)) continue;
@@ -282,12 +288,8 @@ function wayOf(mass: Mass): 'in' | 'out' | 'either' {
   return mass.inside > mass.outside * MASS_RATIO ? 'out' : 'either';
 }
 
-/** Whether a side can move into its region to a position: the region has text of its own, none of it is left less than `OWN_SHARE` inside, and the move is short. */
-function mayMoveIn(work: Work, side: Side, position: number, picture: DarkPicture, cap: number): boolean {
-  if (work.own.size === 0 || Math.abs(position - positionOf(work.px, side)) > cap) return false;
-  // A white column inside the text (between the number and the words) is no place for a side edge: it stays outside the own text.
-  if (side === 'left' && position > Math.min(...[...work.own].map((piece) => piece.box.x0))) return false;
-  if (side === 'right' && position < Math.max(...[...work.own].map((piece) => piece.box.x1))) return false;
+/** Whether none of the own text is left less than `OWN_SHARE` inside when a side moves into its region to a position. */
+function ownTextKept(work: Work, side: Side, position: number, picture: DarkPicture): boolean {
   const moved = withPosition(work.px, side, position);
   const vertical = side === 'top' || side === 'bottom';
   for (const piece of work.own) {
@@ -296,6 +298,15 @@ function mayMoveIn(work: Work, side: Side, position: number, picture: DarkPictur
     if (insideShare(piece, moved, picture, vertical) < Math.min(OWN_SHARE, insideShare(piece, work.px, picture, vertical))) return false;
   }
   return true;
+}
+
+/** Whether a side can move into its region to a position: the region has text of its own, none of it is left less than `OWN_SHARE` inside, and the move is short. */
+function mayMoveIn(work: Work, side: Side, position: number, picture: DarkPicture, cap: number): boolean {
+  if (work.own.size === 0 || Math.abs(position - positionOf(work.px, side)) > cap) return false;
+  // A white column inside the text (between the number and the words) is no place for a side edge: it stays outside the own text.
+  if (side === 'left' && position > Math.min(...[...work.own].map((piece) => piece.box.x0))) return false;
+  if (side === 'right' && position < Math.max(...[...work.own].map((piece) => piece.box.x1))) return false;
+  return ownTextKept(work, side, position, picture);
 }
 
 /** Whether the region with a side at a position stays within the sizes the text check allows, or is no further from them than it was. */
@@ -418,6 +429,192 @@ function separate(picture: DarkPicture, pieces: readonly Piece[], works: Work[],
   }
 }
 
+/**
+ * Two regions of one group that stand one above the other in the same columns share a boundary: the bottom edge of the upper one and the top
+ * edge of the lower one. Such a boundary is placed together, on a row of the gap between the last ink of the upper region and the first ink of
+ * the lower one, and not edge by edge: an edge that moves alone either takes in the text of its neighbour or leaves a piece of its own, while
+ * the two edges on one row only let go of what the neighbour holds. The ink between them belongs to the region whose side most of it lies on.
+ */
+
+/** How far from a boundary the gap between the ink of the two regions is looked for, in pixels (the reach of letting go of the ink of a neighbour). */
+const stackWindow = (picture: DarkPicture): number => Math.round(RELEASE_REACH * picture.height);
+
+/** Two regions that overlap by more than this many rows, or stand further apart, are not the two sides of one boundary. */
+const STACK_OVERLAP = 12;
+const STACK_GAP = 12;
+
+/** Whether the edge between two rows, over the columns x0 to x1, cuts ink by the rule of `edge-on-ink`: `inside` is the row of the region that is next to the edge, `outside` the row beyond it. */
+function rowEdgeCuts(picture: DarkPicture, x0: number, x1: number, inside: number, outside: number): boolean {
+  const { width, height, dark } = picture;
+  if (inside < 0 || inside >= height || x1 < x0) return false;
+  let crossing = 0;
+  if (outside >= 0 && outside < height) for (let x = x0; x <= x1; x += 1) crossing += (dark[inside * width + x] as number) & (dark[outside * width + x] as number);
+  if (crossing >= VERIFY_LIMITS.inkCrossPixels) return true;
+  const share = (y: number): number => {
+    if (y < 0 || y >= height) return 0;
+    let count = 0;
+    for (let x = x0; x <= x1; x += 1) count += dark[y * width + x] as number;
+    return count / (x1 - x0 + 1);
+  };
+  return Math.max(share(inside - 1), share(inside), share(inside + 1)) > VERIFY_LIMITS.inkEdgeShare;
+}
+
+interface Stack {
+  /** The upper region: its bottom edge is the boundary. */
+  first: Work;
+  /** The lower region: its top edge is the boundary. */
+  second: Work;
+}
+
+/** The pairs of regions of one group that are the two sides of a boundary: each is the nearest to the other in its direction. */
+function stackedPairs(works: readonly Work[]): Stack[] {
+  const below = new Map<Work, Work>();
+  const above = new Map<Work, Work>();
+  for (const a of works) {
+    if (a.item.group === 'context') continue;
+    for (const b of works) {
+      if (a === b || a.item.group !== b.item.group || !(a.px.y0 < b.px.y0 && a.px.y1 < b.px.y1)) continue;
+      if (shared(a.px.x0, a.px.x1, b.px.x0, b.px.x1) < 0.5 * Math.min(a.px.x1 - a.px.x0 + 1, b.px.x1 - b.px.x0 + 1)) continue;
+      const gap = b.px.y0 - (a.px.y1 + 1);
+      if (gap < -STACK_OVERLAP || gap > STACK_GAP) continue;
+      const lowest = below.get(a);
+      if (lowest === undefined || b.px.y0 < lowest.px.y0) below.set(a, b);
+      const highest = above.get(b);
+      if (highest === undefined || a.px.y1 > highest.px.y1) above.set(b, a);
+    }
+  }
+  const pairs: Stack[] = [];
+  for (const [first, second] of below) if (above.get(second) === first) pairs.push({ first, second });
+  return pairs.sort((a, b) => a.first.px.y1 - b.first.px.y1);
+}
+
+/**
+ * The rows between the last ink of the upper region and the first ink of the lower one, over the columns they share: each piece of ink (the
+ * dark pixels that touch, with the diagonals) belongs to the upper region when most of it lies above the middle of the boundary, else to the
+ * lower one. A piece that runs through the whole window (the rule at a side) belongs to neither. Undefined when the ink of the upper region
+ * reaches down beside the ink of the lower one: no row separates them. The result is the rows at which a boundary may stand: the first row of
+ * the lower region.
+ */
+function inkGap(picture: DarkPicture, first: Work, second: Work): { from: number; to: number; closed: boolean } | undefined {
+  const { width, height, dark } = picture;
+  const x0 = Math.max(first.px.x0, second.px.x0);
+  const x1 = Math.min(first.px.x1, second.px.x1);
+  if (x1 < x0) return undefined;
+  const lineFirst = first.px.y1 + 1;
+  const lineSecond = second.px.y0;
+  const reach = stackWindow(picture);
+  const y0 = Math.max(0, Math.min(lineFirst, lineSecond) - reach);
+  const y1 = Math.min(height - 1, Math.max(lineFirst, lineSecond) + reach);
+  const middle = (lineFirst + lineSecond) / 2;
+  const span = x1 - x0 + 1;
+  const seen = new Uint8Array(span * (y1 - y0 + 1));
+  const stack: number[] = [];
+  let last = y0 - 1;
+  let next = y1 + 1;
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      const start = (y - y0) * span + (x - x0);
+      if (dark[y * width + x] !== 1 || seen[start] === 1) continue;
+      seen[start] = 1;
+      stack.length = 0;
+      stack.push(y, x);
+      let above = 0;
+      let below = 0;
+      let top = y;
+      let bottom = y;
+      while (stack.length > 0) {
+        const cx = stack.pop() as number;
+        const cy = stack.pop() as number;
+        if (cy < middle) above += 1;
+        else below += 1;
+        if (cy < top) top = cy;
+        if (cy > bottom) bottom = cy;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const ny = cy + dy;
+            const nx = cx + dx;
+            if (ny < y0 || ny > y1 || nx < x0 || nx > x1) continue;
+            const at = (ny - y0) * span + (nx - x0);
+            if (seen[at] === 1 || dark[ny * width + nx] !== 1) continue;
+            seen[at] = 1;
+            stack.push(ny, nx);
+          }
+        }
+      }
+      if (top <= y0 && bottom >= y1) continue;
+      if (above >= below) last = Math.max(last, bottom);
+      else next = Math.min(next, top);
+    }
+  }
+  // The gap is closed when the ink of both regions was found in the window: its middle is the place for the boundary; else it ends at the window and the boundary stays near where it was.
+  return last < next ? { from: Math.max(last + 1, y0 + 1), to: Math.min(next, y1), closed: last >= y0 && next <= y1 } : undefined;
+}
+
+/**
+ * Whether an edge at a row cuts through the middle of the box of a line of text over the columns of a region: the rule of `clips-line` of
+ * `validate` (an edge in the outer fifth of the box is no cut). The boundary between two regions keeps to it, so that placing it on a row
+ * of the gap between the ink does not make a warning of `validate` out of an edge that cut ink only.
+ */
+function clipsLine(lines: readonly TextLine[], picture: DarkPicture, work: Work, row: number): boolean {
+  const y = row / picture.height;
+  const left = work.px.x0 / picture.width;
+  const right = (work.px.x1 + 1) / picture.width;
+  return lines.some((line) => {
+    const centre = (line.rect.left + line.rect.right) / 2;
+    const height = line.rect.bottom - line.rect.top;
+    return height > 0 && centre >= left && centre <= right && y > line.rect.top + 0.2 * height && y < line.rect.bottom - 0.2 * height;
+  });
+}
+
+/**
+ * Whether the top or bottom edge of a region may stand at a position: out of it without taking in the text of another piece (the ink in the rows
+ * it crosses is in the gap between the ink of the two regions, so the boxes of the text of the other region of the pair, which are taller than what
+ * is printed in them, do not count), into it without leaving the own text, and not out of the sizes of the check.
+ */
+function stackAllowed(picture: DarkPicture, pieces: readonly Piece[], work: Work, partner: Work, side: 'top' | 'bottom', position: number): boolean {
+  const here = positionOf(work.px, side);
+  if (position === here) return true;
+  if (outward(side, here, position) ? takesIn(pieces, work, side, position, picture, partner.own) : !ownTextKept(work, side, position, picture)) return false;
+  // A region thinner than a line of text is a warning of `validate` (`thin-frame`): the boundary does not make one thinner than it was.
+  const before = toRect(work.px, picture);
+  const after = toRect(withPosition(work.px, side, position), picture);
+  if (after.bottom - after.top < THIN_FRAME && after.bottom - after.top < before.bottom - before.top) return false;
+  return sizeOk(picture, work, side, position);
+}
+
+/**
+ * Places the boundaries of the stacked regions: where an edge of a boundary cuts ink (or the two regions lie on each other), both edges go to the
+ * row of the gap between the ink of the two regions that is nearest to the middle of the gap and clear for both. Nothing moves when no such row
+ * exists (the ink of the upper region hangs down beside the first line of the lower one: no rectangle separates them).
+ */
+function stack(picture: DarkPicture, pieces: readonly Piece[], works: readonly Work[], lines: readonly TextLine[]): void {
+  for (const { first, second } of stackedPairs(works)) {
+    const cutFirst = rowEdgeCuts(picture, first.px.x0, first.px.x1, first.px.y1, first.px.y1 + 1);
+    const cutSecond = rowEdgeCuts(picture, second.px.x0, second.px.x1, second.px.y0, second.px.y0 - 1);
+    if (!cutFirst && !cutSecond) continue;
+    const gap = inkGap(picture, first, second);
+    if (gap === undefined) continue;
+    const clear = (row: number): boolean =>
+      !clipsLine(lines, picture, first, row) &&
+      !clipsLine(lines, picture, second, row) &&
+      stackAllowed(picture, pieces, first, second, 'bottom', row - 1) &&
+      stackAllowed(picture, pieces, second, first, 'top', row) &&
+      !rowEdgeCuts(picture, first.px.x0, first.px.x1, row - 1, row) &&
+      !rowEdgeCuts(picture, second.px.x0, second.px.x1, row, row - 1);
+    const wanted = gap.closed ? (gap.from + gap.to) / 2 : (first.px.y1 + 1 + second.px.y0) / 2;
+    const row = nearestClean(gap.from, gap.to, Math.round(wanted), clear);
+    if (row === undefined) continue;
+    if (row - 1 !== first.px.y1) {
+      first.px = withPosition(first.px, 'bottom', row - 1);
+      first.moved.add('bottom');
+    }
+    if (row !== second.px.y0) {
+      second.px = withPosition(second.px, 'top', row);
+      second.moved.add('top');
+    }
+  }
+}
+
 /** Whether the region has an edge that cuts ink now that it did not cut before the moves. */
 const worse = (picture: DarkPicture, work: Work): boolean => work.moved.size > 0 && [...cutSides(picture, work.px)].some((side) => !work.cutBefore.has(side));
 
@@ -445,6 +642,8 @@ export function cleanPage(picture: DarkPicture, page: PageText | undefined, item
     }
   }
   separate(picture, pieces, works, reach);
+  // The boundaries between stacked regions that still cut ink are placed together: no edge could leave the ink alone.
+  stack(picture, pieces, works, page?.lines ?? []);
   // The moves changed the stretch along which the other edges are measured: an edge that was clean can cut now.
   for (let round = 0; round < 3; round += 1) {
     let changed = false;
