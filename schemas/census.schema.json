@@ -87,8 +87,8 @@
           "last": { "type": "string" },
           "count": { "type": "integer", "minimum": 2 },
           "reason": {
-            "enum": ["years", "contents", "running-head", "short-items", "headings"],
-            "description": "years: all the numbers are years. contents: a table of contents, an index or a list with leader dots (the lines end in page numbers or have leaders). running-head: a line in the top or bottom band of three or more pages, about one to a page. short-items: fewer than ten items of one or two characters (a column of values, the cells of a table). headings: the headings of the book printed again as a list (the outline of a chapter before its sections)."
+            "enum": ["years", "contents", "footnotes", "running-head", "short-items", "headings"],
+            "description": "years: all the numbers are years. contents: a table of contents, an index or a list with leader dots (the lines end in page numbers or have leaders). footnotes: a block of footnotes or endnotes, each of which ends in the arrow that leads back to the text (a book exported from HTML). running-head: a line in the top or bottom band of three or more pages, about one to a page. short-items: fewer than ten items of one or two characters (a column of values, the cells of a table). headings: the headings of the book printed again as a list (the outline of a chapter before its sections)."
           },
           "coverage": { "type": "number", "minimum": 0, "maximum": 1, "description": "The share of its items that lie inside a region of the project (a candidate the project covers anyway is no loss)." }
         },

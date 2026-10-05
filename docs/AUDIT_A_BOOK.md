@@ -275,8 +275,9 @@ mcprep exercises census --keyword Aufgabe                   # more words for key
 **An item** is a line (or one cell of a row of two or three items side by side) that starts with a label and then has text: `8.` (not
 `8.5`: that is a decimal), `8)`, `(8)`, a dotted label of one chapter (`4.12`, `1.2.3`: the last number rises and the others stay), or a
 keyword and a number (`Exercise 4.2`, `Problem 7`, `Question 12`, `Task 5`, `Aufgabe 1.26`, `Uebung 3`; `--keyword WORD` adds words, MCP
-`keywords`). A number that stands alone on its line with the text beside it is an item too; a line that starts with no label goes on with the
-item above. A numbered line that is set larger than the text (`3. Methods`, `1.4 Exercises`) is a heading and no item.
+`keywords`). A number that stands alone on its line with the text beside it is an item too (not when the piece beside it starts with a label
+of its own: a grid of labels over their cells is no list of items); a line that starts with no label goes on with the item above. A numbered
+line that is set larger than the text (`3. Methods`, `1.4 Exercises`) is a heading and no item.
 
 **A run** is `--min-run` (default 5) or more items of one kind whose numbers rise by one, or by two in an answer key that prints only the odd
 or only the even items, in reading order: down a column, over to the next column, on to the next page (the next item may be up to two pages
@@ -297,6 +298,7 @@ is set aside in silence:
 | reason | what it is |
 | --- | --- |
 | `contents` | A table of contents, an index or a list with leader dots: at least 40 percent of its lines end in a page number after leader dots, or in a list of page numbers after words (`variance, 45, 67-69`), or have a bare number at the right margin, far from the words. |
+| `footnotes` | A block of footnotes or endnotes: at least half of its items have a line that ends in the arrow that leads back to the text (`↩`), as in a book exported from HTML, where the notes of a chapter are printed together at its end. |
 | `years` | All the numbers are years (1000 to 2100). |
 | `running-head` | At least 80 percent of its lines stand in the top or the bottom band of three or more pages, about one to a page. |
 | `short-items` | Fewer than ten items of one or two characters (a column of values, the cells of a table, matrix entries); ten or more are read as an answer key. |
@@ -464,7 +466,7 @@ silent: what the book itself prints is acknowledged with a reason that anybody c
 repaired, and that every exercise was looked at is proved exercise by exercise.
 
 ```console
-mcprep exercises verify --details verify.json       # 1. the text checks (about two seconds for a book of 3,000 exercises)
+mcprep exercises verify --details verify.json       # 1. the text checks (about two seconds for a book of 3,000 exercises; the census of numbered runs reads every page once more: up to ten seconds for 1,400 pages)
 mcprep exercises verify --ink                       #    and the pixel check of the edges of every region (renders the pages once)
 mcprep book compare reference.json --details c.json # 2. the sections and their counts against the book's own list
 mcprep exercises sheets --out sheets/ --solutions   # 3. contact sheets of EVERY exercise: look at every one, write the visual record

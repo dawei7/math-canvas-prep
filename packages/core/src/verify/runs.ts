@@ -50,6 +50,8 @@ export const RUN_LIMITS = {
   shortItemLength: 2,
   /** ... make no run below this many of them (matrix entries, the cells of a table); more of them are an answer key. */
   shortItemsKeyAt: 10,
+  /** A run is a block of footnotes or endnotes when at least this share of its items end in the arrow that leads back to the text (books exported from HTML). */
+  footnotesShare: 0.5,
   /** A run is the headings of the book printed again (the outline of a chapter before its sections) when this share of its items repeat the label and the words of a heading that is set larger. */
   headingsShare: 0.5,
   /** The longest heading line reported, in characters. */
@@ -81,12 +83,13 @@ export interface RunOptions {
 }
 
 /** Why a candidate of five or more numbered items is no run: it is a list of something else. */
-export type LeftOutReason = 'years' | 'contents' | 'running-head' | 'short-items' | 'headings';
+export type LeftOutReason = 'years' | 'contents' | 'footnotes' | 'running-head' | 'short-items' | 'headings';
 
 /** What each reason says, in a sentence. */
 export const LEFT_OUT_REASONS: Readonly<Record<LeftOutReason, string>> = {
   years: 'a list of years',
   contents: 'a table of contents, an index or a list with leader dots (the lines end in page numbers or have leaders)',
+  footnotes: 'a block of footnotes or endnotes (each ends in the arrow that leads back to the text, as in a book exported from HTML)',
   'running-head': 'a running head or footer (a line in the top or bottom band of the page, about one to a page)',
   'short-items': 'fewer than ten items of one or two characters (a column of values, the cells of a table)',
   headings: 'the headings of the book printed again as a list (the outline of a chapter)',
@@ -342,6 +345,11 @@ function candidatesOf(page: number, units: readonly Unit[], body: number, keywor
       const only = LABEL_ONLY.exec(unit.text);
       beside = only === null ? undefined : neighbourRight(units, at);
       if (only === null || beside === undefined) return;
+      // A piece that starts with the next label in the same form is the next cell of a grid of labels over their cells ("5.  6.  7." with the expressions below), not the
+      // text of this item; a piece that only starts like another label ("2.5 + 3.5") is the text.
+      const own = Number(only[1]);
+      const next = LABEL_ONLY.exec(beside.text) ?? /^(\d{1,4})[.)](?=\s)/u.exec(beside.text);
+      if (next !== null && next[0].slice(-1) === unit.text.slice(-1) && Number(next[1]) > own && Number(next[1]) - own <= 3) return;
       label = parseLabel(`${unit.text} ${beside.text}`, keyword);
       if (label === undefined) return;
       text = `${unit.text} ${beside.text}`;
@@ -627,6 +635,17 @@ export function surveyNumberedRuns(pages: RunPages, options: RunOptions = {}): {
   };
 }
 
+/** The arrow that leads back from a footnote to its place in the text (U+21A9 or U+21B5, with or without a variation selector), at the end of a line. */
+const RETURN_ARROW = new RegExp(`[${String.fromCharCode(0x21a9)}${String.fromCharCode(0x21b5)}][${String.fromCharCode(0xfe0e)}${String.fromCharCode(0xfe0f)}]?\\s*$`, 'u');
+
+/** Whether a line of the item (from its first line to the line before the next item of the run, or to the end of the page) ends in the return arrow of a footnote. */
+function hasReturnArrow(item: Cand, next: Cand | undefined, unitsAt: (page: number) => readonly Unit[]): boolean {
+  const units = unitsAt(item.page);
+  const to = next !== undefined && next.page === item.page ? next.unit.order : units.length;
+  for (let at = item.unit.order; at < to; at += 1) if (RETURN_ARROW.test((units[at] as Unit).text)) return true;
+  return false;
+}
+
 /** The share of the items of a candidate (0 to 1) for which a test holds. */
 const share = (items: readonly Cand[], test: (item: Cand) => boolean): number => items.filter(test).length / items.length;
 
@@ -640,6 +659,8 @@ function judgeRun(stretch: Stretch, options: RunOptions, unitsAt: (page: number)
   const left = (reason: LeftOutReason): { left: LeftOutRun } => ({ left: { id: idOf(first), firstPage: first.page, lastPage: last.page, first: first.label.printed, last: last.label.printed, count: items.length, reason, coverage: share(items, insideRegions) } });
   if (items.every((item) => item.label.n >= RUN_LIMITS.yearFrom && item.label.n <= RUN_LIMITS.yearTo)) return left('years');
   if (share(items, (item) => item.pageRef) >= RUN_LIMITS.pageNumberShare) return left('contents');
+  // The notes of a chapter, printed together at its end by a book that was exported from HTML: every note ends with the arrow that leads back to the text.
+  if (items.filter((item, at) => hasReturnArrow(item, items[at + 1], unitsAt)).length / items.length >= RUN_LIMITS.footnotesShare) return left('footnotes');
   // A running head that changes with the page: a line in the top or bottom band, about one to a page (footnotes of one page, or an answer list at the
   // foot of one page, are no running head).
   const band = RUN_LIMITS.furnitureBand;

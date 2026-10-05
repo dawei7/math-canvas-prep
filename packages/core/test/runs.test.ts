@@ -161,6 +161,21 @@ describe('items in columns, rows and across pages', () => {
     expect(findNumberedRuns(book(page(cells)))).toMatchObject([{ count: 9, first: '19.', last: '27.' }]);
   });
 
+  it('does not take the label of the next cell for the text of an item: a grid of labels with the expressions below them', () => {
+    const grid: L[] = [];
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 4; col += 1) {
+        const n = row * 4 + col + 1;
+        grid.push({ text: `${n}.`, x: 0.12 + col * 0.2, y: 0.1 + row * 0.08 });
+        grid.push({ text: `${n + 20} + ${n} over ${n + 1}`, x: 0.14 + col * 0.2, y: 0.1 + row * 0.08 + 0.025 });
+      }
+    }
+    expect(findNumberedRuns(book(page(grid)))).toEqual([]);
+    // The same labels with their text beside them are a run.
+    const beside: L[] = grid.filter((entry) => /^\d+\.$/.test(entry.text)).map((entry, at) => ({ text: `${entry.text} ${at + 21} + ${at + 1}`, x: entry.x, y: entry.y }));
+    expect(findNumberedRuns(book(page(beside)))).toMatchObject([{ count: 12, first: '1.', last: '12.' }]);
+  });
+
   it('is not made of the lines of a table row that merely start with a number', () => {
     const table: L[] = Array.from({ length: 8 }, (_unused, k) => ({ text: `${k + 1} Iron Man 2008 98.62 319.03`, x: 0.12, y: 0.2 + k * 0.03 }));
     expect(findNumberedRuns(book(page(table)))).toEqual([]);
@@ -232,6 +247,29 @@ describe('what is no list of exercises, answers or the like', () => {
     expect(findNumberedRuns(book(page(index)))).toEqual([]);
     const answers = listing({ from: 1, to: 8, text: (n) => `${n}, ${n + 1}, ${n + 5}, ${n + 7}` });
     expect(findNumberedRuns(book(page(answers)))).toMatchObject([{ count: 8 }]);
+  });
+
+  it('ignores a block of footnotes whose notes all end in the arrow back to the text, also right below a set of exercises on the same page', () => {
+    const arrow = String.fromCharCode(0x21a9);
+    const selector = String.fromCharCode(0xfe0e);
+    const lines: L[] = [...listing({ from: 1, to: 6, y: 0.1, pitch: 0.04 })];
+    for (let n = 1; n <= 7; n += 1) {
+      const y = 0.45 + n * 0.06;
+      if (n % 2 === 1) {
+        lines.push({ text: `${n}. A note of the chapter that is long enough to run over two lines of the page`, x: 0.1, y });
+        lines.push({ text: `and goes on with its second line, note ${n} ${arrow}${selector}`, x: 0.12, y: y + 0.02 });
+      } else {
+        lines.push({ text: `${n}. A short note of the chapter ${arrow}`, x: 0.1, y });
+      }
+    }
+    const found = surveyNumberedRuns(book(page(lines)));
+    expect(found.runs.map((run) => ({ id: run.id, count: run.count, last: run.last }))).toEqual([{ id: 'p0:1', count: 6, last: '6.' }]);
+    expect(found.leftOut).toMatchObject([{ id: 'p0:1', reason: 'footnotes', count: 7, first: '1.', last: '7.', firstPage: 0, lastPage: 0 }]);
+    // The same notes without the arrows are a list like any other.
+    const plain = lines.map((entry) => ({ ...entry, text: entry.text.replace(arrow, '').replace(selector, '') }));
+    expect(surveyNumberedRuns(book(page(plain))).runs.map((run) => run.count)).toEqual([6, 7]);
+    // A set of exercises is no block of footnotes when only the last of its items is followed by one.
+    expect(findNumberedRuns(book(page([...listing({ from: 1, to: 8, y: 0.1, pitch: 0.04 }), { text: `A remark below the set ${arrow}`, x: 0.1, y: 0.5 }]))).map((run) => run.count)).toEqual([8]);
   });
 
   it('ignores the headings of the book printed again as a list: the outline of a chapter before its sections', () => {
