@@ -1,4 +1,4 @@
-import { copyFile, cp, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import type { QueuedBook } from '../src/index.js';
 import { run } from '../src/run.js';
@@ -117,6 +117,15 @@ export async function confirmed(d: Delivered, by = 'reviewer'): Promise<void> {
   if (gate.code !== 0) throw new Error(`the gate is not perfect: ${gate.stdout}${gate.stderr}`);
 }
 
+/** A copy of a folder with everything in it (`fs.cp` is experimental in the oldest Node that is supported). */
+async function copyFolder(from: string, to: string): Promise<void> {
+  await mkdir(to, { recursive: true });
+  for (const entry of await readdir(from, { withFileTypes: true })) {
+    if (entry.isDirectory()) await copyFolder(join(from, entry.name), join(to, entry.name));
+    else await copyFile(join(from, entry.name), join(to, entry.name));
+  }
+}
+
 /**
  * A copy of a delivery, in a root of its own or (`into`) next to the books of another delivery, under another name when `name` is given.
  * The certificate names its visual record and its sheets by absolute path, so the copy's certificate is made to name the copies of them (as
@@ -128,7 +137,7 @@ export async function copyDelivery(from: Delivered, options: { name?: string; in
   await mkdir(join(root, 'work'), { recursive: true });
   await mkdir(join(root, 'inbox'), { recursive: true });
   const folder = join(root, 'work', name);
-  await cp(from.folder, folder, { recursive: true });
+  await copyFolder(from.folder, folder);
   const pdf = join(root, 'inbox', `${name}.pdf`);
   await copyFile(from.pdf, pdf);
   const certificatePath = join(folder, 'book.audit-gate.json');

@@ -118,6 +118,16 @@ describe('PERFECT', () => {
     expect(unseen.reasons[0]).toContain('The certificate says the gate passed, but the re-run has 1 open finding (sheets-unseen 1)');
   });
 
+  it('works for a book whose name has spaces and brackets, in the folder of its name and in the name of its copy', async () => {
+    const d = await copyDelivery(perfect, { name: 'Book One (2nd ed.)' });
+    const result = await check(d);
+    expect(result.reasons).toEqual([]);
+    expect(result).toMatchObject({ status: 'PERFECT', name: 'Book One (2nd ed.)' });
+    const out = await tempDir('mcprep-bundles-');
+    expect((await copyBundles([result], out)).map((entry) => entry.path)).toEqual([join(out, 'perfect', 'Book One (2nd ed.).mcbundle')]);
+    expect(await readdir(join(out, 'perfect'))).toEqual(['Book One (2nd ed.).mcbundle']);
+  });
+
   it('reads a visual record that is one file as well as a folder of them', async () => {
     const d = await copyDelivery(perfect);
     const entries = [...(JSON.parse(await readFile(join(d.folder, 'visual', 'sheet-001.json'), 'utf8')) as unknown[]), ...(JSON.parse(await readFile(join(d.folder, 'visual', 'sheet-002.json'), 'utf8')) as unknown[])];
@@ -127,6 +137,17 @@ describe('PERFECT', () => {
     const result = await check(d);
     expect(result.reasons).toEqual([]);
     expect(result).toMatchObject({ status: 'PERFECT', visual: { file: join(d.folder, 'visual.json'), entries: 112, exercises: 112 } });
+    // A path of the certificate that is relative is taken from the work folder; a certificate of an older gate has no `ink` and says it in its verify part.
+    const certificate = await certificateOf(d);
+    (certificate['checks'] as { visual: { file: string }; verify: { ink: boolean } }).visual.file = 'visual.json';
+    delete certificate['ink'];
+    await writeCertificate(d, certificate);
+    const older = await check(d);
+    expect(older.reasons).toEqual([]);
+    expect(older).toMatchObject({ status: 'PERFECT', certificate: { ink: true }, visual: { file: join(d.folder, 'visual.json') } });
+    (certificate['checks'] as { verify: { ink: boolean } }).verify.ink = false;
+    await writeCertificate(d, certificate);
+    expect((await check(d)).certificate).toMatchObject({ ink: false });
   });
 
   it('compiles the item patterns of the certificate, written as escapes, and says so when one is no expression', async () => {
@@ -286,6 +307,31 @@ describe('NOT FINISHED: what is still to do', () => {
     expect(open.status).toBe('NOT FINISHED');
     expect(open.reasons[0]).toMatch(/^The re-run has \d+ open findings/);
     expect(open.certificate).toMatchObject({ state: 'failed', passed: false });
+  });
+
+  it('says the certificate names no visual record when the gate ran without one', async () => {
+    const d = await copyDelivery(perfect);
+    expect((await d.cli(['audit', 'gate'])).code).toBe(0);
+    const result = await check(d);
+    expect(result.status).toBe('NOT FINISHED');
+    expect(result.reasons).toEqual(['The certificate names no visual record (the gate ran without --visual): nothing proves that every exercise was looked at.']);
+    expect(result).toMatchObject({ visual: null, certificate: { passed: true, perfect: false }, rerun: { passed: true, perfect: false } });
+  });
+
+  it('says the bundle is of another state when the project cannot be exported at all now', async () => {
+    const d = await copyDelivery(perfect);
+    const path = join(d.folder, 'book.mcprep.json');
+    const project = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+    delete project['outline'];
+    await writeFile(path, JSON.stringify(project));
+    const result = await check(d);
+    expect(result.status).toBe('NOT FINISHED');
+    expect(result.reasons[0]).toContain('The certificate is stale');
+    expect(result.reasons[1]).toMatch(/^The re-run has \d+ open findings \(section-unknown \d+/);
+    expect(result.reasons[2]).toContain('The bundle is stale: the project cannot be exported as it is now: The bundle cannot be written');
+    expect(result.reasons[2]).toContain('E_BUNDLE_INVALID');
+    expect(result.bundle).toMatchObject({ state: 'stale', accepted: true });
+    expect(result.bundle.differences).toHaveLength(1);
   });
 
   it('says that a notes file is not the one the tools read', async () => {

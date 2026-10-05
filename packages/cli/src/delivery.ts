@@ -342,7 +342,7 @@ async function compareBundle(delivered: ImporterCheck, session: ProjectSession):
     frames: project.frames,
     ...(project.outline !== undefined ? { outline: project.outline.entries } : {}),
     expect: { sha256: project.pdf.sha256, bytes: project.pdf.bytes },
-  }).catch((error: unknown) => `The project cannot be exported as it is now: ${describeError(error)}`);
+  }).catch((error: unknown) => `the project cannot be exported as it is now: ${describeError(error)}`);
   if (typeof prepared === 'string') return [prepared];
   const differences: string[] = [];
 
@@ -655,7 +655,12 @@ export async function checkDelivery(book: QueuedBook, options: DeliveryOptions):
   const info = await stat(folder).catch(() => undefined);
   if (info === undefined) return finish('NOT STARTED', [`There is no work folder ${folder}.`]);
   if (!info.isDirectory()) return finish('NOT STARTED', [`${folder} is not a folder.`]);
-  const files = (await readdir(folder, { withFileTypes: true })).filter((entry) => entry.isFile() && !entry.name.startsWith('.')).map((entry) => entry.name).sort(byName);
+  let files: string[];
+  try {
+    files = (await readdir(folder, { withFileTypes: true })).filter((entry) => entry.isFile() && !entry.name.startsWith('.')).map((entry) => entry.name).sort(byName);
+  } catch (error) {
+    return finish('UNREADABLE', [`The work folder ${folder} cannot be read: ${describeError(error)}`]);
+  }
   const ending = (suffix: string): string[] => files.filter((name) => name.toLowerCase().endsWith(suffix));
   // What there is of a bundle is known whatever else is wrong (the importer's check comes later).
   const bundleFiles = ending('.mcbundle');

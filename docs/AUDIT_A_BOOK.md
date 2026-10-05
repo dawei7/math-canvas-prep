@@ -798,13 +798,13 @@ any is not, 2 for a usage error.
 | `NOT STARTED` | There is no work folder, or no project in it. |
 
 A book in `--allow-zero` has no exercise to look at, and the gate cannot say `perfect` for it (that needs an entry in the visual record for every
-exercise): its certificate has to say `passed`, with the pixel check, and nothing may be unconfirmed.
+exercise): its certificate has to say `passed`, and the new run has nothing open, has run the pixel check and has nothing unconfirmed.
 
 `DELIVERY.md` has the date, the queue, the version of the tools, one line of totals for each status, a row for each book (sections, exercises,
 visual record entries over exercises, acknowledgements over unconfirmed ones, bundle, main reason) and a block with every reason and what the new run
 found for each book that is not `PERFECT`. `DELIVERY.json` (format `math-canvas-delivery-check`) has the same and more for each book: the counts, the open
-findings by code, the differences from the reference, the state of the bundle and what differs, the SHA-256 of the PDF and of the bundle, and the seconds
-the check took. A run covers the books it checked: `--only` does not keep the rows of an earlier run.
+findings by code, how many differences the reference of the queue has, what the certificate and the new run say, the state of the bundle (`ok`, `stale`, `rejected`, `missing`, `ambiguous`, or `unverified`: the importer accepts it but it could not be compared with the project) and what differs, the
+SHA-256 of the PDF and of the bundle, and the seconds the check took. A run covers the books it checked: `--only` does not keep the rows of an earlier run.
 
 **`--copy-bundles DIR`** copies the bundle of every book whose bundle the importer's check accepts into `DIR/perfect/` (`PERFECT`),
 `DIR/awaiting-confirmation/` or `DIR/draft/` (every other status), as `<book name>.mcbundle`. A copy is written to a temporary file and renamed, an
@@ -812,8 +812,8 @@ older copy replaces the earlier one, and a copy of the same book that an earlier
 folder is never written into (a `DIR` inside one is refused).
 
 **What the check cannot see.** Whether anybody looked at the pictures of the visual pass. The visual record is checked entry by entry against
-the project and the text layer, but a record can be written without looking. A person samples a few books of every batch: imports the bundle (the
-`perfect/` copies are for that), and looks at the exercises, their instructions and their answers. Nor does the check know the printed number
+the project and the text layer, but a record can be written without looking. A person samples a few books of every batch: they import the bundle (the
+`perfect/` copies are for that) and look at the exercises, their instructions and their answers. Nor does the check know the printed number
 of exercises beyond what the reference of the queue says.
 
 ## Limits of the heuristics
