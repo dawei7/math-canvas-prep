@@ -3,10 +3,10 @@ import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:
 import { join, relative } from 'node:path';
 import { describe, expect, it, beforeAll } from 'vitest';
 import { VERSION } from '@mcprep/core';
-import { buildSampleSheet } from '@mcprep/core/testing';
+import { buildPdf, buildSampleSheet } from '@mcprep/core/testing';
 import { DELIVERY_STATUSES, checkDelivery, copyBundles, deliveryMarkdown, deliveryReport, parseDeliveryArguments, runDeliveryCheck, type DeliveryResult } from '../src/index.js';
 import { writeSurveyRecord } from './audited.js';
-import { RECORDS, acknowledge, complete, confirmed, copyDelivery, finalGate, laidOut, queueBook, touchOneFrame, withAcknowledgement, writeReference, type Delivered } from './delivered.js';
+import { RECORDS, acknowledge, cliIn, complete, confirmed, copyDelivery, finalGate, laidOut, queueBook, touchOneFrame, withAcknowledgement, writeReference, type Delivered } from './delivered.js';
 import { tempDir } from './helpers.js';
 
 /**
@@ -517,17 +517,52 @@ describe('MISMATCH: what the delivery claims is not what the files show', () => 
   });
 });
 
+/**
+ * A book that really prints no exercise: 21 pages of running text (no numbered item anywhere), the sections of the workbook as its outline. Delivered like the
+ * others: `inbox/<name>.pdf`, `work/<name>/` with the project. (The census of numbered runs would keep a book open that prints exercises and has no frame.)
+ */
+async function proseBook(name: string): Promise<Delivered> {
+  const root = await tempDir('mcprep-delivery-');
+  await mkdir(join(root, 'work'));
+  await mkdir(join(root, 'inbox'));
+  const folder = join(root, 'work', name);
+  await mkdir(folder);
+  const pdf = join(root, 'inbox', `${name}.pdf`);
+  const bytes = buildPdf({
+    pages: Array.from({ length: 21 }, (_unused, index) => ({
+      texts: [
+        { text: `Page ${index + 1} of the notes: the argument goes on in plain sentences.`, x: 72, y: 100, size: 11 },
+        { text: 'A paragraph follows the paragraph before it, and no item of it carries a number.', x: 72, y: 120, size: 11 },
+      ],
+    })),
+  });
+  await writeFile(pdf, bytes);
+  await copyFile(pdf, join(folder, 'book.pdf'));
+  const cli = cliIn(folder);
+  for (const args of [
+    ['init', 'book.pdf', '--title', 'Notes without exercises'],
+    ['outline', 'add', '--title', 'Whole Numbers', '--label', '0.1', '--id', '0.1', '--page', '0'],
+    ['outline', 'add', '--title', 'Word Problems', '--label', '0.2', '--id', '0.2', '--page', '8'],
+  ]) {
+    const done = await cli(args);
+    if (done.code !== 0) throw new Error(`${args.join(' ')} failed: ${done.stdout}`);
+  }
+  return { root, work: join(root, 'work'), folder, name, pdf, book: queueBook(name, pdf), cli };
+}
+
 describe('ZERO EXERCISES', () => {
   /**
    * The workbook with its sections and no exercise at all (an audit that found nothing), exported. `honest` says what the survey record of the
    * pages shows: a book that really prints no exercise (every page is text), or the pages as they are printed (the practice sets are there).
    */
   async function empty(name: string, honest = true): Promise<Delivered> {
-    const d = await laidOut(name);
-    const path = join(d.folder, 'book.mcprep.json');
-    const project = JSON.parse(await readFile(path, 'utf8')) as { frames: unknown[] };
-    project.frames = [];
-    await writeFile(path, JSON.stringify(project));
+    const d = honest ? await proseBook(name) : await laidOut(name);
+    if (!honest) {
+      const path = join(d.folder, 'book.mcprep.json');
+      const project = JSON.parse(await readFile(path, 'utf8')) as { frames: unknown[] };
+      project.frames = [];
+      await writeFile(path, JSON.stringify(project));
+    }
     if (honest) await writeFile(join(d.folder, 'survey.json'), JSON.stringify([{ from: 0, to: 20, kind: 'text' }]));
     else await writeSurveyRecord(d.folder);
     const gate = await d.cli(['audit', 'gate', '--survey', 'survey.json']);
@@ -541,13 +576,14 @@ describe('ZERO EXERCISES', () => {
     const result = await check(d);
     expect(result.status).toBe('ZERO EXERCISES');
     expect(result.reasons[0]).toContain('The audit has 0 exercises. A person decides');
-    expect(result.reasons[1]).toMatch(/^The re-run has \d+ open findings \(survey-uncovered \d+\)\.$/);
+    expect(result.reasons[1]).toMatch(/^The re-run has \d+ open findings \(.*survey-uncovered \d+.*\)\.$/);
+    expect(result.reasons[1]).toContain('numbered-run-uncovered');
     expect(result).toMatchObject({ exercises: 0, survey: { pages: 21, exhaustive: false }, certificate: { state: 'failed', passed: false } });
     expect((result.survey?.uncovered ?? 0) > 0).toBe(true);
     // Allowing it does not help: the pages that hold exercises are still open.
     const allowed = await check(d, ['missed']);
     expect(allowed.status).toBe('NOT FINISHED');
-    expect(allowed.reasons[0]).toMatch(/^The re-run has \d+ open findings \(survey-uncovered \d+\)\.$/);
+    expect(allowed.reasons[0]).toMatch(/^The re-run has \d+ open findings \(.*survey-uncovered \d+.*\)\.$/);
   });
 
   it('needs a person\'s decision, and the reference of the queue is told when it lists exercises; --allow-zero says the decision was taken', async () => {
