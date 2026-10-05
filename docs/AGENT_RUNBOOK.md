@@ -191,7 +191,8 @@ skipped, however many exercises there are**: the work is long on purpose, one sh
 
 **C1. Draw.** `mcprep exercises sheets --out "WORK/sheets" --solutions --per-sheet 6 --project "P"` writes contact sheets of **every** exercise in book order,
 each cell with its instruction (blue), its own region (red), its continuation (orange) and its answer (green), and `sheets.json`; a sheet is closed before it
-gets too tall to read, so there may be more than the number of exercises divided by 6.
+gets too tall to read, so there may be more than the number of exercises divided by 6. A book of 2,400 exercises (about 400 sheets) takes about a minute and a half and 90 MB; a
+gate call on the largest book takes about 20 seconds. If your shell stops commands sooner, run the call in the background or with a longer timeout.
 
 **C2. Look and write the visual record, one sheet at a time.** Open the sheets one after the other, none skipped. For sheet N (the references of its cells are listed in
 `WORK/sheets/sheets.json`): look at it, write ONE small file `WORK/visual/sheet-NNN.json` (three digits, `sheet-001.json`) that holds a JSON list with one entry for each cell of that
