@@ -100,8 +100,10 @@ picture write ONE small file `WORK/survey/pages-0001.json` (its number) that say
 `kind` is one of: `exercises` (the page holds an exercise or part of one: a set at the end of a section or chapter, or exercises inside the text), `answers` (answers or worked
 solutions of exercises, and no exercise), `both` (exercises and answers on one page), `text` (exposition, worked examples, figures: no exercise of the book), `blank` (empty, a divider,
 a picture only), `front` (title, copyright, preface, contents), `back` (index, bibliography, glossary, appendices that are neither exercises nor answers). Every page of the book gets
-exactly one kind. An example the book works out for the reader is `text`; an item the learner is meant to solve ("try it yourself", "check your understanding", a numbered problem) is an
-exercise. When a picture leaves you unsure about a page, look at that page at reading size (S3) before you write it down. A book of 1,000 pages is 125 pictures: that is the work, do it.
+exactly one kind. An exercise is an item with a printed label (a number, a letter, `1.2`, `Exercise 3`) that the book asks the learner to solve, wherever it stands: at the end of a section,
+in a chapter list, inside the text. An example the book works out for the reader is `text`; so is an item without a printed label (a "guided practice" or "try it" box): it is no exercise
+of the bundle (the learner can frame it in the app), but write it into `layout.md` and the report. When a picture leaves you unsure about a page, look at that page at reading size (S3)
+before you write it down. A book of 1,000 pages is 125 pictures: that is the work, do it.
 The gate checks this record against your frames: a page you marked `exercises` that no exercise region touches stays open, and so does an exercise region on a page you marked `text`.
 
 **S3. Close looks.** For each kind of exercise page you saw (the start of a set, the middle of a long set, two columns, parts a) b) c), a figure, an instruction printed above a group, a
