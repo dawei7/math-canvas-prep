@@ -72,8 +72,8 @@ describe('the defects of the audit cannot be acknowledged', () => {
       expect(said(done), code).toContain('Repair it');
       expect(said(done), code).toContain('mcprep');
     }
-    // The 14 defects of the audit and the 5 findings of the survey record.
-    expect(Object.keys(NON_ACKNOWLEDGEABLE)).toHaveLength(19);
+    // The 13 defects of the audit and the 5 findings of the survey record.
+    expect(Object.keys(NON_ACKNOWLEDGEABLE)).toHaveLength(18);
     // A note written into the file by hand covers nothing: the gate lists it as refused and the finding stays open.
     const { path, project, by } = await projectOf(cli);
     delete by('1.2:5').context;

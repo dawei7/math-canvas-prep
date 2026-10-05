@@ -62,13 +62,14 @@ export const bundlePathOf = (projectPath: string, pdfPath: string): string => jo
 /**
  * Findings that are defects of the audit, never what the book prints: `audit ack` refuses them, the gate takes no note for them, and
  * each has the command that repairs it. (A region that cuts its label, an answer on the wrong exercise, an instruction missing from an
- * exercise are all things the book does not print: repair them.) The `survey-*` findings of the survey record are here too: the record is the
+ * exercise are all things the book does not print: repair them.) An answer that does not start with the label of its exercise is not
+ * among them: a book can misprint the numbers of its key (the answers of 5, 7, 9 printed as 1, 3, 5), and then the right answer is the one
+ * whose content answers the exercise; that is acknowledged with the page and confirmed by a second reviewer who looks at the picture. The `survey-*` findings of the survey record are here too: the record is the
  * proof that every page was looked at, so a page without an entry, an entry that disagrees with the project or one that is not in the format is
  * repaired in the record or in the project, never excused.
  */
 export const NON_ACKNOWLEDGEABLE: Readonly<Record<string, string>> = {
   'label-not-first': 'Frame the exercise on its own text: look at it (`mcprep crop REF`), then `mcprep frames update REF --rect l,t,r,b --snap`, or `mcprep exercises label REF NUMBER` when its label is wrong.',
-  'solution-label-missing': 'Point the exercise at its own answer: `mcprep solution remove REF`, then `mcprep solution add REF --page P --rect l,t,r,b --snap` (`mcprep render P --frames --solutions` shows the page).',
   overlap: 'Make the regions only touch: `mcprep frames update REF --rect l,t,r,b --snap` (the finding names both exercises).',
   'duplicate-region': 'Frame each printed exercise on its own text: delete the copy (`mcprep frames delete ID`) or move one of the two.',
   'section-unknown': 'File the exercise under a section of the outline: `mcprep exercises section REF SECTION-ID` (`mcprep outline` lists the ids).',
