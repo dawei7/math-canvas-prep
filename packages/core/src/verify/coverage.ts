@@ -28,6 +28,9 @@ const height = (piece: Piece): number => Math.max(1e-6, piece.rect.bottom - piec
 const escapeWord = (word: string): string => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A heading that names answers ("Warm-up Answers", "Answers - Chapter 1"): the words the audit stops a practice set at and reads the key by. */
+/** A footnote stands below this share of the page and is set at most this share of the body size. */
+const FOOTNOTE_FROM = 0.6;
+const FOOTNOTE_SIZE = 0.9;
 const ANSWER_HEADING = new RegExp(`(?:${[...DEFAULT_BOOK_PATTERNS.stopWords, ...DEFAULT_BOOK_PATTERNS.answerWords].map((word) => word.trim().split(/\s+/).map(escapeWord).join('\\s+')).join('|')})`, 'iu');
 
 function median(values: readonly number[]): number {
@@ -243,7 +246,10 @@ export function checkCoverage(run: Run): Draft[] {
       if (covered) continue;
       // A dotted number counts examples and definitions as well as exercises: in the exercises it does not make a missed exercise.
       const entry: Uncovered = { piece, page, kind, item: item?.dotted === true && !inBand ? undefined : item };
-      const gap = (gapsByPage.get(page) ?? []).find((candidate) => candidate.has(page, piece));
+      // A footnote at the foot of a page (set smaller than the text, in the lower part of the page) is no part of an exercise that goes
+      // on across the page break: it is judged as text left behind, not as a gap in the span.
+      const footnote = piece.rect.top >= FOOTNOTE_FROM && lines.bodySize > 0 && piece.fontSize > 0 && piece.fontSize <= FOOTNOTE_SIZE * lines.bodySize;
+      const gap = footnote ? undefined : (gapsByPage.get(page) ?? []).find((candidate) => candidate.has(page, piece));
       if (gap) {
         const list = byGap.get(gap);
         if (list) list.push(entry);

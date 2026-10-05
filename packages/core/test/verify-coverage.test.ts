@@ -223,6 +223,31 @@ describe('spans: an exercise that goes on over page breaks', () => {
     expect(all(report, 'text-left-behind')).toEqual([]);
   });
 
+  it('takes a footnote at the foot of the page for text left behind, not for a gap in the span', async () => {
+    const book = new Workbook(2);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    for (let n = 1; n <= 3; n += 1) book.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1));
+    // Exercise 4 starts low on page 0 and goes on at the top of page 1; a footnote in a small size stands between them.
+    const four = book.exercise('a', '4', 0, 72, 700, { words: 'Show that the sequence converges, and find its limit' });
+    book.text(1, 72, 60, 'when the first term is one and the ratio is one half.');
+    four.continues = [around(1, 72, 60, { width: 300 })];
+    for (let n = 5; n <= 6; n += 1) book.exercise('a', String(n), 1, 72, 100 + 40 * (n - 5));
+    book.text(0, 72, 790, '12 Under modelling we understand the description of a real situation.', 7);
+    const report = await check(book);
+    expect(refs(report, 'span-gap')).toEqual([]);
+    expect(all(report, 'text-left-behind').map((finding) => finding.page)).toEqual([0]);
+    // The same line in the size of the text is a part of the exercise that the span skips.
+    const plain = new Workbook(2);
+    plain.outline = book.outline;
+    for (let n = 1; n <= 3; n += 1) plain.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1));
+    const again = plain.exercise('a', '4', 0, 72, 700, { words: 'Show that the sequence converges, and find its limit' });
+    plain.text(1, 72, 60, 'when the first term is one and the ratio is one half.');
+    again.continues = [around(1, 72, 60, { width: 300 })];
+    for (let n = 5; n <= 6; n += 1) plain.exercise('a', String(n), 1, 72, 100 + 40 * (n - 5));
+    plain.text(0, 72, 790, 'and the limit is written as a fraction in lowest terms here.', 11);
+    expect(refs(await check(plain), 'span-gap')).toEqual(['a:4']);
+  });
+
   it('finds a continuation that was shrunk so that it leaves its last lines out', async () => {
     const report = await run((frames) => {
       const [middle, last] = e3(frames).continues as Region[];
