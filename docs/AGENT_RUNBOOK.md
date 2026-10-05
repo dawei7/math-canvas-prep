@@ -6,7 +6,8 @@ and end with the same bundle. **Follow it literally.** Where it gives a command,
 formula; where it says STOP, stop and report. Nothing here asks you to be clever: it asks you to be exact.
 
 A bundle contains the whole book. Keep it private: make your own from your own copy of a book. Nothing in this runbook sends a page,
-a crop or a word of the book anywhere, and you must not either.
+a crop or a word of the book anywhere except to you, the agent that reads it and looks at the pictures the tools write; you must not send any of it anywhere
+else either (no web search, no online converter or OCR, no upload).
 
 ## 0. What "perfect" means, and how you will know
 
@@ -33,6 +34,7 @@ Write these down once and never change them:
 
 | Name | Value |
 | --- | --- |
+| `MCPREP` | the command that runs the tool on the command line surface: `node REPOSITORY/packages/cli/bin/mcprep.js` with the absolute path of the clone the task names. Wherever this runbook writes `mcprep`, run `MCPREP` (inside the clone, `npx mcprep` is the same program) |
 | `PDF` | the absolute path of the book |
 | `NAME` | the file name of the PDF without `.pdf` |
 | `WORK` | an absolute path of a new folder for everything you write (never the PDF's own folder) |
@@ -63,7 +65,7 @@ sheets of Phase C); everything else you might want to check is already in the ou
 Licence, author and notice are optional facts: write what the book's front matter says in so many words, or nothing. Never guess; never a
 blocker.
 
-**Never**: upload the PDF or a page or a crop anywhere; edit the PDF; invent an exercise, a number, an answer or a licence; renumber what
+**Never**: upload the PDF, a page, a crop or text of the book to any service; edit the PDF; invent an exercise, a number, an answer or a licence; renumber what
 the book prints; use `--force`; edit the project file by hand; acknowledge a defect of ours; confirm your own acknowledgement; delete a file you did not make.
 
 ## 2. Phase A: the automatic pass (always the same calls)
