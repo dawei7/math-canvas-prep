@@ -1,9 +1,10 @@
 # Agent runbook: audit a book until it is perfect
 
-For any AI agent that has the `mcprep` command line (a shell) or the `mcprep` MCP server, whatever its model, with or without the
-ability to look at images. It is written so that two different agents make the same calls in the same order, reach the same decisions
-and end with the same bundle. **Follow it literally.** Where it gives a command, use that command; where it gives a formula, use the
-formula; where it says STOP, stop and report. Nothing here asks you to be clever: it asks you to be exact.
+For any AI agent that has the `mcprep` command line (a shell) or the `mcprep` MCP server and can look at images. There are two kinds of
+rules here. **What the book prints is YOUR work** (Phase S, section 1A): you look at the book page by page, decide yourself what is an
+exercise, count it, and frame it; the tools show, measure, record and check, they never decide for you, and the automatic proposals are
+drafts that you check. **Everything else is fixed** (the geometry of a region, the gate, the visual record, the survey record, the report, what
+you never do): there follow it literally. Where it gives a command, a formula or a STOP code, use it exactly.
 
 A bundle contains the whole book. Keep it private: make your own from your own copy of a book. Nothing in this runbook sends a page,
 a crop or a word of the book anywhere except to you, the agent that reads it and looks at the pictures the tools write; you must not send any of it anywhere
@@ -43,7 +44,7 @@ Write these down once and never change them:
 | `SIDECAR` | `NAME.meta.json` next to the PDF, if it exists |
 | `REF` | a reference list (JSON), if the task gives one |
 | `PATTERNS` | the `--item-pattern` options the book needs (section 8); none unless the book needs them |
-| `GATE` | the options every gate call carries: `PATTERNS`, and `--reference "REF"` (with `--chapter-offset N` when the sidecar gives `referenceChapterOffset`) when there is a reference list. Always the same, so that every call sees the same findings |
+| `GATE` | the options every gate call carries: `PATTERNS`, `--survey "WORK/survey"` (the page-by-page survey record of Phase S, once it exists), and `--reference "REF"` (with `--chapter-offset N` when the sidecar gives `referenceChapterOffset`) when there is a reference list. Always the same, so that every call sees the same findings |
 | `ME` | your name for the notes (`--by`), for example the model's name |
 
 **One surface for the whole run**: the command line (`mcprep ...`, every command with `--project "P"`) or the MCP server (tool names in
@@ -57,8 +58,9 @@ start the server with `--call-log "WORK/calls.jsonl"`.
 **Keep a progress file**: after every step append one line to `WORK/progress.md` (`A4 done: 11 chapters, 77 sections`). If you are
 interrupted, whoever continues reads that file and goes on at the first step that is not there.
 
-**Only the calls this runbook lists.** Looking is allowed where the runbook sends you to look (a repair in section 7, the geometry of section 6, manual mode, the
-sheets of Phase C); everything else you might want to check is already in the output of the listed calls. Two agents are compared by the calls they made.
+**Calls.** Anything that only reads (`lines`, `render`, `crop`, `info`, `pages sheets`, `exercises census`, `outline` without `--apply`, your own scripts over their output) is
+allowed whenever you need it to find out what the book prints. The calls that CHANGE the project are the ones this runbook lists, and the options of a gate call are always the same
+(`GATE`), so that every call sees the same findings.
 
 **Sidecar** (all keys optional): `title`, `folder`, `author`, `series`, `description`, `license {name, url}`, `sourceUrl`, `notice`,
 `options {chapterWords, practiceWords, answerWords, itemPattern[], instructions}`, `maxItems`, `reference` (a path), `referenceChapterOffset`.
@@ -68,7 +70,15 @@ blocker.
 **Never**: upload the PDF, a page, a crop or text of the book to any service; edit the PDF; invent an exercise, a number, an answer or a licence; renumber what
 the book prints; use `--force`; edit the project file by hand; acknowledge a defect of ours; confirm your own acknowledgement; delete a file you did not make.
 
-## 2. Phase A: the automatic pass (always the same calls)
+## 1A. Phase S: look at the book yourself (always, before any automatic proposal)
+
+**You are the auditor.** The finder behind `exercises propose` knows only the layouts it was taught. On any other layout it finds nothing, or a small part of the exercises, and says
+nothing: a book of a thousand exercises can come back with "0 errors, 0 warnings". So the first thing you do with a book is to look at it, page by page, decide yourself what is an
+exercise, and count what the book prints. Whatever the tools propose afterwards is a draft that you check against your own count and against the pages; a proposal you did not check is
+not part of the audit, and "the tool found nothing" is never a result. The tools help you to see (pictures), to measure (exact text positions), to record (the project) and to check (the
+gate); they never decide for you.
+
+Start with two calls, then keep your notes in `WORK/survey/` as you go (small files; whoever continues after an interruption reads them).
 
 **A1. Create the project.**
 `mcprep init "PDF" --out "P" --title "TITLE" --folder "FOLDER"`
@@ -78,6 +88,43 @@ TITLE = the sidecar's `title`, else the text of the first line with the largest 
 
 **A2. Text layer.** `mcprep info --full-text --project "P"`. Let N be the pages and S the pages without a text layer.
 S larger than 3 percent of N: STOP `SCAN` (these tools do not read scans; report the pages). Otherwise go on and list the S pages in the report.
+
+**S1. The structure.** Read the contents: `mcprep outline pdf --project "P"` (the bookmarks of the PDF, if it has some) and `mcprep outline derive --book --project "P"` without
+`--apply` (the sections the printed contents show, with their pages). When the two disagree or give little, read the printed contents pages themselves (`mcprep lines PAGE --json`,
+and look at the picture). Write `WORK/survey/structure.md`: the chapters and sections with their first and last page, and which parts are front matter, back matter or appendices.
+
+**S2. Every page, once.** `mcprep pages sheets --out "WORK/survey/pages" --per-sheet 8 --project "P"` draws overview pictures of 8 pages each (`overview-0001.png`, ... and
+`overview.json`). Look at EVERY picture, in order, none skipped. They show structure, not small print: headings, boxes, numbered items, figures, two columns, answer keys. For each
+picture write ONE small file `WORK/survey/pages-0001.json` (its number) that says what each of its pages holds, as ranges of pages (zero-based, inclusive):
+`[{"from": 16, "to": 17, "kind": "text"}, {"from": 18, "to": 19, "kind": "exercises", "note": "set 1.2, two columns"}]`.
+`kind` is one of: `exercises` (the page holds an exercise or part of one: a set at the end of a section or chapter, or exercises inside the text), `answers` (answers or worked
+solutions of exercises, and no exercise), `both` (exercises and answers on one page), `text` (exposition, worked examples, figures: no exercise of the book), `blank` (empty, a divider,
+a picture only), `front` (title, copyright, preface, contents), `back` (index, bibliography, glossary, appendices that are neither exercises nor answers). Every page of the book gets
+exactly one kind. An example the book works out for the reader is `text`; an item the learner is meant to solve ("try it yourself", "check your understanding", a numbered problem) is an
+exercise. When a picture leaves you unsure about a page, look at that page at reading size (S3) before you write it down. A book of 1,000 pages is 125 pictures: that is the work, do it.
+The gate checks this record against your frames: a page you marked `exercises` that no exercise region touches stays open, and so does an exercise region on a page you marked `text`.
+
+**S3. Close looks.** For each kind of exercise page you saw (the start of a set, the middle of a long set, two columns, parts a) b) c), a figure, an instruction printed above a group, a
+boxed exercise, the first page of the answer key and a middle page of it, worked solutions in another chapter) draw one page at reading size and read its text:
+`mcprep render PAGE --out "WORK/survey/look-PAGE.png" --project "P"` (look at the picture) and `mcprep lines PAGE --json --project "P"` (the exact text with its positions). Write
+`WORK/survey/layout.md` in your own words: where the exercises stand (end of every section, end of a chapter, inside the text); how an exercise starts (its label exactly as printed:
+`5.`, `5)`, `(5)`, `1.2`, `Exercise 1.2`, `Aufgabe 3`, a letter ...); how the numbers run (again in each set, on through a chapter, chapter-relative); what comes with an exercise (an
+instruction printed once above a group and how far it reaches, parts, figures, tables, data notes, hints, marks of difficulty); where the answers are (in this PDF? for every exercise, only
+the odd ones, selected ones, worked solutions elsewhere, none); two columns; exercises that run over a page; anything unusual. If some exercises carry no number, say how you will
+recognise them.
+
+**S4. The census.** For every exercise set of the book write one line into `WORK/survey/census.md`: the section (its id), the pages, the first and the last label, how many exercises the
+set has (count the labels the book prints; a gap in the numbering is yours to explain), and where its answers are. The sum is what the book prints. With a reference list, compare section by
+section: a difference needs the page that explains it. Count with the help of `mcprep exercises census --details "WORK/survey/runs.json" --project "P"` (every run of numbered items the
+text layer shows, whether the project covers it or not: a pointer for you, never the answer) and of a script of your own over `mcprep lines` of the pages you marked, when the layout is
+regular. Check the census against your pages: every page you marked `exercises` or `answers` belongs to a set or to an answer key of the census, and every run the census command lists is a
+set of yours or explained (a bibliography, the steps of a method, a list in the exposition).
+
+**S5. The plan.** Write `WORK/survey/plan.md`: how you will produce the exercises. (a) A draft from `exercises propose`, which you may use only for the sets whose labels and counts it
+reproduces exactly (check three of them against the pages). (b) A script of your own that reads the lines of the pages and writes one batch file: the sensible way for a regular layout
+(section 9). (c) By hand with `exercises add` for what is left. Whatever you choose, the census is the target: at the end of Phase A the project holds exactly the exercises of the census.
+
+## 2. Phase A: the sections and the exercises (A3 to A9; A1 and A2 are in section 1A)
 
 **A3. What the book says about itself.** One call, only the options you know, in this order: author, series, description, licence name,
 licence address, source address, notice:
@@ -95,11 +142,16 @@ Take them from the sidecar. Without a sidecar read the text of the first four pa
 
 **A5. Store the sections.** The same call with `--apply`.
 
-**A6. Look at the exercises.** `mcprep exercises propose --solutions [OPTIONS] --details "WORK/propose.json" --project "P"` without `--apply`
-(add `--max-items N` only when the sidecar says `maxItems`). Read the first line and the table.
-- Exercises = 0, or fewer than half of the sections that have a practice set have any: the layout ladder (section 8). If it gives nothing: manual mode (section 9).
+**A6. Frame the exercises, as your plan says (S5); the census is the target.**
+- (a) A draft: `mcprep exercises propose --solutions [OPTIONS] --details "WORK/propose.json" --project "P"` without `--apply` (add `--max-items N` only when the sidecar says
+  `maxItems`). Read the first line and the table. Use it only for the sets whose labels and counts equal your census. Where it finds nothing, or another count, the draft is wrong for
+  that set and you frame that set yourself (b or c); the layout ladder (section 8) may help the draft to read more. Never conclude that a book has fewer exercises because the draft
+  found fewer, and never report "the tool found nothing".
+- (b) Your own script (section 9). (c) By hand, `exercises add` (section 9).
 
-**A7. Store them.** The same call with `--apply`. Read what it says about exercises it did not take ("rejected", "put aside", "gaps"): they go into the report.
+**A7. Store them.** A draft: the same call with `--apply`, then look at three of its sets in the crops (`mcprep crop SECTION:LABEL`). Read what it says about exercises it did not take
+("rejected", "put aside", "gaps"): each is yours to decide, and they go into the report. A script: apply its batch file (section 9). Then count: the exercises of every set of the project must
+equal the census. Write the comparison into `WORK/survey/census-check.md` (set, census, project) and repair every difference before you go on.
 
 **A8. Validate.** `mcprep validate --project "P"`. Errors: STOP `VALIDATION` after reading each `fix` and repairing it (section 7), then validate again.
 
@@ -107,7 +159,7 @@ Take them from the sidecar. Without a sidecar read the text of the first four pa
 
 ## 3. Phase B: the gate loop
 
-**B1.** `mcprep audit gate PATTERNS [--reference "REF" [--chapter-offset N]] --project "P"` (this is `GATE` of section 1; the pixel check of the edges, which finds a region that cuts a letter, a line of a figure or the border of a box, is part of every gate call: never add `--no-ink`). It lists what is **open** (neither repaired nor acknowledged), grouped by code, and exits 0 only
+**B1.** `mcprep audit gate PATTERNS --survey "WORK/survey" [--reference "REF" [--chapter-offset N]] --project "P"` (this is `GATE` of section 1; the pixel check of the edges, which finds a region that cuts a letter, a line of a figure or the border of a box, is part of every gate call: never add `--no-ink`). It lists what is **open** (neither repaired nor acknowledged), grouped by code, and exits 0 only
 when nothing is open.
 
 **B2.** Work through the open findings **by code, in the order of the table in section 7**. For each finding: look at it (`mcprep crop SECTION:LABEL
@@ -153,7 +205,7 @@ MISSING-INSTRUCTION, LABEL, ANSWER-CUT, ANSWER-WRONG, ANSWER-MISSING, ANSWER-EXT
 --project "P"`), look at it, and change its entry (in the file of its sheet) to what the cell shows now.
 
 **C4. The gate with the record.** List the sheets you looked at in `WORK/sheets/seen.txt` (for example `1-36`), then
-`mcprep audit gate PATTERNS [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --project "P"`. An exercise without an entry is `visual-missing` (it names the sheets whose exercises have none); an entry that does not fit the project is
+`mcprep audit gate PATTERNS --survey "WORK/survey" [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --project "P"`. An exercise without an entry is `visual-missing` (it names the sheets whose exercises have none); an entry that does not fit the project is
 `visual-mismatch` (the cell was not looked at, or the exercise changed): look again. A record with `ok: false` is `visual-defect`. Neither can be acknowledged.
 
 An agent that cannot look at images does Phase B only, says so in the report ("no visual pass: the model cannot see images"), and the certificate shows that the
@@ -161,9 +213,9 @@ visual record is missing; a person or another agent then finishes Phase C with t
 
 ## 5. Phase D: certificate, review, export, report
 
-1. `mcprep audit gate PATTERNS [--reference "REF" ...] --visual "WORK/visual" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
-   `unconfirmed` left: go on at 2. Anything else open (a missing visual record included): back to Phase B or C. Without Phase C the book is not finished: do not report it as passed.
-2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
+1. `mcprep audit gate PATTERNS --survey "WORK/survey" [--reference "REF" ...] --visual "WORK/visual" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
+   `unconfirmed` left: go on at 2. Anything else open (a missing survey or visual record included): back to Phase S, B or C. Without Phase S and Phase C the book is not finished: do not report it as passed.
+2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS --survey "WORK/survey" [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
    here for them: **somebody with another name** looks at each and runs `mcprep audit confirm --by NAME --all` (or `--ref REF --code CODE`), then `--final` is run again.
 3. `mcprep export --out "BUNDLE" --project "P"`; it says whether the certificate is current and how many acknowledgements are not yet confirmed. A later change makes the
    certificate stale: run the gate again.
@@ -224,10 +276,10 @@ Order: errors first, in this order. `REF` is `SECTION:LABEL`. After each repair:
 | `reference-count`, `reference-missing`, `reference-extra`, `reference-title` | warning | the audited sections or counts differ from the reference | `mcprep book compare REF --details "WORK/compare.json"`. For each: count the printed exercises on the pages. Missed: add. The book prints more or fewer than the reference lists: acknowledge with `--count 1` and the reason (the printed number and the page). |
 | `non-numeric-label`, `inline-section`, `solution-no-text`, `edge-interlocked` | info | for your information (`edge-interlocked`: only tips of the next line touch the edge, no rectangle can do better; the certificate lists them) | Nothing. |
 
-## 8. The layout ladder (when step A6 finds nothing or too little)
+## 8. The layout ladder (helps the draft of A6 to read more)
 
-Try these in order, each time repeating A6 (without `--apply`), and stop at the first that gives at least one exercise in more than half of the sections that
-have a practice set. Write the option you used into `WORK/progress.md` and the report.
+Only for the draft. Try these in order, each time repeating A6 (without `--apply`), and stop at the first that reproduces your census for the sets you want it to read. Write the option
+you used into `WORK/progress.md` and the report. When none reads a set exactly, that is not a result: frame the set yourself (section 9).
 
 1. `--practice-words "WORD1,WORD2"` with the words the book prints in its practice headings (for example `exercises,problems`, `review questions`, `aufgaben`).
 2. `--item-pattern "REGEX"` (group 1 is the label) for a label that is not `5.`, `5)`, `(5)`, `5a)`: for example `"^([A-Z]\.\d+)\s+(.*)$"`, or `"^(\d+\.\d+\.\d+)\s+Aufgabe"`
@@ -239,14 +291,14 @@ have a practice set. Write the option you used into `WORK/progress.md` and the r
 5. A keyword in front of the number with no practice heading above it (`Aufgabe 1.3 (Title).`, `Exercise 4.2.`), for example in an exercise booklet that prints one
    exercise to a page: no option reads it. Manual mode (section 9).
 
-## 9. Manual mode (a layout the tools do not read)
+## 9. Your own framing: a script or by hand (any layout)
 
-This is the slow way to perfection and it always works. Do it for every section that has a practice set and no, or wrong, proposals. When the book repeats one
-regular shape (one exercise to a page, a keyword in front of every number), a short script is the sensible way: read each page with `mcprep lines PAGE --json`, apply
+This is the way that always works, and the one to use for every set that the draft does not reproduce exactly, whatever the layout. When the book repeats one
+regular shape (one exercise to a page, a keyword in front of every number, a box with a margin heading), a short script is the sensible way: read each page with `mcprep lines PAGE --json`, apply
 the formulas of section 6 (a figure or a table has no text lines: the region runs to the last ink of the page, and an edge must lie in a white row, which
-the gate checks), write the ONE batch file below and apply it. Say in the report (heading Layout) which rule the script used.
+the gate checks), write the ONE batch file below and apply it. Say in the report (heading Layout) which rule the script used. Small sets can be framed one by one with `exercises add`.
 
-1. Find the practice set: its pages from the contents (`outline derive` prints the practice pages), else search `mcprep lines PAGE --json` for the heading.
+1. The pages of the set and its label scheme are in your census and your `layout.md`.
 2. For each page: `mcprep lines PAGE --json --project "P"`. An exercise starts at a line whose text starts with the label pattern of the book.
 3. Region of one exercise: section 6. Write all the exercises of a section as ONE batch file `WORK/batch-SECTION.json`: `{"operations": [{"op": "add",
    "authority": "book", "section": "S", "label": "5", "page": 12, "rect": {"left": .., "top": .., "right": .., "bottom": ..}, "snap": true, "context":
@@ -260,18 +312,22 @@ the gate checks), write the ONE batch file below and apply it. Say in the report
 2. **Result**, exactly one of: `PERFECT` (`audit gate --final` exit 0); `PASSED, awaiting confirmation of N acknowledgements` (everything else done, only `unconfirmed` is left);
    `NOT FINISHED` followed by what is missing (for example the visual pass: say how many of the exercises have an entry); the STOP code. No other wording. Then: chapters,
    sections, exercises, exercises with an answer; the gate certificate path.
-3. **Layout**: how the book prints exercises and answers in one or two sentences; the options used (section 8) or `defaults`; whether manual mode was used, for which sections.
-4. **Findings**: a table: code, number found, number repaired, number acknowledged; then each acknowledgement (ref, page, quote, reason) and the path of `WORK/review/index.md`.
-5. **Visual pass**: the entries of the record (`N of N exercises`), how many were `ok: false` and repaired, or `not done` with the reason; the model that looked.
-6. **Reference**: `book compare` totals, every difference and its explanation.
-7. **What I did not do**: everything left open, every step skipped.
-8. **Files**: the bundle, the project, the book summary, the report, the gate certificate, the visual record, the review folder.
+3. **Layout**: how the book prints exercises and answers in one or two sentences; the options used (section 8) or `defaults`; whether a script or hand framing was used, for which sets.
+4. **Survey**: the overview pictures you looked at (`N of N`) and the pages you looked at at reading size (list them); the census (sets, exercises in all) against the reference; what the
+   draft of A6 found and which sets of it you used, how you checked them and what it got wrong; any set you found that the draft did not read.
+5. **Findings**: a table: code, number found, number repaired, number acknowledged; then each acknowledgement (ref, page, quote, reason) and the path of `WORK/review/index.md`.
+6. **Visual pass**: the entries of the record (`N of N exercises`), how many were `ok: false` and repaired, or `not done` with the reason; the model that looked.
+7. **Reference**: `book compare` totals, every difference and its explanation.
+8. **What I did not do**: everything left open, every step skipped.
+9. **Files**: the bundle, the project, the book summary, the report, the gate certificate, the survey record and notes, the visual record, the review folder.
 
 ## 11. Never (read this again before you finish)
 
 Do not use `--force`. Do not acknowledge a defect of ours, and do not confirm your own acknowledgement. Do not invent an exercise, a number or an answer; do not renumber.
-Do not edit the project file by hand. Do not hide a finding: every finding is repaired or acknowledged with a page. Do not write the visual record from what you expect: write
-what the cell shows. Do not stop early because the work is long: the gate is the definition of done. Do not send anything of the book anywhere.
+Do not edit the project file by hand. Do not hide a finding: every finding is repaired or acknowledged with a page. Do not write the visual record or the survey record from what you
+expect: write what the picture shows. Do not trust a draft you did not check against the pages, and never report "the tool found nothing": a book with no exercise is a result only when your
+survey record covers every page and you can name the pages that show it (a book of notes that prints no exercise). Do not stop early because the work is long: the gate is the definition of
+done. Do not send anything of the book anywhere except to the model that runs you.
 
 ## 12. MCP tool names
 
@@ -279,6 +335,9 @@ what the cell shows. Do not stop early because the work is long: the gate is the
 | --- | --- | --- |
 | A1 | `init` | `create_project` |
 | A2 | `info --full-text` | `project_info` (`full_text: true`) |
+| S1 | `outline pdf`, `outline derive --book` (without `--apply`) | `get_outline` (the PDF's own bookmarks when the project has none), `outline_derive_book` |
+| S2 | `pages sheets` | `pages_sheets` |
+| S4 | `exercises census` | `exercises_census` |
 | A3 | `book meta` | `book_meta` |
 | A4, A5 | `outline derive --book [--apply]` | `outline_derive_book` |
 | A6, A7 | `exercises propose --solutions [--apply]` | `exercises_propose` |

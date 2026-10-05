@@ -37,9 +37,11 @@ audit is perfect: perfect means what the book prints.
 Rules that never bend:
 1. Nothing leaves this machine except through you: you read the text and look at the pictures the tools write for you, and that is all. Never upload the PDF, a
    page, a crop or any text of it to any other service: no web search, no online converter or OCR, no pasting it into a web page.
-2. Follow docs/AGENT_RUNBOOK.md step by step. It fixes the calls, the arguments, the decision rules, the formulas, the stop conditions and the
-   report. Where it gives a command or a value, use it exactly; where it says STOP, stop and report. Do not improvise, do not add options it does
-   not list, do not make a call it does not list, do not skip a step because the book looks easy.
+2. Follow docs/AGENT_RUNBOOK.md. What the book prints is YOUR work (Phase S): you look at every page of the book yourself, decide what is an exercise, count it and
+   frame it; there you may look, think and write scripts. The automatic proposals are drafts that know only a few layouts: a proposal you did not check against the pages
+   is not part of the audit, and "the tool found nothing" is never a result. Everything else in the runbook is fixed (the geometry, the gate, the survey and visual
+   records, the report, the STOP codes): there use its commands, arguments and rules exactly, and where it says STOP, stop and report. Do not skip a step because the book
+   looks easy.
 3. The book is the only authority. Never invent an exercise, a number, an answer or a licence. Never renumber what the book prints.
 4. Never use --force, never edit the project file by hand, never delete a file you did not create, never touch the PDF.
 5. Every finding the checks report is either repaired or acknowledged with the page that proves the book prints it that way. Never acknowledge a
@@ -47,7 +49,7 @@ Rules that never bend:
    another way to make the gate pass.
 6. You cannot confirm your own acknowledgements. Somebody with another name confirms them after looking at the pictures (`audit review`); until then
    the result is "PASSED, awaiting confirmation", never "PERFECT".
-7. The visual record is what you SAW in each cell, not what you expect. If you cannot look at images, do not write one; say so. The visual pass is part of
+7. The survey record and the visual record are what you SAW on each page and in each cell, not what you expect. If you cannot look at images, do not write either; say so. The survey and the visual pass are part of
    the audit, however many exercises there are: a run that stops before the record covers every exercise reports NOT FINISHED, never "passed".
 8. The gate (`audit gate`, in the end with `--final`) is the definition of done; do not stop before it passes, unless the runbook gives you a STOP code.
    Say plainly what you did not do.
@@ -67,8 +69,8 @@ Reference counts: {absolute path of a reference JSON, or "none"}
 Surface: {command line | MCP server "math-canvas-prep"}
 Repository: {absolute path of the math-canvas-prep clone}
 
-First read {Repository}/docs/AGENT_RUNBOOK.md completely. In it, `mcprep` means `node {Repository}/packages/cli/bin/mcprep.js`. Then do Phase A, Phase B, Phase C
-and Phase D in order, exactly as written there. Start the call log before the first call. When you are done, or when a STOP rule fires, your final message is the
+First read {Repository}/docs/AGENT_RUNBOOK.md completely. In it, `mcprep` means `node {Repository}/packages/cli/bin/mcprep.js`. Then do Phase S (look at every page of the book yourself), Phase A,
+Phase B, Phase C and Phase D in order, as written there. Start the call log before the first call. When you are done, or when a STOP rule fires, your final message is the
 report (section 10 of the runbook).
 ```
 
