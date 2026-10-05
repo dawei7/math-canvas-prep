@@ -276,6 +276,8 @@ place (it keeps its id). `--dry-run` shows the batch and its validation without 
 printed ink (the pages that have a region are drawn once; see "Where the edges go: ink" in AUDIT_A_BOOK.md), so that most of what
 `exercises verify --ink` would report does not arise; `--keep-edges` leaves the regions as cut from the text layer.
 
+When `exercises propose` finds nothing or too little in a book that has exercises, its layout is one the finder does not read, and nothing else will say so: **`exercises census`** (MCP `exercises_census`) lists every run of five or more numbered items in the text layer of the whole book, with no heading word and no layout assumed, and whether the project covers it. The gate reports the runs that no region covers as `numbered-run-uncovered` (for every project, also one without an exercise); an exercise set is framed, an answer key is attached, and a list that the book prints and that is neither (a bibliography, the steps of a method) is acknowledged. See "The census of numbered runs" in AUDIT_A_BOOK.md.
+
 **`solutions propose`** cuts the answer key into bands by the small section markers and the headers (a band runs across all columns
 and over page breaks), reads the answers of a band with the same engine (a number that stands alone with a graph below it, an answer of
 several lines, a fraction) and matches them by (section, label) to the authoritative exercises of the project. `--apply` gives each
@@ -700,7 +702,9 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
 1. `exercises_verify` (command `exercises verify`) until there are no errors; read every warning. It also looks for text that no region
    holds (a missed exercise, the cut-off end of an exercise or an answer), for an instruction on the wrong exercise or missing from one
    (`context-inconsistent`, also for an instruction of several regions), for answers under the marker of another section, for a span of
-   regions that skips text. `ink=true` (`--ink`) adds the pixel check of the edges.
+   regions that skips text. `ink=true` (`--ink`) adds the pixel check of the edges. It also lists every run of five or more numbered items in the
+   whole book that no region covers (`numbered-run-uncovered`; `exercises_census` lists all of them): a set whose layout the proposals do not read
+   shows up here, and a numbered list that is no exercise set is acknowledged.
    An answer headed by a word ("Lösung 1.1.2") needs `--item-pattern` (or `--item-pattern-file`) for the heading, as for the proposals.
 2. `book_compare` (`book compare REFERENCE.json`): the count of every section against the book's own list. Look at the pages of every
    section that differs: the book prints it (acknowledge) or the audit is wrong (repair).

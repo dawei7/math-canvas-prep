@@ -10,7 +10,7 @@ import { projectArg, type ToolApi } from './args.js';
 /** What the server says about them, after the paragraph on proposals for a book. */
 export const VERIFY_INSTRUCTIONS = `
 
-Checking an audit the same way whatever the model: exercises_verify reads the stored exercises and the text layer of the PDF (no images) and returns an ordered list of findings (errors, then warnings, then infos; each with a code, SECTION:LABEL, the page, a message and the evidence): fix the errors, look at the warnings, and call it again until it has no errors. exercises_sample returns a fixed, bounded sample of exercises and answers to look at (at most 40 exercises and 20 answers: one exercise of each kind of layout the book has, the first and the last exercise of every chapter, a spread of the rest): look at exactly those with render_crop (frame = ref, region = region), or let it write the crops (crops_dir); per_section=true is the thorough review (the first and the last exercise of every section, beyond the caps).`;
+Checking an audit the same way whatever the model: exercises_verify reads the stored exercises and the text layer of the PDF (no images) and returns an ordered list of findings (errors, then warnings, then infos; each with a code, SECTION:LABEL, the page, a message and the evidence): fix the errors, look at the warnings, and call it again until it has no errors. exercises_census lists every run of numbered items in the whole book (five or more lines numbered one after the other, any layout, no heading word needed) and whether the project covers it: it is the survey for a book whose layout the finder does not read, and a run the project leaves out is the warning numbered-run-uncovered of exercises_verify and audit_gate. exercises_sample returns a fixed, bounded sample of exercises and answers to look at (at most 40 exercises and 20 answers: one exercise of each kind of layout the book has, the first and the last exercise of every chapter, a spread of the rest): look at exactly those with render_crop (frame = ref, region = region), or let it write the crops (crops_dir); per_section=true is the thorough review (the first and the last exercise of every section, beyond the caps).`;
 
 export function registerVerifyTools({ tool, cli, toResult, projectOf }: ToolApi): void {
   tool(
@@ -44,6 +44,38 @@ export function registerVerifyTools({ tool, cli, toResult, projectOf }: ToolApi)
             ...(args.fail_on ? ['--fail-on', args.fail_on] : []),
             ...(args.ink ? ['--ink'] : []),
             ...(args.item_patterns ?? []).flatMap((pattern) => ['--item-pattern', pattern]),
+          ],
+          { project: projectOf(args) },
+        ),
+      ),
+  );
+
+  tool(
+    'exercises_census',
+    {
+      title: 'List every run of numbered items in the whole book',
+      description:
+        'The survey that needs no heading word and no knowledge of the layout: reads the text layer of EVERY page (no images, no network; about ten seconds for 1,400 pages) and lists each run of numbered items, five or more lines numbered one after the other, and whether the project covers it. An item is a line (or one cell of a row of two or three items side by side) that starts with a label and then has text: "8.", "8)", "(8)", a dotted label of one chapter ("4.12": the last number rises, the others stay) or a keyword and a number ("Exercise 4.2", "Problem 7", "Question 12", "Task 5", "Aufgabe 1.26", "Uebung 3"; keywords adds words). A run: min_run (default 5) or more items whose numbers rise by one, or by two in an answer key that prints only the odd or only the even items, in reading order from column to column and page to page (up to two pages without an item in between); one label in ten may be missing. A candidate is left out, and listed with its reason in leftOut, when it is a table of contents or an index (leader dots, page numbers at the end of the lines), a list of years, a running head, fewer than ten items of one or two characters, or the headings of the book printed again as a list; a numbered line set larger than the text is a heading, no item. Each run is { id ("p32:8": the zero-based page of the first item and its first label, written without a character that a shell takes for syntax: "8_paren" for "8)", "8_parens" for "(8)", "Exercise_4.2" for a keyword label, "#2" for a second run with the same id; also the ref of the finding numbered-run-uncovered), pages, firstPage, lastPage, first, last (labels as printed), count, missing, scheme (k., k), (k), k.m, keyword; step 2 with parity), heading (the nearest line above the first item that is set larger or bolder, else the nearest short line: only reported), start, firstItem and lastItem ({ page, rect }), coverage (the share of its item lines inside a region of the project: an exercise, a continuation, an instruction or an answer), covered (coverage 0.8 or more), itemsOutside }; summary counts runs, items, pagesWithRuns, covered, uncovered, itemsOutside and leftOut. Every run is a candidate: an exercise set, an answer key, or another list (references, steps of a method, worked examples, footnotes). With an empty project every run is uncovered, which is the point: a layout that exercises_propose does not read still shows here. Frame what is an exercise (exercises_add) and an answer key by the solution regions of its exercises (solution_add), or acknowledge a list the book prints that is neither with audit_ack (code numbered-run-uncovered, ref = the id, a page and a quote). The gate (audit_gate, exercises_verify) reports every uncovered run of 5 items or more as numbered-run-uncovered, and only the uncovered runs of 8 items or more once the project covers 3 runs. uncovered=true lists only the runs the project does not cover. details_file writes the whole report with every item (format math-canvas-census, get_schema census). It changes nothing.',
+      inputSchema: {
+        project: projectArg,
+        min_run: z.number().int().min(2).optional().describe('The fewest items a run has (default 5).'),
+        uncovered: z.boolean().optional().describe('List only the runs that the project does not cover (the ones the gate reports as numbered-run-uncovered). Default: every run.'),
+        keywords: z.array(z.string()).optional().describe('Words that make a keyword label ("Exercise 4.2"), besides the English and German ones that are read by default (exercise, problem, question, task, aufgabe, uebung, frage).'),
+        details_file: z.string().optional().describe('Write the whole report (every run with all its items) as JSON to this file (format math-canvas-census).'),
+      },
+      readOnly: true,
+      idempotent: true,
+    },
+    async (args) =>
+      toResult(
+        await cli(
+          [
+            'exercises',
+            'census',
+            ...(args.min_run !== undefined ? ['--min-run', String(args.min_run)] : []),
+            ...(args.uncovered ? ['--uncovered'] : []),
+            ...(args.keywords ?? []).flatMap((word) => ['--keyword', word]),
+            ...(args.details_file ? ['--details', args.details_file] : []),
           ],
           { project: projectOf(args) },
         ),

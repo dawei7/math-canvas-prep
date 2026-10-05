@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/census.schema.json",
+  "title": "The census of numbered runs of a book (mcprep exercises census --json and --details)",
+  "description": "Every run of numbered items in the text layer of the whole book (five or more items numbered one after the other: an exercise set, an answer key, a list of references, the steps of a method) and whether the project covers it. It needs no heading word and no layout. The file written by --details has every item of every run (`items`); the --json result of the command has the same report with the items left out of each run (`itemsOutside`, the number of its items outside every region, in their place) and `listed` (how many runs `runs` holds: with --uncovered only the ones the project does not cover). Pages are zero-based; rectangles are fractions of the page, top left is (0, 0). Plain JSON, camelCase.",
+  "type": "object",
+  "required": ["format", "version", "pages", "minRun", "summary", "runs", "leftOut"],
+  "properties": {
+    "format": { "const": "math-canvas-census" },
+    "version": { "const": 1 },
+    "pages": { "type": "integer", "minimum": 0, "description": "The pages of the book." },
+    "minRun": { "type": "integer", "minimum": 2, "description": "The fewest items a run has (--min-run, default 5)." },
+    "listed": { "type": "integer", "minimum": 0, "description": "Only in the --json result: the number of runs in `runs`." },
+    "summary": {
+      "type": "object",
+      "required": ["runs", "items", "pagesWithRuns", "covered", "uncovered", "itemsOutside", "leftOut"],
+      "properties": {
+        "runs": { "type": "integer", "minimum": 0, "description": "Runs found (all of them, also when --uncovered lists only some)." },
+        "items": { "type": "integer", "minimum": 0, "description": "Items in all runs." },
+        "pagesWithRuns": { "type": "integer", "minimum": 0, "description": "Pages that hold an item of some run." },
+        "covered": { "type": "integer", "minimum": 0, "description": "Runs that the project covers: at least 80 percent of their items lie inside a region (an exercise, a continuation, an instruction or an answer)." },
+        "uncovered": { "type": "integer", "minimum": 0 },
+        "itemsOutside": { "type": "integer", "minimum": 0, "description": "Items outside every region, in all runs." },
+        "leftOut": { "type": "integer", "minimum": 0, "description": "The length of `leftOut`: candidates of five or more numbered items that were set aside." }
+      },
+      "additionalProperties": false
+    },
+    "runs": {
+      "type": "array",
+      "description": "In reading order.",
+      "items": {
+        "type": "object",
+        "required": ["id", "pages", "firstPage", "lastPage", "first", "last", "count", "missing", "scheme", "step", "start", "firstItem", "lastItem", "coverage", "covered"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^p\\d+:", "description": "`p32:8`: the zero-based page of the first item and its first label (`8`; `8_paren` for the label `8)` and `8_parens` for `(8)`, so that no shell takes it for syntax; `1.12`; `Exercise_4.2` for a keyword label); a second run with the same id gets `#2`. The gate gives the finding numbered-run-uncovered this id as its ref." },
+          "pages": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 1, "description": "The pages that hold items, in order." },
+          "firstPage": { "type": "integer", "minimum": 0 },
+          "lastPage": { "type": "integer", "minimum": 0 },
+          "first": { "type": "string", "description": "The first label as printed (`8.`, `(8)`, `1.12`, `Exercise 4.2`)." },
+          "last": { "type": "string", "description": "The last label as printed." },
+          "count": { "type": "integer", "minimum": 2, "description": "How many items were found." },
+          "missing": { "type": "integer", "minimum": 0, "description": "How many numbers between the first and the last have no item (the text layer drops lines, books skip numbers): at most one in ten." },
+          "scheme": { "enum": ["k.", "k)", "(k)", "k.m", "keyword"], "description": "How the items are labelled: `8.`, `8)`, `(8)`, a dotted label of one chapter (`4.12`: the last number rises), a keyword and a number." },
+          "step": { "enum": [1, 2], "description": "1 for consecutive numbers, 2 for a key that prints only every second one." },
+          "parity": { "enum": ["odd", "even"], "description": "With step 2: whether the numbers are odd or even." },
+          "keyword": { "type": "string", "description": "The word of a keyword label as printed (`Exercise`, `Aufgabe`)." },
+          "heading": { "type": "string", "description": "The nearest line above the first item that is no item and is set larger or bolder than the text, else the nearest short line; only reported, no heading word decides anything." },
+          "start": { "type": "string", "maxLength": 60, "description": "The first 60 characters of the first item." },
+          "firstItem": { "$ref": "#/$defs/place" },
+          "lastItem": { "$ref": "#/$defs/place" },
+          "coverage": { "type": "number", "minimum": 0, "maximum": 1, "description": "The share of the items that lie inside a region of the project (at least half of the line)." },
+          "covered": { "type": "boolean", "description": "`coverage` is at least 0.8." },
+          "itemsOutside": { "type": "integer", "minimum": 0, "description": "Only in the --json result: the number of items outside every region (the items themselves are in the --details file)." },
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "description": "Only in the --details file: every item of the run, in reading order.",
+            "items": {
+              "type": "object",
+              "required": ["page", "rect", "label", "n", "text", "covered"],
+              "properties": {
+                "page": { "type": "integer", "minimum": 0 },
+                "rect": { "$ref": "#/$defs/rect", "description": "The box of the line that starts the item (one cell of a row of several)." },
+                "label": { "type": "string", "description": "The label as printed." },
+                "n": { "type": "integer", "minimum": 0, "description": "The number the item counts as (the last number of a dotted label)." },
+                "text": { "type": "string", "maxLength": 60, "description": "The first 60 characters of the line." },
+                "covered": { "type": "boolean", "description": "The line lies inside a region of the project." }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "leftOut": {
+      "type": "array",
+      "description": "The candidates that were set aside, in reading order, each with its reason: nothing the census leaves out is silent.",
+      "items": {
+        "type": "object",
+        "required": ["id", "firstPage", "lastPage", "first", "last", "count", "reason", "coverage"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^p\\d+:" },
+          "firstPage": { "type": "integer", "minimum": 0 },
+          "lastPage": { "type": "integer", "minimum": 0 },
+          "first": { "type": "string" },
+          "last": { "type": "string" },
+          "count": { "type": "integer", "minimum": 2 },
+          "reason": {
+            "enum": ["years", "contents", "running-head", "short-items", "headings"],
+            "description": "years: all the numbers are years. contents: a table of contents, an index or a list with leader dots (the lines end in page numbers or have leaders). running-head: a line in the top or bottom band of three or more pages, about one to a page. short-items: fewer than ten items of one or two characters (a column of values, the cells of a table). headings: the headings of the book printed again as a list (the outline of a chapter before its sections)."
+          },
+          "coverage": { "type": "number", "minimum": 0, "maximum": 1, "description": "The share of its items that lie inside a region of the project (a candidate the project covers anyway is no loss)." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "fraction": { "type": "number", "minimum": 0, "maximum": 1 },
+    "rect": {
+      "type": "object",
+      "required": ["left", "top", "right", "bottom"],
+      "properties": {
+        "left": { "$ref": "#/$defs/fraction" },
+        "top": { "$ref": "#/$defs/fraction" },
+        "right": { "$ref": "#/$defs/fraction" },
+        "bottom": { "$ref": "#/$defs/fraction" }
+      },
+      "additionalProperties": false
+    },
+    "place": {
+      "type": "object",
+      "required": ["page", "rect"],
+      "properties": {
+        "page": { "type": "integer", "minimum": 0 },
+        "rect": { "$ref": "#/$defs/rect" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

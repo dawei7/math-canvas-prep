@@ -105,6 +105,7 @@ export const COVERAGE_CODES = [
   'inline-section',
   'context-inconsistent',
   'stray-frame',
+  'numbered-run-uncovered',
 ] as const;
 
 /** The text of every page of a PDF, as the checks take it (read with the real extraction, fonts included: the tools read bold lines). */

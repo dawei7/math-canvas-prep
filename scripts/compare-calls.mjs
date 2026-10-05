@@ -79,6 +79,7 @@ export const TOOLS = {
   exercises_propose: { command: 'exercises propose' },
   solutions_propose: { command: 'solutions propose' },
   exercises_verify: { command: 'exercises verify' },
+  exercises_census: { command: 'exercises census' },
   exercises_sample: { command: 'exercises sample' },
   book_compare: { command: 'book compare', positional: ['reference'] },
   exercises_sheets: { command: 'exercises sheets' },
@@ -92,9 +93,9 @@ export const TOOLS = {
 const CONTENT_COMMANDS = new Set(Object.values(TOOLS).filter((entry) => entry.content).map((entry) => entry.command));
 
 /** Argument names that are not the option's name once `_` is `-`. */
-const ALIASES = { sections: 'section', 'item-patterns': 'item-pattern', 'ops-file': 'ops', 'details-file': 'details', 'out-file': 'out', 'crops-dir': 'crops', 'out-dir': 'out' };
+const ALIASES = { sections: 'section', keywords: 'keyword', 'item-patterns': 'item-pattern', 'ops-file': 'ops', 'details-file': 'details', 'out-file': 'out', 'crops-dir': 'crops', 'out-dir': 'out' };
 /** Options that hold a number: `3` and `"3"` and `3.0` are one value. */
-const NUMBERS = new Set(['page', 'pages', 'index', 'depth', 'dx', 'dy', 'top', 'first', 'at', 'max-side', 'scale', 'padding', 'grid', 'min-confidence', 'max-items', 'exercises', 'solutions', '$page']);
+const NUMBERS = new Set(['page', 'pages', 'index', 'depth', 'dx', 'dy', 'top', 'first', 'at', 'max-side', 'scale', 'padding', 'grid', 'min-confidence', 'max-items', 'min-run', 'exercises', 'solutions', '$page']);
 /** Options that hold a list written with commas on the command line. */
 const LISTS = new Set(['section', 'ids', 'at', 'pages']);
 /** Options that hold regions (`page:left,top,right,bottom`). */

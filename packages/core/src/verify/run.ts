@@ -177,8 +177,8 @@ export function buildRun(project: Project, state: Prepared, index: PageIndex, pa
 
 const overlaps = (a: Rect, b: Rect): boolean => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
-/** The share of a box (0 to 1) that lies inside the union of the regions. */
-export function coveredShare(box: Rect, regions: readonly Covering[]): number {
+/** The share of a box (0 to 1) that lies inside the union of the regions (anything that has a rectangle: a `Covering`, a region of the project). */
+export function coveredShare(box: Rect, regions: readonly { rect: Rect }[]): number {
   const area = rectArea(box);
   if (area <= 0) return 1;
   const hits = regions.filter((region) => overlaps(box, region.rect));

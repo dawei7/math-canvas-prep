@@ -4,7 +4,7 @@
  * every agent that runs the check on the same project, whatever model it is and whether it can look at images.
  */
 
-import type { Rect } from '../model/types.js';
+import type { PageText, Rect } from '../model/types.js';
 
 export const VERIFY_FORMAT = 'math-canvas-verify';
 export const VERIFY_VERSION = 1;
@@ -55,6 +55,7 @@ export const VERIFY_CODES = [
   { code: 'region-holds-item', severities: ['error'] },
   { code: 'inline-section', severities: ['info'] },
   { code: 'stray-frame', severities: ['warning'] },
+  { code: 'numbered-run-uncovered', severities: ['warning'] },
 ] as const;
 
 export type VerifyCode = (typeof VERIFY_CODES)[number]['code'];
@@ -244,4 +245,10 @@ export interface VerifyOptions {
    * any, the forms the audit reads by default are read: "1.2.3 Aufgabe" for an exercise and "Lösung 1.2.3" for an answer.
    */
   itemPatterns?: readonly RegExp[];
+  /**
+   * The text of EVERY page of the book (not only the pages the check needs): when it is given, the census of numbered runs is part of the
+   * report (`numbered-run-uncovered`: five or more items numbered one after the other that no region of the project covers, whatever
+   * the layout and whatever the heading). It is a check of the whole book, so it is not made for a section filter.
+   */
+  numberedRuns?: (page: number) => PageText | undefined;
 }

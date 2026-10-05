@@ -13,6 +13,7 @@ import { checkInk } from './ink.js';
 import { checkKeys } from './key.js';
 import { PageIndex } from './regions.js';
 import { buildRun, chainOf, computeLayout, pagesOfRange, zoneLead } from './run.js';
+import { checkNumberedRuns } from './runs.js';
 import { checkSections } from './sequence.js';
 import { checkExerciseText, checkSolutionText } from './text.js';
 import { SEVERITY_RANK, VERIFY_CODES, VERIFY_FORMAT, VERIFY_VERSION, type VerifyOptions, type VerifyReport } from './types.js';
@@ -151,6 +152,8 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
     ...checkKeys(run),
     ...(options.ink !== undefined ? checkInk(state.exercises, options.ink, index) : []),
     ...(chosenSections(project, options) === undefined ? checkStrays(project, state) : []),
+    // The census reads the whole book, whatever the project holds (also a project with no exercise): it is not made for a section filter.
+    ...(options.numberedRuns !== undefined && chosenSections(project, options) === undefined ? checkNumberedRuns(project, options.numberedRuns) : []),
   ];
   drafts.sort(compareDrafts);
   const findings = drafts.map((entry) => entry.finding);

@@ -7,6 +7,8 @@ export * from './testing/book.js';
 export * from './testing/authority-sample.js';
 export * from './testing/booklet.js';
 export * from './testing/inline-book.js';
+export * from './testing/numbered-book.js';
+export * from './testing/exotic-book.js';
 export * from './testing/span.js';
 export * from './testing/structure-book.js';
 export * from './testing/defects.js';

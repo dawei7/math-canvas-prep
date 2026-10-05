@@ -87,7 +87,12 @@ function findingLines(findings: readonly VerifyFinding[], limit: number): string
 
 export function verifyText(report: VerifyReport): string {
   const { summary } = report;
-  if (summary.exercises === 0) return 'There are no exercises to check: add them first (`mcprep exercises propose --apply`), or name a section that has some.';
+  if (summary.exercises === 0) {
+    const none = 'There are no exercises to check: add them first (`mcprep exercises propose --apply`), or name a section that has some.';
+    // A project without an exercise still gets the census of numbered runs: a book full of numbered lists that nothing covers must not read as "nothing to check".
+    if (report.findings.length === 0) return none;
+    return [none, `But the text layer holds ${plural(report.findings.length, 'list')} of numbered items that no region covers (\`mcprep exercises census\` lists every run):`, ...findingLines(report.findings, TEXT_LIMIT)].join('\n');
+  }
   const head = [
     `Checked ${plural(summary.exercises, 'exercise')}${summary.authoritative !== summary.exercises ? ` (${summary.authoritative} from a book)` : ''} in ${plural(summary.sections, 'section')}:`,
     `${plural(summary.errors, 'error')}, ${plural(summary.warnings, 'warning')}, ${plural(summary.infos, 'info', 'infos')}.`,

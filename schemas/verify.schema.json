@@ -64,11 +64,12 @@
               "region-open-end",
               "region-holds-item",
               "inline-section",
-              "stray-frame"
+              "stray-frame",
+              "numbered-run-uncovered"
             ]
           },
           "severity": { "enum": ["error", "warning", "info"] },
-          "ref": { "type": "string", "minLength": 1, "description": "SECTION:LABEL of the exercise; the section id alone for a finding about a whole section; the frame id for an exercise a person framed." },
+          "ref": { "type": "string", "minLength": 1, "description": "SECTION:LABEL of the exercise; the section id alone for a finding about a whole section; the frame id for an exercise a person framed; the id of the run (`p32:8`) for numbered-run-uncovered." },
           "page": { "type": ["integer", "null"], "minimum": 0, "description": "The zero-based page to look at, or null." },
           "message": { "type": "string", "description": "A sentence for a person." },
           "evidence": { "type": "string", "description": "What the finding rests on: the first 40 characters of the text found, the numbers measured." }

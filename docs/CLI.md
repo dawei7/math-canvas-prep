@@ -82,6 +82,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`exercises propose`](#exercises-propose): Find the numbered exercises of the practice sets of a book, with the instruction that governs each (offline heuristics, nothing is applied).
 - [`solutions propose`](#solutions-propose): Find the answers in the answer key at the back of the PDF and match them to the authoritative exercises of the project.
 - [`exercises verify`](#exercises-verify): Check the audited exercises against the text layer of the PDF, without looking: the same list for every agent.
+- [`exercises census`](#exercises-census): List every run of numbered items in the whole book, whatever the layout, and whether the project covers it: the survey that needs no heading word.
 - [`exercises sample`](#exercises-sample): A fixed sample of exercises and answers to look at, chosen by rules (no randomness): the same for every agent.
 - [`exercises sheets`](#exercises-sheets): Make contact sheets of every exercise (or of a section, or of the fixed sample) with its instruction, continuations and answer, to look at them all.
 - [`frames list`](#frames-list): List the frames in reading order with their labels: positional (E1, E2.1, Q1, B1) or, for book exercises, the printed one.
@@ -122,7 +123,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`export`](#export): Write the project as a .mcbundle: the PDF plus its frames and outline, ready for the Android app's library.
 - [`inspect-bundle`](#inspect-bundle): Look inside a .mcbundle: manifest, entries, frames with their labels, outline, problems.
 - [`import-check`](#import-check): Do exactly what the Android importer does with a bundle, step by step, and say whether it would accept it.
-- [`schema`](#schema): Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual, survey.
+- [`schema`](#schema): Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual, survey, census.
 - [`guide`](#guide): Print the guide for AI agents that mark a PDF with this tool.
 
 ## init
@@ -781,6 +782,38 @@ $ mcprep exercises verify --json
 ```
 
 With `--json`, `result` is: `{ format: "math-canvas-verify", version: 1, summary: { exercises, authoritative, sections, solutions, errors, warnings, infos }, findings: [{ code, severity, ref, page, message, evidence }] (the first 300; findingsOmitted: n says how many more the --details file has), sections: [{ id, label, exercises, firstLabel, lastLabel, withSolution, gaps, duplicates }] }; the exit code is 4 when --fail-on is met`
+
+## exercises census
+
+List every run of numbered items in the whole book, whatever the layout, and whether the project covers it: the survey that needs no heading word.
+
+```
+mcprep exercises census [options]
+```
+
+Reads the text layer of EVERY page (no pixels, no network; a book of 1,400 pages takes about ten seconds) and lists the runs of numbered items it holds, whatever the book calls them and however its pages are laid out. An item is a line (or one cell of a row of two or three items side by side) that starts with a label and then has text: `8.`, `8)`, `(8)`, a dotted label of one chapter (`4.12`, `1.2.3`: the last number rises, the others stay), or a keyword and a number (`Exercise 4.2`, `Problem 7`, `Question 12`, `Task 5`, `Aufgabe 1.26`, `Uebung 3`; `--keyword WORD` adds words). A run is `--min-run` (default 5) or more items of one kind whose numbers rise by one (by two in a key that prints only the odd or only the even items), in reading order, from column to column and from page to page (up to two pages without an item in between); one label in ten may be missing, because the text layer drops lines and books skip numbers. Lines that do not start with a label go on with the item above. A candidate is left out, and listed with its reason (`leftOut`), when it is a table of contents or an index (the lines have leader dots, end in a page number or a list of page numbers, or have a bare number at the right margin), a run whose numbers are all years, a running head (its lines stand in the top or bottom band of three or more pages, about one to a page), fewer than ten items of one or two characters, or the headings of the book printed again as a list (the outline of a chapter before its sections); a numbered line set larger than the text is a heading and no item. Each run reports its id (`p32:8`: the zero-based page of its first item and its first label, written so that no shell takes it for syntax: `8_paren` for `8)`, `8_parens` for `(8)`, `Exercise_4.2` for a keyword label; a second run with the same id gets `#2`; the id the gate gives to the finding `numbered-run-uncovered`), the pages that hold its items, its first and last label, the number of items found and of labels missing between them, its scheme (`k.`, `k)`, `(k)`, `k.m`, `keyword`; with step 2 whether it is odd or even), the heading (the nearest line above its first item that is set larger or bolder than the text, else the nearest short line; only reported: no heading word decides anything), the first words of its first item, the page and box of its first and last item and its `coverage`: the share of its item lines that lie inside a region of the project (an exercise, a continuation, an instruction or an answer; at least half of a line must be inside). A run is `covered` at 0.8 or more. Every run is a candidate, an exercise set, an answer key or another list (references, the steps of a method, worked examples, footnotes): the exercises of a set are framed (`exercises add`), an answer key by its solution regions (`solution add`), and a list that is neither is acknowledged at the gate with the page and a quote (`audit ack --code numbered-run-uncovered --ref ID`). With an empty project (no exercise at all) every run is uncovered, which is the point: a layout that `exercises propose` does not read still shows here. The gate (`audit gate`, `exercises verify`) reports every uncovered run of 5 items or more as `numbered-run-uncovered`, and only the uncovered runs of 8 items or more once the project covers 3 runs. `--uncovered` lists only the runs that the project does not cover. `--details FILE` writes the whole report with every item (format math-canvas-census, see `mcprep schema census`). Nothing is changed.
+
+Options:
+
+- `--min-run <n>`: The fewest items a run has (default 5; at least 2).
+- `--uncovered`: List only the runs that the project does not cover (the ones the gate reports as numbered-run-uncovered).
+- `--keyword <word>`: A word that makes a keyword label ("Exercise 4.2"), besides the English and German ones the census reads by default (exercise, problem, question, task, aufgabe, uebung, frage); repeatable.
+- `--details <file>`: Write the whole report as JSON (every run with all its items, and the candidates that were left out), in the format math-canvas-census.
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep exercises census
+$ mcprep exercises census --uncovered
+$ mcprep exercises census --min-run 8 --details census.json
+$ mcprep exercises census --keyword Aufgabe --json
+```
+
+With `--json`, `result` is: `{ format: "math-canvas-census", version: 1, pages, minRun, summary: { runs, items, pagesWithRuns, covered, uncovered, itemsOutside, leftOut }, listed: number of runs in `runs`, runs: [{ id, pages: [...], firstPage, lastPage, first, last, count, missing, scheme, step, parity?, keyword?, heading?, start, firstItem: { page, rect }, lastItem: { page, rect }, coverage, covered, itemsOutside }] (all runs, or with --uncovered the ones that are not covered; without their items: --details has them), leftOut: [{ id, firstPage, lastPage, first, last, count, reason: "years"|"contents"|"running-head"|"short-items"|"headings", coverage }] }`
 
 ## exercises sample
 
@@ -2091,7 +2124,7 @@ With `--json`, `result` is: `{ wouldImport: boolean, rejection?: Issue, steps: [
 
 ## schema
 
-Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual, survey.
+Print a JSON Schema: bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual, survey, census.
 
 ```
 mcprep schema [name] [options]
@@ -2099,7 +2132,7 @@ mcprep schema [name] [options]
 
 Arguments:
 
-- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual, survey. Without a name the available schemas are listed.
+- `name` (optional): One of bundle-manifest, frames, outline, project, book-summary, verify, sample, gate, notes, compare, sheets, visual, survey, census. Without a name the available schemas are listed.
 
 Options:
 

@@ -452,11 +452,11 @@ The guide for agents that mark a PDF: coordinate system with a worked example, w
 
 ### `get_schema` (read-only)
 
-The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export), of the report of exercises_verify, of the sample of exercises_sample, of the gate certificate and the audit notes (gate, notes), of book_compare (compare), of the contact sheets (sheets), of the visual record (visual) and of the survey record of the pages (survey).
+The JSON Schema of bundle-manifest, frames, outline or project files, of the book summary (book_show, book_export), of the report of exercises_verify, of the sample of exercises_sample, of the gate certificate and the audit notes (gate, notes), of book_compare (compare), of the contact sheets (sheets), of the visual record (visual), of the survey record of the pages (survey) and of the census of numbered runs (census).
 
 Arguments:
 
-- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify" | "sample" | "gate" | "notes" | "compare" | "sheets" | "visual" | "survey")
+- `name`* ("bundle-manifest" | "frames" | "outline" | "project" | "book-summary" | "verify" | "sample" | "gate" | "notes" | "compare" | "sheets" | "visual" | "survey" | "census")
 
 ### `exercises_list` (read-only)
 
@@ -723,6 +723,17 @@ Arguments:
 - `ink` (boolean): Also render the pages (each page that has a region once) and report every region edge that cuts printed ink (edge-on-ink, with the number of crossing pixels and the position to move to in the evidence; edge-interlocked as information). Slower. Default off.
 - `fail_on` ("error" | "warning" | "none"): The severity from which the command line would exit with code 4 (default error). The result is the same.
 - `item_patterns` (string[]): For a book that does not print "5.", "5)" or "(5)": regular expressions with the label as printed in group 1 (as for exercises_propose); they add to what is read by default.
+
+### `exercises_census` (read-only)
+
+The survey that needs no heading word and no knowledge of the layout: reads the text layer of EVERY page (no images, no network; about ten seconds for 1,400 pages) and lists each run of numbered items, five or more lines numbered one after the other, and whether the project covers it. An item is a line (or one cell of a row of two or three items side by side) that starts with a label and then has text: "8.", "8)", "(8)", a dotted label of one chapter ("4.12": the last number rises, the others stay) or a keyword and a number ("Exercise 4.2", "Problem 7", "Question 12", "Task 5", "Aufgabe 1.26", "Uebung 3"; keywords adds words). A run: min_run (default 5) or more items whose numbers rise by one, or by two in an answer key that prints only the odd or only the even items, in reading order from column to column and page to page (up to two pages without an item in between); one label in ten may be missing. A candidate is left out, and listed with its reason in leftOut, when it is a table of contents or an index (leader dots, page numbers at the end of the lines), a list of years, a running head, fewer than ten items of one or two characters, or the headings of the book printed again as a list; a numbered line set larger than the text is a heading, no item. Each run is { id ("p32:8": the zero-based page of the first item and its first label, written without a character that a shell takes for syntax: "8_paren" for "8)", "8_parens" for "(8)", "Exercise_4.2" for a keyword label, "#2" for a second run with the same id; also the ref of the finding numbered-run-uncovered), pages, firstPage, lastPage, first, last (labels as printed), count, missing, scheme (k., k), (k), k.m, keyword; step 2 with parity), heading (the nearest line above the first item that is set larger or bolder, else the nearest short line: only reported), start, firstItem and lastItem ({ page, rect }), coverage (the share of its item lines inside a region of the project: an exercise, a continuation, an instruction or an answer), covered (coverage 0.8 or more), itemsOutside }; summary counts runs, items, pagesWithRuns, covered, uncovered, itemsOutside and leftOut. Every run is a candidate: an exercise set, an answer key, or another list (references, steps of a method, worked examples, footnotes). With an empty project every run is uncovered, which is the point: a layout that exercises_propose does not read still shows here. Frame what is an exercise (exercises_add) and an answer key by the solution regions of its exercises (solution_add), or acknowledge a list the book prints that is neither with audit_ack (code numbered-run-uncovered, ref = the id, a page and a quote). The gate (audit_gate, exercises_verify) reports every uncovered run of 5 items or more as numbered-run-uncovered, and only the uncovered runs of 8 items or more once the project covers 3 runs. uncovered=true lists only the runs the project does not cover. details_file writes the whole report with every item (format math-canvas-census, get_schema census). It changes nothing.
+
+Arguments:
+
+- `min_run` (integer): The fewest items a run has (default 5).
+- `uncovered` (boolean): List only the runs that the project does not cover (the ones the gate reports as numbered-run-uncovered). Default: every run.
+- `keywords` (string[]): Words that make a keyword label ("Exercise 4.2"), besides the English and German ones that are read by default (exercise, problem, question, task, aufgabe, uebung, frage).
+- `details_file` (string): Write the whole report (every run with all its items) as JSON to this file (format math-canvas-census).
 
 ### `exercises_sample` (read-only)
 

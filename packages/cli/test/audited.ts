@@ -5,10 +5,10 @@ import { buildSyntheticBook } from '@mcprep/core/testing';
 import { run } from '../src/run.js';
 import { tempDir, type Cli, type Result } from './helpers.js';
 
-/** The synthetic workbook audited by the real proposals (sections, exercises with their answers): a folder with book.pdf and its project. */
-export async function auditedBook(): Promise<Cli> {
+/** A folder holding `book.pdf` (the bytes given) and a runner for the command line in it; nothing has been done with the book yet. */
+export async function cliFor(pdf: Uint8Array): Promise<Cli> {
   const dir = await tempDir();
-  await writeFile(join(dir, 'book.pdf'), buildSyntheticBook().pdf);
+  await writeFile(join(dir, 'book.pdf'), pdf);
   const cli = (async (args, opts = {}) => {
     let out = '';
     let err = '';
@@ -18,6 +18,12 @@ export async function auditedBook(): Promise<Cli> {
     return { code, stdout: out, stderr: err, json };
   }) as Cli;
   Object.defineProperty(cli, 'dir', { value: dir });
+  return cli;
+}
+
+/** The synthetic workbook audited by the real proposals (sections, exercises with their answers): a folder with book.pdf and its project. */
+export async function auditedBook(): Promise<Cli> {
+  const cli = await cliFor(buildSyntheticBook().pdf);
   for (const args of [['init', 'book.pdf', '--title', 'Synthetic Algebra Workbook'], ['outline', 'derive', '--book', '--apply'], ['exercises', 'propose', '--solutions', '--apply']]) {
     const made = await cli(args);
     if (made.code !== 0) throw new Error(`${args.join(' ')} failed: ${made.stdout}${made.stderr}`);

@@ -22,6 +22,7 @@ Nothing leaves the machine; do not upload the PDF anywhere.
 | 3 | `solutions propose` | The answers in the answer key, matched by (section, label); exercises without an answer and answers without an exercise. |
 | 4 | `exercises verify` | A text-only check of what the steps above stored: regions that do not start with their number, answer regions that hold another number, regions that lie on each other, numbers that are missing, repeated or out of order. The same list for every agent; see below. |
 | 5 | `exercises sample` | A fixed sample of exercises and answers to look at, chosen by rules without randomness: the first and the last exercise of every section, every kind of layout the book has, a spread of the rest. The same for every agent; see below. |
+| 6 | `exercises census` | Every run of five or more numbered items in the text layer of the whole book, whatever the layout and whatever the headings, and whether the project covers it: the survey that still works for a book whose practice sets the finder does not read. The gate reports what no region covers (`numbered-run-uncovered`); see "The census of numbered runs". |
 
 The desktop app does the same three steps with a review before anything is applied (**Derive sections** in the Sections panel,
 **Book exercises** and **Solutions** in the Propose panel): the same search, each proposal shown against what the project has, one
@@ -186,6 +187,7 @@ some other way (`Problem 12.`).
 | `region-holds-item` | error | In a section whose exercises stand inline: a region holds a line that starts another exercise of the same section (by its label): the region reaches into the next exercise. | `frames update SECTION:LABEL --rect l,t,r,b` so that the region ends before it. |
 | `stray-frame` | warning | The project has book exercises and a frame that is not one (an exercise, question or bookmark framed for oneself, without a label): a stray region in an audited book. | `frames delete ID`, or, if it is an exercise of the book, `exercises mark ID --label L --section S`. |
 | `inline-section` | info | The exercises of the section are not together in a block: fewer than three of them, or less than 60 percent of the lines from the first exercise to the end of the section are in a region. Text that no region holds is not checked there; the end of every region is (`region-open-end`, `region-holds-item`). One finding for the section, with the share. | Nothing, if the book sets its exercises between paragraphs. |
+| `numbered-run-uncovered` | warning | In the text layer of the **whole book** five or more items are numbered one after the other (a run, see "The census of numbered runs") and fewer than 80 percent of their lines lie inside a region of the project (an exercise, a continuation, an instruction or an answer): an exercise set, an answer key or another list that nobody framed. Checked for every project, also one without any exercise, and for the whole book (not with `--section`). `ref` is the id of the run (`p32:8`), `page` the first page of an item outside the regions. A project that covers three runs or more is judged on the runs of 8 items or more. Evidence: the first 40 characters of the first item. | `mcprep exercises census --uncovered`, look at the first page of the run. An exercise set is framed (`exercises add`), an answer key is attached (`solution add`); a list that is neither (a bibliography, the steps of a method, worked examples) is acknowledged with the reason, the page and a quote. |
 
 The thresholds (0.05, 0.004, 0.45, 0.05, 0.002, 80 percent, 3 times) are `VERIFY_LIMITS` in `packages/core/src/verify/types.ts`. They were
 tuned on a real audit of a textbook of about 3,000 exercises, so that a book that was audited with care gives few findings, and each
@@ -254,6 +256,86 @@ Books that print an answer under a keyword ("Lösung 1.1.2", "Answer 5.") need t
 `exercises propose`; it applies to the exercises and to the solution regions). Dotted labels (`1.3.10`) are compared number by number
 (`1.3.8` before `1.3.10`) for `order`, for the first and the last number of a section and for `solution-order`; their last number counts
 examples and definitions too, so `gap` and `label-outlier` are not applied to them (`duplicate` is).
+
+## The census of numbered runs
+
+Everything above hangs on one recognition: that the practice sets of the book are found (a heading with a practice word, the items under it
+numbered `1.`, `2.`, ...). A layout that the finder was never taught gives **no exercise and no finding**, and an empty list reads like a
+clean book. The census asks for the one thing that every list of exercises, answers, references or steps has in common: **numbers that
+follow each other**. It reads the text layer of every page (no pixels, no network; about ten seconds for a book of 1,400 pages), knows no
+heading word and no layout, and lists each run of numbered items and whether the project covers it.
+
+```console
+mcprep exercises census                  # the runs of the whole book, each with the line above it and how much of it the project covers
+mcprep exercises census --uncovered      # only the runs that no region of the project covers: what the gate reports as numbered-run-uncovered
+mcprep exercises census --min-run 8 --details census.json   # the shortest run; every item of every run as JSON (format math-canvas-census, `mcprep schema census`)
+mcprep exercises census --keyword Aufgabe                   # more words for keyword labels
+```
+
+**An item** is a line (or one cell of a row of two or three items side by side) that starts with a label and then has text: `8.` (not
+`8.5`: that is a decimal), `8)`, `(8)`, a dotted label of one chapter (`4.12`, `1.2.3`: the last number rises and the others stay), or a
+keyword and a number (`Exercise 4.2`, `Problem 7`, `Question 12`, `Task 5`, `Aufgabe 1.26`, `Uebung 3`; `--keyword WORD` adds words, MCP
+`keywords`). A number that stands alone on its line with the text beside it is an item too; a line that starts with no label goes on with the
+item above. A numbered line that is set larger than the text (`3. Methods`, `1.4 Exercises`) is a heading and no item.
+
+**A run** is `--min-run` (default 5) or more items of one kind whose numbers rise by one, or by two in an answer key that prints only the odd
+or only the even items, in reading order: down a column, over to the next column, on to the next page (the next item may be up to two pages
+further on). One label in ten may be missing, because the text layer drops lines and books skip numbers. Each run has an id, `p32:8`: the
+zero-based page of its first item and its first label, written so that no shell takes it for syntax (`8_paren` for `8)`, `8_parens` for
+`(8)`, `Exercise_4.2` for a keyword label; a second run with the same id gets `#2`). The report gives each run its pages, its first and last
+label as printed, the number of items and of labels missing between them, its scheme (`k.`, `k)`, `(k)`, `k.m`, `keyword`; with step 2 odd or
+even), **the heading** (the nearest line above the first item that is set larger or bolder than the text, else the nearest short line:
+it is only reported, no heading word decides anything), the first words of its first item and the page and the box of its first and last item.
+
+**Covered.** An item is covered when at least half of its line lies inside a region of the project: an exercise, a continuation, an
+instruction (`context`) or an answer (`solution`). A run is covered when 80 percent of its items are. The command prints that share for
+every run; with an empty project it is 0 everywhere, which is the point.
+
+**Left out.** A candidate that is one of the following is no run. `leftOut` of the report lists every one with its reason, so that nothing
+is set aside in silence:
+
+| reason | what it is |
+| --- | --- |
+| `contents` | A table of contents, an index or a list with leader dots: at least 40 percent of its lines end in a page number after leader dots, or in a list of page numbers after words (`variance, 45, 67-69`), or have a bare number at the right margin, far from the words. |
+| `years` | All the numbers are years (1000 to 2100). |
+| `running-head` | At least 80 percent of its lines stand in the top or the bottom band of three or more pages, about one to a page. |
+| `short-items` | Fewer than ten items of one or two characters (a column of values, the cells of a table, matrix entries); ten or more are read as an answer key. |
+| `headings` | At least half of its lines repeat the label and the words of a heading that is set larger: the outline of a chapter printed again as a list. |
+
+**The finding `numbered-run-uncovered`** (a warning that can be acknowledged; `ref` is the id of the run, `page` the first page of an item that
+no region covers). The gate and `exercises verify` report it once for each run that is not covered, for **every** project, also one that has
+no exercise at all (`exercises verify` then says that the text layer holds lists no region covers, instead of "there are no exercises to
+check"), and for the whole book, so not with `--section`. A project that covers fewer than three runs is judged on every uncovered run of 5
+items or more. One that covers three or more is judged on the uncovered runs of **8 items or more**: a list of five to seven numbered items
+in a lesson is mostly the parts of a worked example or the steps of a method, and a project that has covered several runs is an audited
+one, where the substantial lists are what could be missed. A real exercise set of five to seven items then shows only in
+`exercises census`, in the survey record and in the visual pass. The thresholds are `RUN_LIMITS` in `packages/core/src/verify/runs.ts`.
+
+**What to do with a run.** Look at its first page (`mcprep render PAGE`, `mcprep lines PAGE`), then:
+
+1. It is an exercise set: frame it. The section is an entry of the outline (`outline set`, `outline add`), each exercise is
+   `mcprep exercises add --section S --label L --page P --rect l,t,r,b --snap` (one batch file for `frames apply` when there are many;
+   AGENT_RUNBOOK section 9 is the manual mode). `--details FILE` lists the items of the run with their boxes.
+2. It is an answer key: attach each answer to its exercise (`mcprep solution add`).
+3. It is a list that the book prints and that is neither an exercise set nor a key (a bibliography, the steps of a method, worked examples,
+   footnotes): acknowledge it with the page, a quote of the list as the page prints it (`mcprep lines PAGE`) and what the book prints:
+   `mcprep audit ack --code numbered-run-uncovered --ref p9:1 --page 9 --quote "A study of tables" --reason "The book prints its numbered
+   bibliography here and no exercise"`. A second reviewer confirms it (`audit confirm`), as for every acknowledgement.
+
+**What it cannot see.** The census finds numbers, not exercises:
+
+- Exercises that are not numbered one after the other: bullets, boxes titled with words, `Q:`, labels with letters (`A1`, `B2`), a set that
+  prints only some of its numbers (more than one in ten missing). Frame them from the pages; the survey record (`--survey`) is what
+  makes sure that every page was looked at.
+- Labels that the text layer does not show: a scan, numbers drawn as pictures, text converted to outlines. A book without a text layer has
+  no run to list, and the command says so (`mcprep info` says which pages have a text layer).
+- Sets shorter than `--min-run`, and, once a project covers three runs, shorter than 8 at the gate.
+- Lists that look like exercises and are none: worked examples, the parts of a proof, the steps of a method that a book numbers in runs of
+  five or more are runs too, and each is acknowledged. No generic rule tells them from a short exercise set when no heading word may be
+  used, and the census uses none.
+- A page of two columns whose gutter the page reader does not find is read row by row. The census reads both orders (the column on the
+  right may come before the column on the left), but a layout whose columns interlock can split a run in two, and a run in two pieces is
+  reported as two.
 
 ## A fixed sample to look at: `exercises sample`
 
@@ -901,6 +983,7 @@ Never invent an exercise, a number, an answer, an author, a licence or a notice 
 - [ ] Chapter and section counts, labels, titles and pages match the printed contents; the notes were read.
 - [ ] Per section: the count and the first and last number match the book; every gap, duplicate and stray number is explained.
 - [ ] `exercises verify` has no errors, and every warning and info that remains is explained.
+- [ ] `exercises census --uncovered` (the gate's `numbered-run-uncovered`) lists nothing: every run of numbered items is an exercise set that is framed, an answer key that is attached, or a list that the book prints and that is acknowledged.
 - [ ] The fixed sample (`exercises sample`: every section's first and last exercise, every kind of layout, the answers) looked at, all of it; no frame cuts a line, holds a neighbour or leaves a figure out; the context is the right instruction; an answer region shows the answer to its own exercise.
 - [ ] Exercises without an answer and answers without an exercise explained.
 - [ ] `validate` has no errors, `export` done, `import-check` says the bundle would import; the licence's attribution travels with the bundle (author, licence and notice of the manifest, see BUNDLE_FORMAT.md).
