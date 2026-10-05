@@ -300,6 +300,25 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged([head(0, undefined), head(1, 'MATH 18.102 Problem Set 3', { top: 0.112 }), head(2, 'MATH 18.102 Problem Set 4', { top: 0.112 }), head(3, undefined)])).toBe(false);
   });
 
+  it('takes the head of a chapter that starts with its number for a head when it stands alone on the row of the page number', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const page = (body: number): PageText => ({
+      page: 1,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: '8. Path Connectedness', rect: { left: 0.1, right: 0.4, top: 0.094, bottom: 0.106 }, fontSize: 10, column: 0, chars: 21 },
+        { text: '59', rect: { left: 0.88, right: 0.9, top: 0.094, bottom: 0.106 }, fontSize: 10, column: 0, chars: 2, headerFooter: true },
+        { text: 'and so the path joins the two points of the space.', rect: { left: 0.1, right: 0.9, top: body, bottom: body + 0.012 }, fontSize: 10, column: 0, chars: 50 },
+      ],
+    });
+    const flagged = (body: number): boolean | undefined => new PageIndex((number) => (number === 1 ? page(body) : undefined)).page(1).pieces[0]?.headerFooter;
+    // The page number stands on its row and the text is far below: a head. An item has the rest of its text right under it.
+    expect(flagged(0.14)).toBe(true);
+    expect(flagged(0.112)).toBe(false);
+  });
+
   it('does not take for a running head the first line of three pages that each start with an exercise named by a keyword', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const pages = (text: (index: number) => string): PageText[] =>

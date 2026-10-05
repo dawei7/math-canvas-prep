@@ -120,7 +120,10 @@ export class PageLines {
   private markHeads(): void {
     const anchors = this.lines.filter((piece) => piece.headerFooter && piece.rect.bottom <= HEAD_BAND);
     for (const piece of this.lines) {
-      if (piece.headerFooter || piece.rect.bottom > HEAD_BAND || !hasWords(piece.text) || startsLikeNumber(piece.text)) continue;
+      if (piece.headerFooter || piece.rect.bottom > HEAD_BAND || !hasWords(piece.text) || KEYWORD_ITEM.test(piece.text)) continue;
+      // A line that starts like a number is an item, unless it stands alone: the head of a chapter ("8. Path Connectedness") on the row of the
+      // page number has no line of text right under it, an item has the rest of its text there.
+      if (startsLikeNumber(piece.text) && this.inBlock(piece)) continue;
       if (anchors.some((anchor) => sameRow(anchor.rect, piece.rect))) piece.headerFooter = true;
     }
     const text = this.lines.filter((piece) => !piece.headerFooter);
