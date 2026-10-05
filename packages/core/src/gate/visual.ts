@@ -138,6 +138,15 @@ const finding = (code: 'visual-missing' | 'visual-mismatch' | 'visual-defect', r
 /** Words as they are compared: folded, lower case, without any white space. */
 const compact = (text: string): string => foldText(text).toLowerCase().replace(/\s+/g, '');
 
+/**
+ * Text as a word of the record is looked for in it: compact, and without the marks of umlauts and accents (a text layer of LaTeX sets
+ * "ü" as "¨u", a person types "ü").
+ */
+const bare = (text: string): string =>
+  compact(text)
+    .normalize('NFD')
+    .replace(/[̀-ͯ¨´`]/g, '');
+
 const refOf = (frame: Frame): string => bookReference(frame.section as string, normalizeLabel(frame.label as string).label);
 
 /** Sheet numbers as a sentence: `sheet 5`, `sheet 5 and 6`, `sheets 1, 4 and 9`. */
@@ -231,9 +240,13 @@ export async function checkVisual(session: ProjectSession, file: string, pattern
 
     // 1. The words: three words of the entry are a piece of the text of the exercise's region.
     const region = index.page(frame.page).read(frame.rect);
-    const words = foldText(entry.startsWith as string).split(' ').filter((word) => word !== '').slice(0, 3).join('');
+    // The three words together, or (where the text layer joins or scrambles the pieces of a line) each of them, umlauts folded.
+    const parts = foldText(entry.startsWith as string).split(' ').filter((word) => word !== '').slice(0, 3);
+    const words = parts.join('');
+    const haystack = bare(region.text);
+    const found = compact(region.text).includes(words.toLowerCase()) || parts.every((word) => haystack.includes(bare(word)));
     if (words === '') wrong('"startsWith" is empty: write the first three words printed after the number.', 'startsWith is empty');
-    else if (!compact(region.text).includes(words.toLowerCase())) wrong(`"${(entry.startsWith as string).slice(0, 40)}" is not in the text of its region.`, `startsWith "${(entry.startsWith as string).slice(0, 40)}" is not in the region`);
+    else if (!found) wrong(`"${(entry.startsWith as string).slice(0, 40)}" is not in the text of its region.`, `startsWith "${(entry.startsWith as string).slice(0, 40)}" is not in the region`);
 
     // 2. The instruction: the cell shows a blue box exactly when the exercise has an instruction.
     const has = (frame.context?.length ?? 0) > 0;
