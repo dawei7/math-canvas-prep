@@ -750,7 +750,7 @@ project after the last run (`mcprep ... --project results/<name>/<name>-audited.
 ## Checking what an agent delivered
 
 When an agent audits a queue of books with [the runbook](AGENT_RUNBOOK.md), each book ends as a work folder: the project, the gate
-certificate, the visual record, the notes with the acknowledgements, the exported bundle. What the agent says about them (its report, its
+certificate, the visual record, the survey record, the notes with the acknowledgements, the exported bundle. What the agent says about them (its report, its
 progress file, the certificate it wrote) is not evidence: a certificate is a JSON file that can be edited, and a bundle can be left behind by a
 repair after which nobody exported again. `scripts/check-delivery.mjs` checks every book of the queue again, from the delivered files alone,
 and says with reasons whether the delivery is perfect. It never writes into a work folder (no certificate, no export, no lock file) and
@@ -776,9 +776,12 @@ any is not, 2 for a usage error.
    only that name), is a reason.
 2. The gate is run again in memory, as `audit gate` runs it and without writing anything: with the item patterns that the certificate lists (the
    patterns of the notes file apply by themselves), always with the pixel check of the edges, with the reference of the queue and its chapter offset
-   even if the agent ran its gate without it, and with the contact-sheet list and the visual record that the certificate names, when they exist.
+   even if the agent ran its gate without it, and with the contact-sheet list, the visual record and the survey record that the certificate names,
+   when they exist.
 3. The certificate is current for the project (`audit gate --status`) and says `perfect`, and the new run is `perfect` too, for the same frames and
-   outline (the same hash). That is the gate's own verdict, whatever the gate asks for: the check holds no copy of the rule.
+   outline (the same hash). That is the gate's own verdict, whatever the gate asks for: the check holds no copy of the rule. It needs the survey
+   record as well as the visual record (every page of the book has an entry that fits the project, every exercise has an entry that fits it), and
+   both must be there: a certificate that names no survey record, or one that is gone, is not perfect.
 4. No acknowledgement that applies is confirmed by the one who wrote it (`confirmedBy` equal to `by`, ignoring case and spaces).
 5. The importer's check accepts the bundle; its `frames.json` and `outline.json` are, byte for byte, those that `export` would write from the project
    now; and the document of its manifest (title, folder, SHA-256 and size of the PDF, page count, author, series, description, licence, source
@@ -791,18 +794,21 @@ any is not, 2 for a usage error.
 | --- | --- |
 | `PERFECT` | Everything above holds. |
 | `AWAITING CONFIRMATION` | As for `PERFECT`, except that acknowledgements wait for a second reviewer: the new run passed, and the gate calls the project perfect once every note is confirmed (the check asks the gate once more, on a copy of the project and of its notes in a temporary folder outside the work folder, in which every note is confirmed), and the bundle is the project's. |
-| `NOT FINISHED` | Something is still to do, and each reason says what: no certificate, a stale certificate, the pixel check did not run, the new run has N open findings (its three most frequent codes with their counts), the visual record covers X of Y exercises, acknowledgements still to confirm, no bundle, a stale bundle ("export again"), a bundle that the importer's check rejects. |
-| `MISMATCH` | What the delivery claims is not what the files show, and what differs is said exactly: a current certificate that says `passed` while the new run has open findings, or `perfect` while the new run is not (open findings, a visual record that lacks entries or is gone, a note that nobody confirmed); an acknowledgement confirmed by its own author; a current certificate that says `passed` beside a bundle that is not the project's (a repair after the last export); a project made on another PDF than the queue's. |
+| `NOT FINISHED` | Something is still to do, and each reason says what: no certificate, a stale certificate, the pixel check did not run, the new run has N open findings (its three most frequent codes with their counts, the `survey-*` findings of a survey record that is not whole among them), the visual record covers X of Y exercises, no survey record behind the certificate, acknowledgements still to confirm, no bundle, a stale bundle ("export again"), a bundle that the importer's check rejects. |
+| `MISMATCH` | What the delivery claims is not what the files show, and what differs is said exactly: a current certificate that says `passed` while the new run has open findings, or `perfect` while the new run is not (open findings, a visual record or a survey record that lacks entries or is gone, a note that nobody confirmed); an acknowledgement confirmed by its own author; a current certificate that says `passed` beside a bundle that is not the project's (a repair after the last export); a project made on another PDF than the queue's. |
 | `ZERO EXERCISES` | The audit has 0 exercises and the book is not in `--allow-zero`: a person decides. If the reference of the queue lists exercises, the reasons say so. Never silently perfect. |
 | `UNREADABLE` | A file cannot be read (the message of the error is the reason), the project's PDF is missing or is not the one it was made on (`E_PDF_MISSING`, `E_PDF_CHANGED`), the folder holds several projects, or the new run stops. A book that the queue itself cannot use (a wrong sidecar) is listed this way too. |
 | `NOT STARTED` | There is no work folder, or no project in it. |
 
 A book in `--allow-zero` has no exercise to look at, and the gate cannot say `perfect` for it (that needs an entry in the visual record for every
-exercise): its certificate has to say `passed`, and the new run has nothing open, has run the pixel check and has nothing unconfirmed.
+exercise): its certificate has to say `passed`, and the new run has nothing open, has run the pixel check, has a survey record that fits (every
+page was looked at: that is how a person knows that the book prints no exercise; a page that the record marks as holding exercises and that no
+exercise region touches is open as `survey-uncovered`) and has nothing unconfirmed.
 
 `DELIVERY.md` has the date, the queue, the version of the tools, one line of totals for each status, a row for each book (sections, exercises,
 visual record entries over exercises, acknowledgements over unconfirmed ones, bundle, main reason) and a block with every reason and what the new run
-found for each book that is not `PERFECT`. `DELIVERY.json` (format `math-canvas-delivery-check`) has the same and more for each book: the counts, the open
+found for each book that is not `PERFECT` (among it the survey record: how many ranges for how many pages). `DELIVERY.json` (format `math-canvas-delivery-check`) has the same and more for each book: the counts,
+the visual record and the survey record as the new run read them, the open
 findings by code, how many differences the reference of the queue has, what the certificate and the new run say, the state of the bundle (`ok`, `stale`, `rejected`, `missing`, `ambiguous`, or `unverified`: the importer accepts it but it could not be compared with the project) and what differs, the
 SHA-256 of the PDF and of the bundle, and the seconds the check took. A run covers the books it checked: `--only` does not keep the rows of an earlier run.
 
@@ -811,8 +817,9 @@ SHA-256 of the PDF and of the bundle, and the seconds the check took. A run cove
 older copy replaces the earlier one, and a copy of the same book that an earlier run left in another of the three folders is removed. A work
 folder is never written into (a `DIR` inside one is refused).
 
-**What the check cannot see.** Whether anybody looked at the pictures of the visual pass. The visual record is checked entry by entry against
-the project and the text layer, but a record can be written without looking. A person samples a few books of every batch: they import the bundle (the
+**What the check cannot see.** Whether anybody looked at the pictures of the visual pass or of the overview pictures of the survey. The visual record
+is checked entry by entry against the project and the text layer, the survey record page by page against the project, but a record can be written
+without looking. A person samples a few books of every batch: they import the bundle (the
 `perfect/` copies are for that) and look at the exercises, their instructions and their answers. Nor does the check know the printed number
 of exercises beyond what the reference of the queue says.
 

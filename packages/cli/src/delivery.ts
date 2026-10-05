@@ -85,6 +85,8 @@ export interface DeliveryResult {
   withAnswer: number | null;
   /** The visual record the re-run read: its path, how many entries, for how many exercises, for how many of them there is one. */
   visual: { file: string; entries: number; exercises: number; covered: number; mismatches: number; defects: number; exhaustive: boolean } | null;
+  /** The survey record the re-run read: its path, the pages of the book, the ranges it holds, and what is wrong with it (null: none was read). */
+  survey: { file: string; pages: number; entries: number; missing: number; uncovered: number; unmarked: number; exhaustive: boolean } | null;
   /** The acknowledgements that apply: how many, how many no second reviewer confirmed, how many were confirmed by their own author. */
   acknowledgements: { total: number; unconfirmed: number; selfConfirmed: number } | null;
   /** The open findings of the re-run (the bundle is judged by a check of its own). */
@@ -157,6 +159,7 @@ interface Certificate {
   open: number;
   unconfirmed: number;
   visualExhaustive: boolean;
+  surveyExhaustive: boolean;
   itemPatterns: string[];
   sheetsFile: unknown;
   visualFile: unknown;
@@ -186,6 +189,7 @@ function parseCertificate(raw: unknown, file: string): Certificate {
     open: raw['open'].length,
     unconfirmed: typeof raw['unconfirmed'] === 'number' ? raw['unconfirmed'] : 0,
     visualExhaustive: visual?.['exhaustive'] === true,
+    surveyExhaustive: survey?.['exhaustive'] === true,
     itemPatterns: Array.isArray(raw['itemPatterns']) ? raw['itemPatterns'].filter((entry): entry is string => typeof entry === 'string') : [],
     sheetsFile: sheets?.['file'],
     visualFile: visual?.['file'],
@@ -198,6 +202,7 @@ function whyNotPerfect(certificate: Certificate): string {
   const parts = [
     certificate.ink ? '' : 'the pixel check of the edges did not run',
     certificate.visualExhaustive ? '' : 'the visual record did not cover every exercise',
+    certificate.surveyExhaustive ? '' : 'the survey record did not cover every page',
     certificate.unconfirmed > 0 ? `${plural(certificate.unconfirmed, 'acknowledgement')} had no second reviewer` : '',
   ].filter(Boolean);
   return parts.length > 0 ? parts.join('; ') : 'it says perfect: false';
@@ -415,7 +420,9 @@ interface Facts {
   visual: { covered: number; exercises: number; exhaustive: boolean } | null;
   /** Why no visual record stands behind the certificate (it names none, or what it names is gone). */
   visualProblem: string | undefined;
-  /** The survey that the certificate names and that is not there. */
+  /** The survey record of the new run (null: none was read). */
+  survey: { pages: number; entries: number; missing: number; uncovered: number; unmarked: number; exhaustive: boolean } | null;
+  /** Why no survey record stands behind the certificate (it names none, or what it names is gone). */
   surveyProblem: string | undefined;
   unconfirmed: number;
   unconfirmedNotes: string[];
@@ -427,15 +434,18 @@ interface Facts {
 
 /**
  * What the re-run says by itself: whether it passed (nothing open) and whether it is perfect. Perfect is the gate's own verdict, whatever
- * the gate asks for, and not an acknowledgement that its author confirmed. A book without exercises has nothing to look at, so the gate cannot
- * say it for it (it needs a proof of looking for every exercise): there the re-run is perfect when nothing is open, the pixel check ran and
- * nothing is unconfirmed.
+ * the gate asks for, and not an acknowledgement that its author confirmed. A book without exercises has no exercise to look at, so the gate
+ * cannot say it for it (it needs an entry of the visual record for every exercise): there the re-run is perfect when nothing is open, the
+ * pixel check ran, every page was surveyed (that is how a person knows that the book prints no exercise) and nothing is unconfirmed.
  */
-function rerunSays(f: Facts): { passed: boolean; perfect: boolean; visualMissing: boolean } {
+function rerunSays(f: Facts): { passed: boolean; perfect: boolean; visualMissing: boolean; surveyMissing: boolean } {
   const passed = f.open.length === 0;
   const visualMissing = f.exercises > 0 && f.visual?.exhaustive !== true;
-  const perfect = (f.exercises === 0 ? passed && f.ink && f.unconfirmed === 0 : f.gatePerfect) && f.selfConfirmed.length === 0;
-  return { passed, visualMissing, perfect };
+  // No survey record was read: whatever it would say, the pages were not shown to have been looked at. (One that was read and is not whole has
+  // its findings open.)
+  const surveyMissing = f.survey === null;
+  const perfect = (f.exercises === 0 ? passed && f.ink && f.unconfirmed === 0 && f.survey?.exhaustive === true : f.gatePerfect) && f.selfConfirmed.length === 0;
+  return { passed, visualMissing, surveyMissing, perfect };
 }
 
 interface Reason {
@@ -457,6 +467,8 @@ function judge(f: Facts): { status: DeliveryStatus; reasons: string[] } {
   const says = rerunSays(f);
   const open = summarizeOpen(f.open);
   const visualFact = f.visual === null ? (f.visualProblem ?? 'there is no visual record behind it') : `the visual record covers ${f.visual.covered} of ${plural(f.visual.exercises, 'exercise')}`;
+  const surveyFact = f.survey === null ? (f.surveyProblem ?? 'there is no survey record behind it') : '';
+  const surveyText = `${surveyFact.charAt(0).toUpperCase()}${surveyFact.slice(1)}: nothing proves that every page of the book was looked at.`;
   const visualText = f.visual === null ? `${visualFact.charAt(0).toUpperCase()}${visualFact.slice(1)}: nothing proves that every exercise was looked at.` : `The visual record covers ${f.visual.covered} of ${plural(f.visual.exercises, 'exercise')}.`;
   const bundleText = ((): string => {
     if (f.bundleState === 'missing') return 'There is no bundle (*.mcbundle) in the work folder: export it (mcprep export).';
@@ -482,7 +494,7 @@ function judge(f: Facts): { status: DeliveryStatus; reasons: string[] } {
       const why = [
         says.passed ? '' : `it has ${open.text}`,
         says.visualMissing ? visualFact : '',
-        f.surveyProblem ?? '',
+        says.surveyMissing ? surveyFact : '',
         f.unconfirmed > 0 && f.selfConfirmed.length === 0 ? `${plural(f.unconfirmed, 'acknowledgement')} ${f.unconfirmed === 1 ? 'is' : 'are'} not confirmed by a second reviewer` : '',
       ].filter(Boolean);
       if (why.length > 0 || f.selfConfirmed.length === 0) {
@@ -511,7 +523,7 @@ function judge(f: Facts): { status: DeliveryStatus; reasons: string[] } {
   if (certificate !== undefined && !certificate.ink) todo.push({ key: 'ink', text: 'The pixel check of the edges did not run when the gate ran (the certificate says ink: false). Run audit gate without --no-ink.' });
   if (!says.passed) todo.push({ key: 'open', text: `The re-run has ${open.text}.` });
   if (says.visualMissing && certificate !== undefined) todo.push({ key: 'visual', text: visualText });
-  if (f.surveyProblem !== undefined) todo.push({ key: 'survey', text: `${f.surveyProblem.charAt(0).toUpperCase()}${f.surveyProblem.slice(1)}.` });
+  if (says.surveyMissing && certificate !== undefined) todo.push({ key: 'survey', text: surveyText });
   if (certificate !== undefined && current && !certificate.passed && says.passed) {
     todo.push({ key: 'certificate', text: `The certificate says the gate did not pass (${plural(certificate.open, 'open finding')} when it ran), although the re-run finds none now. Run audit gate again.` });
   }
@@ -522,7 +534,7 @@ function judge(f: Facts): { status: DeliveryStatus; reasons: string[] } {
     todo.push({ key: 'unconfirmed', text: `${plural(f.unconfirmed, 'acknowledgement')} ${f.unconfirmed === 1 ? 'waits' : 'wait'} for a second reviewer (${listed(f.unconfirmedNotes)}): mcprep audit review, then mcprep audit confirm --by NAME, then mcprep audit gate --final.` });
   }
   // What the gate asks for that nothing above names: its own verdict counts, and this holds no copy of it.
-  const named = !says.passed || says.visualMissing || f.surveyProblem !== undefined;
+  const named = !says.passed || says.visualMissing || says.surveyMissing;
   if (!empty && f.selfConfirmed.length === 0 && !named) {
     if (f.unconfirmed === 0 && !says.perfect) {
       todo.push({ key: 'gate', text: 'The gate does not call this project perfect, and no check above says why: run mcprep audit gate --final to see what it asks for.' });
@@ -564,6 +576,7 @@ const blank = (name: string, pdf: string, folder: string): DeliveryResult => ({
   exercises: null,
   withAnswer: null,
   visual: null,
+  survey: null,
   acknowledgements: null,
   open: null,
   reference: null,
@@ -596,10 +609,10 @@ async function readReferenceFile(path: string, chapterOffset: number): Promise<R
 
 /**
  * What `runGate` is given for a book. `bundle: false` (the bundle is judged by a check of its own below, which is stronger than the gate's, that
- * counts the frames only) and `survey` (the survey record that a certificate names) are options that a gate may not have: it ignores what it
- * does not know.
+ * counts the frames only) is an option of the checks inside the gate that `runGate` passes on without naming it; a gate that does not know it
+ * ignores it.
  */
-type RerunOptions = GateRunOptions & { bundle?: boolean; survey?: string };
+type RerunOptions = GateRunOptions & { bundle?: boolean };
 
 /**
  * The options of the new run, made in one place: the item patterns of the certificate, the pixel check always, the reference of the queue, and
@@ -776,7 +789,13 @@ export async function checkDelivery(book: QueuedBook, options: DeliveryOptions):
           : visual.named === null
             ? 'the certificate names no visual record (the gate ran without --visual)'
             : `the visual record that the certificate names (${visual.named}) does not exist`,
-      surveyProblem: survey.named !== null && survey.path === null ? `the survey that the certificate names (${survey.named}) does not exist` : undefined,
+      survey: report.checks.survey === null ? null : { pages: report.checks.survey.pages, entries: report.checks.survey.entries, missing: report.checks.survey.missing, uncovered: report.checks.survey.uncovered, unmarked: report.checks.survey.unmarked, exhaustive: report.checks.survey.exhaustive },
+      surveyProblem:
+        report.checks.survey !== null || certificate === undefined
+          ? undefined
+          : survey.named === null
+            ? 'the certificate names no survey record (the gate ran without --survey)'
+            : `the survey record that the certificate names (${survey.named}) does not exist`,
       unconfirmed: unconfirmedList.length,
       unconfirmedNotes,
       selfConfirmed: selfConfirmed.labels,
@@ -789,6 +808,7 @@ export async function checkDelivery(book: QueuedBook, options: DeliveryOptions):
     result.exercises = report.counts.exercises;
     result.withAnswer = report.counts.solutions;
     result.visual = record === null ? null : { file: record.file, entries: record.entries, exercises: record.exercises, covered: record.exercises - record.missing, mismatches: record.mismatches, defects: record.defects, exhaustive };
+    result.survey = report.checks.survey;
     result.acknowledgements = { total: notes.size, unconfirmed: unconfirmedList.length, selfConfirmed: selfConfirmed.labels.length };
     result.open = { total: summary.total, byCode: summary.byCode };
     result.reference = report.checks.reference;
@@ -865,7 +885,7 @@ function factsLine(result: DeliveryResult): string {
   const found =
     result.exercises === null
       ? 'the re-run did not run'
-      : `${plural(result.exercises, 'exercise')} (${result.withAnswer ?? 0} with an answer) in ${plural(result.sections ?? 0, 'section')}; reference differences ${result.reference === null ? '-' : result.reference.differences}; open ${result.open === null || result.open.total === 0 ? 'none' : Object.entries(result.open.byCode).map(([code, n]) => `${code} ${n}`).join(', ')}`;
+      : `${plural(result.exercises, 'exercise')} (${result.withAnswer ?? 0} with an answer) in ${plural(result.sections ?? 0, 'section')}; reference differences ${result.reference === null ? '-' : result.reference.differences}; survey record ${result.survey === null ? 'none' : `${plural(result.survey.entries, 'range')} for ${plural(result.survey.pages, 'page')}`}; open ${result.open === null || result.open.total === 0 ? 'none' : Object.entries(result.open.byCode).map(([code, n]) => `${code} ${n}`).join(', ')}`;
   return `Found: ${found}. SHA-256 of the PDF ${result.pdf.sha256 === null ? '-' : short(result.pdf.sha256)}, of the bundle ${result.bundle.sha256 === null ? '-' : short(result.bundle.sha256)}. Checked in ${result.seconds} s.`;
 }
 

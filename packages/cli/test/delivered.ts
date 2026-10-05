@@ -2,7 +2,7 @@ import { copyFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/p
 import { join, relative } from 'node:path';
 import type { QueuedBook } from '../src/index.js';
 import { run } from '../src/run.js';
-import { auditedBook, visualRecord } from './audited.js';
+import { auditedBook, surveyRecord, visualRecord } from './audited.js';
 import { tempDir, type Cli, type Result } from './helpers.js';
 
 /**
@@ -63,10 +63,23 @@ export async function writeVisualRecord(folder: string, directory = 'visual'): P
   await writeFile(join(folder, directory, 'sheet-002.json'), JSON.stringify(entries.slice(half)));
 }
 
-/** What an agent does at the end of the runbook: the visual record, `audit gate --final`, `export`. */
+/** The survey record of the workbook (what each page holds, in ranges), one file for each half of the ranges (the folder form of the runbook). */
+export async function writeSurveyFolder(folder: string, directory = 'survey'): Promise<void> {
+  const entries = await surveyRecord();
+  await mkdir(join(folder, directory), { recursive: true });
+  const half = Math.ceil(entries.length / 2);
+  await writeFile(join(folder, directory, 'overview-1.json'), JSON.stringify(entries.slice(0, half)));
+  await writeFile(join(folder, directory, 'overview-2.json'), JSON.stringify(entries.slice(half)));
+}
+
+/** The options of the gate that name the two records of looking, as an agent gives them (the folders of the work folder). */
+export const RECORDS = ['--visual', 'visual', '--survey', 'survey'];
+
+/** What an agent does at the end of the runbook: the visual record and the survey record, `audit gate --final`, `export`. */
 export async function complete(d: Delivered): Promise<void> {
   await writeVisualRecord(d.folder);
-  const gate = await d.cli(['audit', 'gate', '--visual', 'visual', '--final']);
+  await writeSurveyFolder(d.folder);
+  const gate = await d.cli(['audit', 'gate', ...RECORDS, '--final']);
   if (gate.code !== 0) throw new Error(`the gate is not perfect: ${gate.stdout}${gate.stderr}`);
   const exported = await d.cli(['export', '--out', 'book.mcbundle']);
   if (exported.code !== 0) throw new Error(`export failed: ${exported.stdout}${exported.stderr}`);
@@ -102,18 +115,19 @@ export async function withAcknowledgement(d: Delivered, by = 'writer'): Promise<
   const reference = await writeReference(d);
   await acknowledge(d, reference, by);
   await writeVisualRecord(d.folder);
-  const gate = await d.cli(['audit', 'gate', '--reference', reference, '--visual', 'visual']);
+  await writeSurveyFolder(d.folder);
+  const gate = await d.cli(['audit', 'gate', '--reference', reference, ...RECORDS]);
   if (gate.code !== 0) throw new Error(`the gate failed: ${gate.stdout}${gate.stderr}`);
   const exported = await d.cli(['export', '--out', 'book.mcbundle']);
   if (exported.code !== 0) throw new Error(`export failed: ${exported.stdout}${exported.stderr}`);
   return { ...d, book: { ...d.book, reference } };
 }
 
-/** The second reviewer confirms every note, then the final gate (the visual record and the reference as before). */
+/** The second reviewer confirms every note, then the final gate (the records of looking and the reference as before). */
 export async function confirmed(d: Delivered, by = 'reviewer'): Promise<void> {
   const done = await d.cli(['audit', 'confirm', '--by', by, '--all']);
   if (done.code !== 0) throw new Error(`confirm failed: ${done.stdout}${done.stderr}`);
-  const gate = await d.cli(['audit', 'gate', ...(d.book.reference !== undefined ? ['--reference', d.book.reference] : []), '--visual', 'visual', '--final']);
+  const gate = await d.cli(['audit', 'gate', ...(d.book.reference !== undefined ? ['--reference', d.book.reference] : []), ...RECORDS, '--final']);
   if (gate.code !== 0) throw new Error(`the gate is not perfect: ${gate.stdout}${gate.stderr}`);
 }
 
@@ -128,8 +142,8 @@ async function copyFolder(from: string, to: string): Promise<void> {
 
 /**
  * A copy of a delivery, in a root of its own or (`into`) next to the books of another delivery, under another name when `name` is given.
- * The certificate names its visual record and its sheets by absolute path, so the copy's certificate is made to name the copies of them (as
- * it would have if the audit had been done there).
+ * The certificate names its visual record, its survey record and its sheets by absolute path, so the copy's certificate is made to name the
+ * copies of them (as it would have if the audit had been done there).
  */
 export async function copyDelivery(from: Delivered, options: { name?: string; into?: Delivered } = {}): Promise<Delivered> {
   const root = options.into?.root ?? (await tempDir('mcprep-delivery-'));
@@ -144,7 +158,7 @@ export async function copyDelivery(from: Delivered, options: { name?: string; in
   const text = await readFile(certificatePath, 'utf8').catch(() => undefined);
   if (text !== undefined) {
     const certificate = JSON.parse(text) as { checks?: Record<string, { file?: string } | null> };
-    for (const key of ['visual', 'sheets']) {
+    for (const key of ['visual', 'survey', 'sheets']) {
       const check = certificate.checks?.[key];
       if (check && typeof check.file === 'string') check.file = join(folder, relative(from.folder, check.file));
     }
@@ -177,5 +191,5 @@ export async function touchOneFrame(d: Delivered, ref = '0.1:5'): Promise<string
   return frame.id;
 }
 
-/** The gate as an agent runs it at the end for the delivery: with the visual record, `--final`, and the reference when there is one. */
-export const finalGate = (d: Delivered): Promise<Result> => d.cli(['audit', 'gate', ...(d.book.reference !== undefined ? ['--reference', d.book.reference] : []), '--visual', 'visual', '--final']);
+/** The gate as an agent runs it at the end for the delivery: with the visual and the survey record, `--final`, and the reference when there is one. */
+export const finalGate = (d: Delivered): Promise<Result> => d.cli(['audit', 'gate', ...(d.book.reference !== undefined ? ['--reference', d.book.reference] : []), ...RECORDS, '--final']);

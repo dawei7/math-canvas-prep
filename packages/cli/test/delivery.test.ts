@@ -5,7 +5,8 @@ import { describe, expect, it, beforeAll } from 'vitest';
 import { VERSION } from '@mcprep/core';
 import { buildSampleSheet } from '@mcprep/core/testing';
 import { DELIVERY_STATUSES, checkDelivery, copyBundles, deliveryMarkdown, deliveryReport, parseDeliveryArguments, runDeliveryCheck, type DeliveryResult } from '../src/index.js';
-import { acknowledge, complete, confirmed, copyDelivery, finalGate, laidOut, queueBook, touchOneFrame, withAcknowledgement, writeReference, type Delivered } from './delivered.js';
+import { writeSurveyRecord } from './audited.js';
+import { RECORDS, acknowledge, complete, confirmed, copyDelivery, finalGate, laidOut, queueBook, touchOneFrame, withAcknowledgement, writeReference, type Delivered } from './delivered.js';
 import { tempDir } from './helpers.js';
 
 /**
@@ -56,6 +57,7 @@ describe('PERFECT', () => {
       exercises: 112,
       withAnswer: 112,
       visual: { entries: 112, exercises: 112, covered: 112, mismatches: 0, defects: 0, exhaustive: true },
+      survey: { pages: 21, entries: 10, missing: 0, uncovered: 0, unmarked: 0, exhaustive: true },
       acknowledgements: { total: 0, unconfirmed: 0, selfConfirmed: 0 },
       open: { total: 0, byCode: {} },
       reference: null,
@@ -66,6 +68,7 @@ describe('PERFECT', () => {
     expect(result.pdf.sha256).toBe(await sha(perfect.pdf));
     expect(result.bundle.sha256).toBe(await sha(join(perfect.folder, 'book.mcbundle')));
     expect(result.visual?.file).toBe(join(perfect.folder, 'visual'));
+    expect(result.survey?.file).toBe(join(perfect.folder, 'survey'));
     expect(result.seconds).toBeGreaterThanOrEqual(0);
   });
 
@@ -100,7 +103,7 @@ describe('PERFECT', () => {
       }),
     );
     const book = { ...d.book, reference, referenceChapterOffset: -1 };
-    const gate = await d.cli(['audit', 'gate', '--reference', reference, '--chapter-offset', '-1', '--sheets-seen', 'sheets/seen.txt', '--visual', 'visual', '--final']);
+    const gate = await d.cli(['audit', 'gate', '--reference', reference, '--chapter-offset', '-1', '--sheets-seen', 'sheets/seen.txt', ...RECORDS, '--final']);
     expect(gate.code, gate.stdout).toBe(0);
     const result = await checkDelivery(book, { work: d.work });
     expect(result.reasons).toEqual([]);
@@ -133,10 +136,12 @@ describe('PERFECT', () => {
     const entries = [...(JSON.parse(await readFile(join(d.folder, 'visual', 'sheet-001.json'), 'utf8')) as unknown[]), ...(JSON.parse(await readFile(join(d.folder, 'visual', 'sheet-002.json'), 'utf8')) as unknown[])];
     await writeFile(join(d.folder, 'visual.json'), JSON.stringify({ visual: entries }));
     await rm(join(d.folder, 'visual'), { recursive: true });
-    expect((await d.cli(['audit', 'gate', '--visual', 'visual.json', '--final'])).code).toBe(0);
+    await writeSurveyRecord(d.folder);
+    await rm(join(d.folder, 'survey'), { recursive: true });
+    expect((await d.cli(['audit', 'gate', '--visual', 'visual.json', '--survey', 'survey.json', '--final'])).code).toBe(0);
     const result = await check(d);
     expect(result.reasons).toEqual([]);
-    expect(result).toMatchObject({ status: 'PERFECT', visual: { file: join(d.folder, 'visual.json'), entries: 112, exercises: 112 } });
+    expect(result).toMatchObject({ status: 'PERFECT', visual: { file: join(d.folder, 'visual.json'), entries: 112, exercises: 112 }, survey: { file: join(d.folder, 'survey.json'), pages: 21, entries: 10 } });
     // A path of the certificate that is relative is taken from the work folder; a certificate of an older gate has no `ink` and says it in its verify part.
     const certificate = await certificateOf(d);
     (certificate['checks'] as { visual: { file: string }; verify: { ink: boolean } }).visual.file = 'visual.json';
@@ -152,7 +157,7 @@ describe('PERFECT', () => {
 
   it('compiles the item patterns of the certificate, written as escapes, and says so when one is no expression', async () => {
     const d = await copyDelivery(perfect);
-    const gate = await d.cli(['audit', 'gate', '--item-pattern', '^L(?:ö|oe)sung\\s+(\\d+)', '--visual', 'visual', '--final']);
+    const gate = await d.cli(['audit', 'gate', '--item-pattern', '^L(?:ö|oe)sung\\s+(\\d+)', ...RECORDS, '--final']);
     expect(gate.code, gate.stdout).toBe(0);
     expect(((await certificateOf(d))['itemPatterns'] as string[])[0]).toBe('^L(?:\\u00f6|oe)sung\\s+(\\d+)');
     expect((await check(d)).status).toBe('PERFECT');
@@ -271,7 +276,7 @@ describe('NOT FINISHED: what is still to do', () => {
     expect(none.reasons[0]).toBe('There is no certificate (book.audit-gate.json): run audit gate --final.');
     expect(none).toMatchObject({ certificate: null, rerun: { passed: true }, bundle: { state: 'ok' } });
     // The gate was run for a quick loop, without the pixel check: the certificate says so, and the re-run (which always draws the edges) does not need to.
-    expect((await d.cli(['audit', 'gate', '--visual', 'visual', '--no-ink'])).code).toBe(0);
+    expect((await d.cli(['audit', 'gate', ...RECORDS, '--no-ink'])).code).toBe(0);
     const quick = await check(d);
     expect(quick.status).toBe('NOT FINISHED');
     expect(quick.reasons[0]).toContain('The pixel check of the edges did not run when the gate ran');
@@ -292,7 +297,7 @@ describe('NOT FINISHED: what is still to do', () => {
     // The gate failed on a difference from the reference; the note for it was written and confirmed afterwards, and the gate was not run again.
     const e = await copyDelivery(perfect);
     const reference = await writeReference(e);
-    expect((await e.cli(['audit', 'gate', '--reference', reference, '--visual', 'visual'])).code).toBe(4);
+    expect((await e.cli(['audit', 'gate', '--reference', reference, ...RECORDS])).code).toBe(4);
     await acknowledge(e, reference);
     expect((await e.cli(['audit', 'confirm', '--by', 'reviewer', '--all'])).code).toBe(0);
     const later = await checkDelivery({ ...e.book, reference }, { work: e.work });
@@ -309,13 +314,38 @@ describe('NOT FINISHED: what is still to do', () => {
     expect(open.certificate).toMatchObject({ state: 'failed', passed: false });
   });
 
-  it('says the certificate names no visual record when the gate ran without one', async () => {
+  it('says the certificate names no visual record, or no survey record, when the gate ran without one', async () => {
     const d = await copyDelivery(perfect);
-    expect((await d.cli(['audit', 'gate'])).code).toBe(0);
+    expect((await d.cli(['audit', 'gate', '--survey', 'survey'])).code).toBe(0);
     const result = await check(d);
     expect(result.status).toBe('NOT FINISHED');
     expect(result.reasons).toEqual(['The certificate names no visual record (the gate ran without --visual): nothing proves that every exercise was looked at.']);
-    expect(result).toMatchObject({ visual: null, certificate: { passed: true, perfect: false }, rerun: { passed: true, perfect: false } });
+    expect(result).toMatchObject({ visual: null, survey: { exhaustive: true }, certificate: { passed: true, perfect: false }, rerun: { passed: true, perfect: false } });
+    // Without the survey record: the pages were not shown to have been looked at.
+    expect((await d.cli(['audit', 'gate', '--visual', 'visual'])).code).toBe(0);
+    const unsurveyed = await check(d);
+    expect(unsurveyed.status).toBe('NOT FINISHED');
+    expect(unsurveyed.reasons).toEqual(['The certificate names no survey record (the gate ran without --survey): nothing proves that every page of the book was looked at.']);
+    expect(unsurveyed).toMatchObject({ survey: null, visual: { exhaustive: true }, certificate: { passed: true, perfect: false }, rerun: { passed: true, perfect: false } });
+    // Neither: both are said, the visual record first.
+    expect((await d.cli(['audit', 'gate'])).code).toBe(0);
+    const neither = await check(d);
+    expect(neither.reasons).toHaveLength(2);
+    expect(neither.reasons[0]).toContain('names no visual record');
+    expect(neither.reasons[1]).toContain('names no survey record');
+  });
+
+  it('says a survey record with a page missing is open, with the findings of the gate named', async () => {
+    const d = await copyDelivery(perfect);
+    // The answers at the back (pages 18-20) were never written down, and a gate with that record passes nothing.
+    const path = join(d.folder, 'survey', 'overview-2.json');
+    const entries = JSON.parse(await readFile(path, 'utf8')) as { kind: string }[];
+    await writeFile(path, JSON.stringify(entries.filter((entry) => entry.kind !== 'answers')));
+    expect((await finalGate(d)).code).toBe(4);
+    const result = await check(d);
+    expect(result.status).toBe('NOT FINISHED');
+    expect(result.reasons[0]).toBe('The re-run has 1 open finding (survey-missing 1).');
+    expect(result).toMatchObject({ survey: { pages: 21, missing: 3, exhaustive: false }, certificate: { passed: false, perfect: false }, rerun: { passed: false, perfect: false }, open: { total: 1, byCode: { 'survey-missing': 1 } } });
   });
 
   it('says the bundle is of another state when the project cannot be exported at all now', async () => {
@@ -415,6 +445,32 @@ describe('MISMATCH: what the delivery claims is not what the files show', () => 
     expect(lost.reasons).toContain('The visual record covers 107 of 112 exercises.');
   });
 
+  it('says a certificate that says perfect, with a survey record that is gone, lost a page, or was edited to disagree with the project, is not backed', async () => {
+    const d = await copyDelivery(perfect);
+    // The record named by the certificate is gone: nothing shows that every page was looked at.
+    await rename(join(d.folder, 'survey'), join(d.folder, 'moved'));
+    const gone = await check(d);
+    expect(gone.status).toBe('MISMATCH');
+    expect(gone.reasons).toEqual([`The certificate says perfect, but the re-run is not: the survey record that the certificate names (${join(d.folder, 'survey')}) does not exist.`]);
+    expect(gone).toMatchObject({ survey: null, rerun: { passed: true, perfect: false } });
+    await rename(join(d.folder, 'moved'), join(d.folder, 'survey'));
+    expect((await check(d)).status).toBe('PERFECT');
+    // A range is taken out of the record after the certificate was written: two pages have no entry.
+    const path = join(d.folder, 'survey', 'overview-1.json');
+    const entries = JSON.parse(await readFile(path, 'utf8')) as { from: number; to: number; kind: string }[];
+    await writeFile(path, JSON.stringify(entries.filter((entry) => entry.from !== 3)));
+    const lost = await check(d);
+    expect(lost.status).toBe('MISMATCH');
+    expect(lost.reasons[0]).toBe('The certificate says the gate passed, but the re-run has 1 open finding (survey-missing 1). The certificate does not describe this project.');
+    expect(lost).toMatchObject({ survey: { missing: 2, exhaustive: false }, open: { total: 1, byCode: { 'survey-missing': 1 } } });
+    // A range is edited to say that pages hold no exercise where the project has exercises on them: the record and the project disagree.
+    await writeFile(path, JSON.stringify(entries.map((entry) => (entry.from === 5 ? { ...entry, kind: 'text' } : entry))));
+    const unmarked = await check(d);
+    expect(unmarked.status).toBe('MISMATCH');
+    expect(unmarked.reasons[0]).toBe('The certificate says the gate passed, but the re-run has 1 open finding (survey-unmarked 1). The certificate does not describe this project.');
+    expect(unmarked).toMatchObject({ survey: { unmarked: 2, exhaustive: false } });
+  });
+
   it('does not count a confirmation that the one who wrote the note wrote for itself, however its name is spelled', async () => {
     const d = await copyDelivery(waiting);
     const path = join(d.folder, 'book.audit-notes.json');
@@ -462,18 +518,37 @@ describe('MISMATCH: what the delivery claims is not what the files show', () => 
 });
 
 describe('ZERO EXERCISES', () => {
-  /** The workbook with its sections and no exercise at all, gated and exported (an audit that found nothing). */
-  async function empty(name: string): Promise<Delivered> {
+  /**
+   * The workbook with its sections and no exercise at all (an audit that found nothing), exported. `honest` says what the survey record of the
+   * pages shows: a book that really prints no exercise (every page is text), or the pages as they are printed (the practice sets are there).
+   */
+  async function empty(name: string, honest = true): Promise<Delivered> {
     const d = await laidOut(name);
     const path = join(d.folder, 'book.mcprep.json');
     const project = JSON.parse(await readFile(path, 'utf8')) as { frames: unknown[] };
     project.frames = [];
     await writeFile(path, JSON.stringify(project));
-    const gate = await d.cli(['audit', 'gate']);
-    expect(gate.code, gate.stdout).toBe(0);
+    if (honest) await writeFile(join(d.folder, 'survey.json'), JSON.stringify([{ from: 0, to: 20, kind: 'text' }]));
+    else await writeSurveyRecord(d.folder);
+    const gate = await d.cli(['audit', 'gate', '--survey', 'survey.json']);
+    expect(gate.code, gate.stdout).toBe(honest ? 0 : 4);
     expect((await d.cli(['export', '--out', 'book.mcbundle'])).code).toBe(0);
     return d;
   }
+
+  it('is what the survey of the pages shows when the audit found nothing in a book that prints exercises: the missed ones are open', async () => {
+    const d = await empty('missed', false);
+    const result = await check(d);
+    expect(result.status).toBe('ZERO EXERCISES');
+    expect(result.reasons[0]).toContain('The audit has 0 exercises. A person decides');
+    expect(result.reasons[1]).toMatch(/^The re-run has \d+ open findings \(survey-uncovered \d+\)\.$/);
+    expect(result).toMatchObject({ exercises: 0, survey: { pages: 21, exhaustive: false }, certificate: { state: 'failed', passed: false } });
+    expect((result.survey?.uncovered ?? 0) > 0).toBe(true);
+    // Allowing it does not help: the pages that hold exercises are still open.
+    const allowed = await check(d, ['missed']);
+    expect(allowed.status).toBe('NOT FINISHED');
+    expect(allowed.reasons[0]).toMatch(/^The re-run has \d+ open findings \(survey-uncovered \d+\)\.$/);
+  });
 
   it('needs a person\'s decision, and the reference of the queue is told when it lists exercises; --allow-zero says the decision was taken', async () => {
     const d = await empty('empty');
@@ -484,18 +559,18 @@ describe('ZERO EXERCISES', () => {
     // The reference of the queue lists exercises that the audit did not find; the agent's gate with it says so, and so does the check.
     const reference = join(d.root, 'inbox', 'empty.reference.json');
     await writeFile(reference, JSON.stringify({ sections: [{ label: '0.1', exercise_count: 70 }, { label: '0.2', exercise_count: 14 }] }));
-    expect((await d.cli(['audit', 'gate', '--reference', reference])).code).toBe(4);
+    expect((await d.cli(['audit', 'gate', '--reference', reference, '--survey', 'survey.json'])).code).toBe(4);
     const listed = await checkDelivery({ ...d.book, reference }, { work: d.work });
     expect(listed.status).toBe('ZERO EXERCISES');
     expect(listed.reasons[0]).toContain('The audit has 0 exercises, but the reference lists 84 exercises: the audit probably missed them.');
     expect(listed.reasons[1]).toMatch(/^The re-run has \d+ open findings/);
     // The agent's gate that did not have the reference passes: the certificate does not describe the project that the queue's reference is for.
-    expect((await d.cli(['audit', 'gate'])).code).toBe(0);
+    expect((await d.cli(['audit', 'gate', '--survey', 'survey.json'])).code).toBe(0);
     const mismatch = await checkDelivery({ ...d.book, reference }, { work: d.work });
     expect(mismatch.status).toBe('MISMATCH');
     expect(mismatch.reasons[0]).toContain('The certificate says the gate passed, but the re-run has');
     expect(mismatch.reasons[1]).toContain('The audit has 0 exercises, but the reference lists 84 exercises');
-    // A book without exercises has none to look at: with the decision it is PERFECT, with the pixel check done and nothing unconfirmed.
+    // A book without exercises has none to look at: with the decision it is PERFECT, with the pixel check done, every page surveyed and nothing unconfirmed.
     const allowed = await check(d, ['EMPTY']);
     expect(allowed.reasons).toEqual([]);
     expect(allowed.status).toBe('PERFECT');
@@ -677,7 +752,7 @@ describe('the report', () => {
     expect(lines).not.toContain('## algebra: PERFECT');
     // Each block lists all the reasons and then what the re-run found.
     expect(lines.some((line) => /^Found: the re-run did not run\. SHA-256 of the PDF -, of the bundle -\. Checked in [\d.]+ s\.$/.test(line))).toBe(true);
-    expect(lines.some((line) => /^Found: 112 exercises \(112 with an answer\) in 4 sections; reference differences -; open none\. SHA-256 of the PDF [0-9a-f]{12}\.\.\., of the bundle -\. Checked in [\d.]+ s\.$/.test(line))).toBe(true);
+    expect(lines.some((line) => /^Found: 112 exercises \(112 with an answer\) in 4 sections; reference differences -; survey record 10 ranges for 21 pages; open none\. SHA-256 of the PDF [0-9a-f]{12}\.\.\., of the bundle -\. Checked in [\d.]+ s\.$/.test(line))).toBe(true);
     expect(lines).toContain('- There is no bundle (*.mcbundle) in the work folder: export it (mcprep export).');
     expect(text).toContain('whether anybody looked at the pictures of the visual pass');
     expect(text).toContain('A person samples a few books of every batch');

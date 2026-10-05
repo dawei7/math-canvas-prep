@@ -53,25 +53,20 @@ const leftovers = (): string[] => readdirSync(tmpdir()).filter((name) => name.st
 describe('the options of the new run', () => {
   it('are made in one place: the pixel check, no bundle, the visual record and the survey that the certificate names when they are there', async () => {
     const d = await copyDelivery(perfect);
-    const survey = join(d.folder, 'survey.json');
-    await writeFile(survey, '[]');
-    const path = join(d.folder, 'book.audit-gate.json');
-    const certificate = JSON.parse(await readFile(path, 'utf8')) as { checks: Record<string, unknown> };
-    certificate.checks['survey'] = { file: survey };
-    await writeFile(path, JSON.stringify(certificate));
     const result = await checked(d);
     expect(gate.calls).toHaveLength(1);
-    expect(gate.calls[0]).toEqual({ ink: true, bundle: false, visual: join(d.folder, 'visual'), survey });
-    // The gate of this branch does not read a survey; one that does decides what it means for `perfect`.
+    expect(gate.calls[0]).toEqual({ ink: true, bundle: false, visual: join(d.folder, 'visual'), survey: join(d.folder, 'survey') });
     expect(result.status).toBe('PERFECT');
 
-    // A survey that is not there is not given; the check says it is gone when the gate does not call the project perfect because of it.
-    certificate.checks['survey'] = { file: join(d.folder, 'gone.json') };
+    // A survey record that is not there is not given; the gate then has no proof that every page was looked at, and the check says what is gone.
+    const path = join(d.folder, 'book.audit-gate.json');
+    const certificate = JSON.parse(await readFile(path, 'utf8')) as { checks: Record<string, unknown> };
+    certificate.checks['survey'] = { file: join(d.folder, 'gone') };
     await writeFile(path, JSON.stringify(certificate));
-    const gone = await checked(d, (report) => ({ ...report, perfect: false }));
+    const gone = await checked(d);
     expect(gate.calls[0]).not.toHaveProperty('survey');
     expect(gone.status).toBe('MISMATCH');
-    expect(gone.reasons[0]).toBe(`The certificate says perfect, but the re-run is not: the survey that the certificate names (${join(d.folder, 'gone.json')}) does not exist.`);
+    expect(gone.reasons[0]).toBe(`The certificate says perfect, but the re-run is not: the survey record that the certificate names (${join(d.folder, 'gone')}) does not exist.`);
 
     // The reference of the queue, the sheets and the patterns of the certificate are given the same way.
     const reference = join(d.root, 'inbox', 'algebra.reference.json');
