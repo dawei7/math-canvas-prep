@@ -549,13 +549,16 @@ export interface IndexInput {
 /** The `INDEX.md` of a batch: a table with one row per book, what to look at for each, and what to do next. */
 export function indexMarkdown(input: IndexInput): string {
   const { rows } = input;
-  const audited = rows.filter((row) => row.status === 'ok').length;
-  const unlicensed = rows.filter((row) => row.status === 'ok' && row.licenseStated === false);
+  const ran = rows.filter((row) => row.status === 'ok');
+  // A run that did not crash is not an audit: a book in which nothing was found is NOT audited, however clean its row looks.
+  const empty = ran.filter((row) => row.summary !== undefined && row.summary.exercises === 0);
+  const found = ran.length - empty.length;
+  const unlicensed = ran.filter((row) => row.licenseStated === false);
   const lines: string[] = [];
-  lines.push('# Books audited', '');
+  lines.push('# Books: what the tools found on their own', '');
   lines.push(
-    `${input.generatedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. ${rows.length} book${rows.length === 1 ? '' : 's'} from ${input.source}: ${audited} audited${rows.length - audited > 0 ? `, ${rows.length - audited} not` : ''}. ` +
-      'Every row says what the tool found; the tool proposes and you look.',
+    `${input.generatedAt.toISOString().slice(0, 16).replace('T', ' ')} UTC. ${rows.length} book${rows.length === 1 ? '' : 's'} from ${input.source}: ${found} with exercises found${empty.length > 0 ? `, **${empty.length} with NOTHING FOUND (not audited: ${empty.map((row) => row.name).join(', ')})**` : ''}${rows.length - ran.length > 0 ? `, ${rows.length - ran.length} failed or not run` : ''}. ` +
+      'The tool only proposes: a book is audited when somebody has looked at it page by page and `audit gate --final` passes.',
     '',
   );
   lines.push(
@@ -572,11 +575,12 @@ export function indexMarkdown(input: IndexInput): string {
       continue;
     }
     const validation = `${summary.validation.ok ? 'ok' : '**errors**'}: ${summary.validation.errors} error${summary.validation.errors === 1 ? '' : 's'}, ${summary.validation.warnings} warning${summary.validation.warnings === 1 ? '' : 's'}`;
-    const check = summary.verify ? `${summary.verify.errors === 0 ? 'ok' : '**errors**'}: ${summary.verify.errors} error${summary.verify.errors === 1 ? '' : 's'}, ${summary.verify.warnings} warning${summary.verify.warnings === 1 ? '' : 's'}` : summary.verify === null ? 'did not run' : '';
+    const nothing = summary.exercises === 0;
+    const check = nothing ? '**nothing to check: no exercise found**' : summary.verify ? `${summary.verify.errors === 0 ? 'ok' : '**errors**'}: ${summary.verify.errors} error${summary.verify.errors === 1 ? '' : 's'}, ${summary.verify.warnings} warning${summary.verify.warnings === 1 ? '' : 's'}` : summary.verify === null ? 'did not run' : '';
     const importer = summary.importCheck === null ? '**no bundle**' : summary.importCheck.wouldImport ? 'accepts' : '**rejects**';
     const licence = summary.licenseStated ? cell(summary.license?.name ?? '') : '';
     lines.push(
-      `| ${cell(summary.name)} | ${summary.pages} | ${summary.chapters} | ${summary.sections} | ${summary.exercises} | ${summary.withSolution} (${percent(summary.withSolution, summary.exercises)}) | ${validation} | ${check} | ${importer} | ${licence} | ${cell(referenceCell(summary))} | ${formatSeconds(row.seconds)} | ${[
+      `| ${cell(summary.name)} | ${summary.pages} | ${summary.chapters} | ${summary.sections} | ${nothing ? '**0: NOTHING FOUND, NOT AUDITED**' : summary.exercises} | ${summary.withSolution} (${percent(summary.withSolution, summary.exercises)}) | ${validation} | ${check} | ${importer} | ${licence} | ${cell(referenceCell(summary))} | ${formatSeconds(row.seconds)} | ${[
         link('bundle', summary.files.bundle, row.folder),
         link('project', summary.files.project, row.folder),
         link('report', summary.files.report, row.folder),
@@ -594,6 +598,9 @@ export function indexMarkdown(input: IndexInput): string {
       lines.push(`${row.status === 'not run' ? 'Not run' : 'Failed'}: ${row.reason ?? 'see the log'}`, '');
       continue;
     }
+    if (summary.exercises === 0) {
+      lines.push('**No exercise was found, so this book is NOT audited.** Either the book prints none, or the tools do not know how it prints them. Look at the book page by page before anything else (docs/AGENT_RUNBOOK.md, Phase S); a bundle of this book holds no exercise.', '');
+    }
     if (summary.suggestions.length > 0) {
       lines.push(`Read from the front matter of the PDF, as guesses (put what is right into \`${summary.name}.meta.json\` and run it again with \`--only ${quoted(summary.name)}\`; nothing was written into the bundle):`, '');
       for (const suggestion of summary.suggestions) lines.push(`- ${suggestion.field}: ${suggestion.field === 'warning' ? cell(suggestion.value) : `\`${cell(suggestion.value)}\``} (page ${suggestion.page + 1}: "${cell(suggestion.evidence).slice(0, 140)}")`);
@@ -606,9 +613,9 @@ export function indexMarkdown(input: IndexInput): string {
   lines.push(
     '## Next',
     '',
-    '1. **Look.** Open the contact sheets of each book (`<name>/sheets/*.png`: red frame, orange continuation, blue instruction, green solution) and the points above; the report of each book (`<name>/acceptance-report.md`) has every difference with its pages.',
+    '1. **Look.** Open the contact sheets of each book (`<name>/sheets/*.png`: red frame, orange continuation, blue instruction, green solution) and the points above; the report of each book (`<name>/acceptance-report.md`) has every difference with its pages. A book with NOTHING FOUND has none.',
     '2. **Decide.** Caps per section (`maxItems`), the title, the library folder and, if you want them, the author, licence and notice go into the sidecar `<name>.meta.json`; run again with `--only <name>`: what is right stays as it is.',
-    '3. **Use.** Copy the `.mcbundle` of a book you are happy with to the tablet and open it in the Math Canvas library.',
+    '3. **Use only what is audited.** A bundle from this first pass is a draft. Copy a `.mcbundle` to the tablet only after somebody has looked at the whole book and `audit gate --final` passes.',
     '',
   );
   return lines.join('\n');

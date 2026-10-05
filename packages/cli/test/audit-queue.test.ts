@@ -322,8 +322,10 @@ describe('the summary of a book', () => {
 
   it('is a table with a row for every book and a line for what went wrong with one', () => {
     const text = indexMarkdown({ generatedAt: new Date('2026-10-04T13:05:00Z'), source: '/books/inbox', outDir: '/books/results', rows: rows(), warnings: ['orphan.meta.json has no PDF beside it (orphan.pdf): it is not used.'] });
-    expect(text).toContain('# Books audited');
-    expect(text).toContain('2026-10-04 13:05 UTC. 4 books from /books/inbox: 2 audited, 2 not.');
+    expect(text).toContain('# Books: what the tools found on their own');
+    expect(text).toContain('2026-10-04 13:05 UTC. 4 books from /books/inbox: 2 with exercises found, 2 failed or not run. The tool only proposes: a book is audited when somebody has looked at it page by page and `audit gate --final` passes.');
+    expect(text).not.toContain('with NOTHING FOUND (not audited');
+    expect(text).not.toContain('0: NOTHING FOUND, NOT AUDITED');
     expect(text).toContain('| book | pages | chapters | sections | exercises | with answer | validation | text check | importer | licence | against the reference | time | files |');
     expect(text).toContain('| algebra | 489 | 11 | 77 | 3027 | 3026 (99.97 %) | ok: 0 errors, 84 warnings | ok: 0 errors, 4 warnings | accepts | CC BY 3.0 | 72 of 77 sections equal; 1 count differs | 55 s | [bundle](algebra/algebra-audited.mcbundle) [project](algebra/algebra-audited.mcprep.json) [report](algebra/acceptance-report.md) [sheets](algebra/sheets) |');
     expect(text).toContain('| My Calculus | 489 | 11 | 77 | 3027 | 0 (0 %) | **errors**: 2 errors, 0 warnings | **errors**: 12 errors, 3 warnings | **no bundle** |  | no reference | 2 min 05 s |');
@@ -355,7 +357,28 @@ describe('the summary of a book', () => {
     expect(text).toContain('Nothing to look at beyond the contact sheets.');
     expect(text).toContain('## broken\n\nFailed: the script stopped (exit 1): The PDF is damaged.');
     expect(text).toContain('## typo\n\nNot run: unknown field "licence"');
-    expect(text).toMatch(/## Next\n\n1\. \*\*Look\.\*\*[^\n]*\n2\. \*\*Decide\.\*\*[^\n]*\n3\. \*\*Use\.\*\*[^\n]*Math Canvas library/);
+    expect(text).toMatch(/## Next\n\n1\. \*\*Look\.\*\*[^\n]*\n2\. \*\*Decide\.\*\*[^\n]*\n3\. \*\*Use only what is audited\.\*\*[^\n]*gate --final/);
+  });
+
+  it('never calls a book in which nothing was found "ok": the row, the heading line and the book itself say NOT AUDITED', () => {
+    const empty: AcceptanceSummary = { ...good, name: 'statistics', title: 'Statistics', sections: 125, exercises: 0, withSolution: 0, withoutAnswer: 0, verify: { errors: 0, warnings: 0, infos: 0, byCode: {} }, reference: null, toLookAt: [] };
+    const text = indexMarkdown({
+      generatedAt: new Date('2026-10-04T13:05:00Z'),
+      source: '/books/inbox',
+      outDir: '/books/results',
+      rows: [
+        { name: 'algebra', status: 'ok', summary: good, seconds: 55, folder: 'algebra', licenseStated: true },
+        { name: 'statistics', status: 'ok', summary: empty, seconds: 20, folder: 'statistics', licenseStated: true },
+      ],
+    });
+    expect(text).toContain('2 books from /books/inbox: 1 with exercises found, **1 with NOTHING FOUND (not audited: statistics)**.');
+    expect(text).toMatch(/\| statistics \| 489 \| 11 \| 125 \| \*\*0: NOTHING FOUND, NOT AUDITED\*\* \| 0 \(n\/a\) \| ok: 0 errors, 84 warnings \| \*\*nothing to check: no exercise found\*\* \| accepts \|/);
+    // The text check of a book with no exercise is not "ok: 0 errors, 0 warnings": it had nothing to look at.
+    expect(text).not.toMatch(/\| statistics \|[^\n]*\| ok: 0 errors, 0 warnings \|/);
+    expect(text).toContain('## statistics\n\n**No exercise was found, so this book is NOT audited.**');
+    expect(text).toContain('Phase S');
+    // The book that has exercises is told as before.
+    expect(text).toContain('## algebra\n\nTo look at:');
   });
 
   it('formats times for people', () => {

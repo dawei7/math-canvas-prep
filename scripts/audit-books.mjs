@@ -9,7 +9,8 @@
 // Queue mode: a JSON file { "books": [ { "pdf": "relative/or/absolute.pdf", "name"?, ...the same fields } ] } with paths relative to
 // the file. For every book scripts/acceptance-book.mjs is run as a child process (the results of a book go to <results>/<name>/,
 // its output to <results>/<name>/run.log); a book that fails does not stop the others. <results>/INDEX.md has a row per book, what
-// to look at, and what to do next. The exit code is 1 when a book failed or could not be read, else 0.
+// to look at, and what to do next. The exit code is 1 when a book failed or could not be read, or when no exercise was found in a
+// book (that book is NOT audited: a run that did not crash is no audit), else 0.
 //
 // The author, the licence and the notice are optional: a book without them is processed like any other (INDEX.md mentions it in one
 // line). They are what the sidecar says and are never taken from the book by themselves. A bundle holds the whole book, so keep it
@@ -168,14 +169,20 @@ rows.sort((a, b) => a.name.localeCompare(b.name));
 const index = join(resultsDir, 'INDEX.md');
 await writeFile(index, indexMarkdown({ generatedAt: new Date(), source: queue.source, outDir: resultsDir, rows, warnings: queue.warnings }));
 console.log('');
+// A run that did not crash is not an audit: a book in which no exercise was found is NOT audited, and the exit code says so.
+let empty = 0;
 for (const row of rows) {
   const summary = row.summary;
   if (!summary) console.log(`${row.name}: ${row.status === 'not run' ? 'NOT RUN' : 'FAILED'}: ${row.reason ?? ''}`);
-  else {
+  else if (summary.exercises === 0) {
+    if (selected(row.name)) empty += 1;
+    console.log(`${row.name}: NOTHING FOUND, NOT AUDITED: ${summary.sections} sections, no exercise (the book prints none, or the tools do not know how it prints them: look at the book page by page), ${formatSeconds(row.seconds)}`);
+  } else {
     console.log(
       `${row.name}: ${summary.sections} sections, ${summary.exercises} exercises, ${summary.withSolution} with an answer, validation ${summary.validation.ok ? 'ok' : 'ERRORS'} (${summary.validation.errors} errors, ${summary.validation.warnings} warnings), importer ${summary.importCheck?.wouldImport ? 'accepts' : 'REJECTS'}${summary.licenseStated ? `, licence ${summary.license?.name}` : ''}, ${formatSeconds(row.seconds)}`,
     );
   }
 }
-console.log(`INDEX: ${index}${failures > 0 ? ` (${failures} book${failures === 1 ? '' : 's'} failed or not run)` : ''}`);
-process.exit(failures > 0 ? 1 : 0);
+const notes = [failures > 0 ? `${failures} book${failures === 1 ? '' : 's'} failed or not run` : '', empty > 0 ? `${empty} book${empty === 1 ? '' : 's'} with NOTHING FOUND, not audited` : ''].filter(Boolean);
+console.log(`INDEX: ${index}${notes.length > 0 ? ` (${notes.join('; ')})` : ''}`);
+process.exit(failures > 0 || empty > 0 ? 1 : 0);

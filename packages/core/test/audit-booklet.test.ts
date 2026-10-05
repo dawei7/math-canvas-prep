@@ -237,6 +237,24 @@ describe('the same booklet with bookmarks', () => {
     // A single level of bookmarks that no printed exercise names is no outline of sections.
     expect(numberBookmarks([{ title: '1 A', page: 1, depth: 0 }, { title: '2 B', page: 2, depth: 0 }], pages.slice(0, 3))).toBeUndefined();
   });
+
+  it('gives a part whose title has an umlaut an id of ASCII letters only (an id with an umlaut is refused by the format)', () => {
+    const numbered = numberBookmarks(
+      [
+        { title: 'Teil I Über das Projekt', page: 1, depth: 0 },
+        { title: 'Erste Schritte', page: 4, depth: 1 },
+        { title: 'Mengen', page: 4, depth: 2 },
+        { title: 'Relationen', page: 5, depth: 2 },
+        { title: 'Abbildungen', page: 6, depth: 2 },
+        { title: 'Zweiter Teil', page: 7, depth: 1 },
+        { title: 'Gruppen', page: 7, depth: 2 },
+        { title: 'Ringe', page: 8, depth: 2 },
+      ],
+      pages,
+    );
+    expect(numbered?.entries[0]?.id).toBe('teil-i-uber-das-projekt');
+    for (const entry of numbered?.entries ?? []) expect(entry.id, entry.title).toMatch(/^[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/);
+  });
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

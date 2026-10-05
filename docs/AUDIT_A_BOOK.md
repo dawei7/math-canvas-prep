@@ -595,7 +595,9 @@ node scripts/audit-books.mjs books/inbox --out books/results --only algebra --sa
 
 Every `*.pdf` of the folder is a book, named by its file. Each book is run through `scripts/acceptance-book.mjs` as a child process
 (its output goes to `results/<name>/run.log`); a book that fails does not stop the others, and the exit code is 1 when one failed or
-could not be read. `--only NAME` (several names with commas) runs those books again and leaves the rows of the others as they were;
+could not be read, **or when no exercise was found in a book**: that book is reported as `NOTHING FOUND, NOT AUDITED` (in the console, in the
+row of INDEX.md and in its section), never as `ok`: a run that did not crash is no audit, and a book in which the tools find nothing either prints no
+exercise or prints them in a way the tools do not know, which only somebody who looks at the book can tell apart. `--only NAME` (several names with commas) runs those books again and leaves the rows of the others as they were;
 `--sample N` sets how many exercises are cropped and put on the contact sheets. A run starts the project of that book over, so a
 correction made by hand in `<name>-audited.mcprep.json` is lost when the book is run again: put what should last into the sidecar
 (a cap, words, a pattern), and correct single frames after the last run. The project refers to the PDF by its relative path: leave the

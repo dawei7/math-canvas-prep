@@ -41,7 +41,7 @@ describe.skipIf(!existsSync(dist))('scripts/audit-books.mjs audits every book of
     expect(first.stdout).toContain('FAILED after');
 
     const index = readFileSync(join(results, 'INDEX.md'), 'utf8');
-    expect(index).toContain('# Books audited');
+    expect(index).toContain('# Books: what the tools found on their own');
     // The columns validation and text check (exercises verify): the algebra book has a cap of 30 exercises per section, and the answers in the
     // key of the exercises that the cap left out are no finding of the text check.
     expect(index).toMatch(/\| algebra \| 21 \| 2 \| 4 \| 72 \| 72 \(100 %\) \| ok: 0 errors, 0 warnings \| ok: 0 errors, 0 warnings \| accepts \| CC BY 3\.0 \|/);
@@ -81,6 +81,31 @@ describe.skipIf(!existsSync(dist))('scripts/audit-books.mjs audits every book of
     const unknown = audit(root, inbox, '--out', results, '--only', 'nothing');
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toContain('no such book: nothing');
+  });
+
+  it('exits 1 and says NOTHING FOUND, NOT AUDITED for a book in which no exercise is found: a run that did not crash is no audit', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mcprep-audit-empty-'));
+    dirs.push(root);
+    const inbox = join(root, 'inbox');
+    mkdirSync(inbox);
+    // A book whose sections are found but whose exercises cannot be read: the words that name its practice sets are not the ones the tools look for.
+    writeFileSync(join(inbox, 'quiet.pdf'), buildSyntheticBook().pdf);
+    writeFileSync(join(inbox, 'quiet.meta.json'), JSON.stringify({ options: { practiceWords: ['zzzzz'], itemWords: ['zzzzz'] } }));
+    writeFileSync(join(inbox, 'algebra.pdf'), buildSyntheticBook().pdf);
+    const results = join(root, 'results');
+    const run = audit(root, inbox, '--out', results, '--sample', '4');
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain('quiet: NOTHING FOUND, NOT AUDITED');
+    expect(run.stdout).toMatch(/INDEX: [^\n]*1 book with NOTHING FOUND, not audited/);
+    expect(run.stdout).not.toMatch(/quiet: [^\n]*exercises, [^\n]*importer accepts/);
+    const index = readFileSync(join(results, 'INDEX.md'), 'utf8');
+    expect(index).toContain('**1 with NOTHING FOUND (not audited: quiet)**');
+    expect(index).toMatch(/\| quiet \|[^\n]*\*\*0: NOTHING FOUND, NOT AUDITED\*\*[^\n]*\*\*nothing to check: no exercise found\*\*/);
+    expect(index).toContain('## quiet\n\n**No exercise was found, so this book is NOT audited.**');
+    // The book that has exercises is not touched by this.
+    expect(index).toMatch(/\| algebra \| 21 \|/);
+    // Running only the book that has exercises ends with 0 again.
+    expect(audit(root, inbox, '--out', results, '--only', 'algebra', '--sample', '4').status).toBe(0);
   });
 
   it('exits 0 when every book is audited, reads a queue file, and refuses a sidecar with a field it does not know', () => {

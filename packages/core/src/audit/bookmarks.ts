@@ -1,3 +1,4 @@
+import { cleanSectionId } from '../book/sections.js';
 import type { OutlineEntry, PageText } from '../model/types.js';
 import { chaptersHoldingItems, findLabelledItems } from './labelled.js';
 import { DEFAULT_BOOK_PATTERNS, type BookPatterns } from './scan.js';
@@ -23,12 +24,8 @@ export interface NumberedBookmarks {
 
 const clean = (title: string): string => title.replace(/\s+/g, ' ').trim();
 
-const slug = (title: string): string =>
-  title
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40) || 'x';
+/** An id for a part that has no number: the section id rule allows ASCII letters, digits and `.`, `_`, `-` only, so "Über" becomes "uber". */
+const slug = (title: string): string => cleanSectionId(title.toLowerCase().slice(0, 40)) ?? 'x';
 
 /** The pairs "chapter.section" that counting at this depth gives. */
 function counted(bookmarks: readonly OutlineEntry[], chapterDepth: number): Set<string> {
