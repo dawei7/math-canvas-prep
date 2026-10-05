@@ -22,6 +22,7 @@ export * from './gate/visual.js';
 export * from './gate/survey.js';
 export * from './gate/review.js';
 export * from './sheets/sheets.js';
+export * from './sheets/overview.js';
 export { measureInk, type InkMeasure, type InkRegion } from './verify/ink-measure.js';
 export * from './sample/session.js';
 export * from './assets.js';

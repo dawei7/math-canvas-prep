@@ -269,6 +269,55 @@ export function createServer(options: ServerOptions = {}): McpServer {
     },
   );
 
+  tool(
+    'pages_sheets',
+    {
+      title: 'Overview sheets of every page of a book, to see the structure of all of it',
+      description:
+        'Looks at a whole book without one image for each page: draws per_sheet pages (default 8, at most 12) small, columns (default 4) side by side, on a sheet (a PNG file), each page in a cell about 380 pixels wide under its caption ("p. 12": the zero-based page) and inside a thin border, in the order of the book. At that size a sheet shows the structure of its pages (headings, boxes, numbered items, figures, an answer key, columns) and the large print can be read; body text is at the edge of what can be read and small print (subscripts, footnotes, the digits of a long list) cannot. It is for finding where something is going on, not for reading and never for copying a label, a count or an answer: look at those pages at reading size with render_page. For denser print draw fewer pages larger: scale 0.8, per_sheet 6 and columns 3 make sheets of about 1,500 x 1,400 pixels on which body text can be read. from and to (zero-based, both included) draw a range of pages. Files in out_dir: overview-0001.png, overview-0002.png, ... and overview.json, which lists for each sheet its file, its pages and its size, and the scale, the size of a cell and the page count of the book (the page in cell i of a sheet, counting from 0, is in column i mod columns and row floor(i / columns)). Each page is drawn once and every sheet is written as soon as its pages are drawn, so the sheets do not pile up in memory; a typeset page takes about a tenth of a second. sheet draws only that sheet, from_sheet the sheets from that one on (overview.json is always the whole list, and it is written before the first sheet is drawn, so that a run that is cut off can go on with from_sheet). Works on the project or, with pdf, on a PDF directly. The result has out, manifest (the path of overview.json), pageCount, from, to, perSheet, columns, scale (pixels per point), cellWidth, cellHeight, sheetWidth, sheetHeight, sheets (how many), rendered (the numbers of the sheets drawn now) and, when there are any, failed (pages that could not be drawn: their cell says so) and unlisted (sheets of an earlier run that overview.json does not list); notes say what else to know. Nothing is uploaded; the same PDF and arguments give the same files. Use a folder of its own.',
+      inputSchema: {
+        project: projectArg,
+        pdf: z.string().optional().describe('Work on this PDF directly, without a project (no frames, no numbering).'),
+        out_dir: z.string().min(1).describe('The folder for the sheets and overview.json.'),
+        from: z.number().int().min(0).optional().describe('The first page to draw (zero-based; default 0).'),
+        to: z.number().int().min(0).optional().describe('The last page to draw (zero-based, included; default the last page).'),
+        per_sheet: z.number().int().min(1).max(12).optional().describe('Pages on a sheet, at most (default 8, at most 12).'),
+        columns: z.number().int().min(1).max(12).optional().describe('Pages side by side (default 4; a sheet is never wider than its pages).'),
+        scale: z.number().min(0.2).max(2).optional().describe('Pixels per point at which a page of the usual size is drawn (default: a cell about 380 pixels wide, 0.62 for a letter page).'),
+        sheet: z.number().int().min(1).optional().describe('Draw only this sheet (1 is the first).'),
+        from_sheet: z.number().int().min(1).optional().describe('Draw only the sheets from this one on.'),
+      },
+      readOnly: true,
+      idempotent: true,
+      project: false,
+    },
+    async (args) => {
+      if (args.pdf === undefined) {
+        const missing = needsProject(args.project);
+        if (missing !== undefined) return missing;
+      }
+      return toResult(
+        await cli(
+          [
+            'pages',
+            'sheets',
+            '--out',
+            args.out_dir,
+            ...(args.pdf !== undefined ? ['--pdf', args.pdf] : []),
+            ...(args.from !== undefined ? ['--from', String(args.from)] : []),
+            ...(args.to !== undefined ? ['--to', String(args.to)] : []),
+            ...(args.per_sheet !== undefined ? ['--per-sheet', String(args.per_sheet)] : []),
+            ...(args.columns !== undefined ? ['--columns', String(args.columns)] : []),
+            ...(args.scale !== undefined ? ['--scale', String(args.scale)] : []),
+            ...(args.sheet !== undefined ? ['--sheet', String(args.sheet)] : []),
+            ...(args.from_sheet !== undefined ? ['--from-sheet', String(args.from_sheet)] : []),
+          ],
+          { project: args.pdf !== undefined ? '' : projectOf(args) },
+        ),
+      );
+    },
+  );
+
   // ------------------------------------------------------------------------------------------------ outline
 
   tool(

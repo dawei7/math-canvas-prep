@@ -10,7 +10,7 @@ import { exercisesAdd, exercisesLabel, exercisesList, exercisesMark, exercisesSe
 import { framesAdd, framesApply, framesArea, framesDelete, framesDividers, framesList, framesMerge, framesMove, framesSplit, framesUpdate } from './commands/frames.js';
 import { outline, outlineClear, outlineDerive, outlinePdf, outlineSet } from './commands/outline.js';
 import { outlineAdd, outlineDelete, outlineIds, outlineUpdate } from './commands/outline-edit.js';
-import { crop, lines, render } from './commands/pages.js';
+import { crop, lines, pagesSheets, render } from './commands/pages.js';
 import { info, init, meta, relink } from './commands/project.js';
 import { propose } from './commands/propose.js';
 import { exercisesSample } from './commands/sample.js';
@@ -26,6 +26,7 @@ export const COMMANDS: CommandSpec[] = [
   lines,
   render,
   crop,
+  pagesSheets,
   outline,
   outlinePdf,
   outlineDerive,

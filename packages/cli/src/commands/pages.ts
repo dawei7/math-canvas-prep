@@ -2,11 +2,16 @@ import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
 import {
   McPrepError,
+  OVERVIEW_DEFAULTS,
+  OVERVIEW_FILE,
+  OVERVIEW_LIMITS,
   PdfDocument,
   findFrame,
   linesInRect,
   overlayBoxes,
   parseRect,
+  planOverview,
+  renderOverview,
   renderPage,
   renderRegion,
   type Frame,
@@ -223,6 +228,85 @@ export const crop: CommandSpec = {
       return {
         result: { crops },
         text: crops.map((entry) => `Wrote ${entry['path'] as string} (${entry['frame'] !== undefined ? `${entry['frame'] as string} ${entry['region'] as string}, ` : ''}page ${entry['page'] as number}, ${entry['width'] as number} x ${entry['height'] as number} px)`).join('\n'),
+      };
+    } finally {
+      await opened.close();
+    }
+  },
+};
+
+export const pagesSheets: CommandSpec = {
+  name: 'pages sheets',
+  summary: 'Overview sheets of every page of a book: several pages side by side under their page numbers, to see the structure of all of it.',
+  description:
+    `To look at a whole book page by page without one image for each page: --per-sheet (default ${OVERVIEW_DEFAULTS.perSheet}, at most ${OVERVIEW_LIMITS.perSheet}) pages are drawn small, --columns (default ${OVERVIEW_DEFAULTS.columns}) side by side, each in a cell about ${OVERVIEW_DEFAULTS.cellWidth} pixels wide under its caption ("p. 12": the zero-based page) and inside a thin border, in the order of the book. At that size a sheet shows the structure of its pages (headings, boxes, numbered items, figures, an answer key, columns) and the large print can be read; body text is at the edge of what can be read and small print (subscripts, footnotes, the digits of a long list) cannot. It is for finding where something is going on, not for reading and never for copying a label, a count or an answer: look at those pages at reading size with \`mcprep render PAGE\`. For denser print draw fewer pages larger: --scale 0.8 --per-sheet 6 --columns 3 makes sheets of about 1,500 x 1,400 pixels on which body text can be read. --from and --to (zero-based, both included) draw a range of pages. Files in --out: overview-0001.png, overview-0002.png, ... and ${OVERVIEW_FILE}, which lists for each sheet its file, its pages and its size, and the scale, the size of a cell and the page count of the book (the page in cell i of a sheet, counting from 0, is in column i mod columns and row floor(i / columns)). Each page is drawn once and every sheet is written as soon as its pages are drawn, so the sheets do not pile up in memory; a typeset page takes about a tenth of a second. --sheet N draws only sheet N, --from-sheet N the sheets from N on (${OVERVIEW_FILE} is always the whole list, and it is written before the first sheet is drawn, so that a run that is cut off can go on with --from-sheet). It works on a PDF directly (--pdf FILE) or on the project's. Nothing is uploaded; the same PDF and options give the same files. Use a folder of its own: a sheet that an earlier run with other options left behind is not listed in ${OVERVIEW_FILE} and is reported.`,
+  options: [
+    { name: 'out', short: 'o', type: 'string', value: '<folder>', required: true, description: `Where the sheets and ${OVERVIEW_FILE} go.` },
+    { name: 'from', type: 'number', value: '<page>', description: 'The first page to draw (zero-based; default 0).' },
+    { name: 'to', type: 'number', value: '<page>', description: 'The last page to draw (zero-based, included; default the last page).' },
+    { name: 'per-sheet', type: 'number', value: '<n>', description: `Pages on a sheet, at most (default ${OVERVIEW_DEFAULTS.perSheet}, at most ${OVERVIEW_LIMITS.perSheet}).` },
+    { name: 'columns', type: 'number', value: '<n>', description: `Pages side by side (default ${OVERVIEW_DEFAULTS.columns}; a sheet is never wider than its pages).` },
+    { name: 'scale', type: 'number', value: '<px/pt>', description: `Pixels per point at which a page of the usual size is drawn, from ${OVERVIEW_LIMITS.minScale} to ${OVERVIEW_LIMITS.maxScale} (default: a cell about ${OVERVIEW_DEFAULTS.cellWidth} pixels wide, 0.62 for a letter page).` },
+    { name: 'sheet', type: 'number', value: '<n>', description: 'Draw only this sheet (1 is the first).' },
+    { name: 'from-sheet', type: 'number', value: '<n>', description: 'Draw only the sheets from this one on.' },
+    PDF_OPTION,
+    ...GLOBAL_OPTIONS,
+  ],
+  examples: ['mcprep pages sheets --out overview/ --pdf book.pdf', 'mcprep pages sheets --out overview/ --from 100 --to 163 --per-sheet 12', 'mcprep pages sheets --out overview/ --sheet 3'],
+  output: `{ out, manifest: path of ${OVERVIEW_FILE}, pageCount, from, to, perSheet, columns, scale, cellWidth, cellHeight, sheetWidth, sheetHeight, sheets: number of sheets, rendered: [sheet numbers drawn], failed?: [{ page, message }], unlisted?: [files of an earlier run] }; ${OVERVIEW_FILE} is { format: "math-canvas-overview", version: 1, pageCount, from, to, perSheet, columns, scale, pageSize: { width, height }, cellWidth, cellHeight, gap, captionHeight, sheets: [{ number, file, pages, width, height }] }`,
+  async run(context) {
+    const out = stringOption(context.options, 'out');
+    if (out === undefined) throw usage('Say where the sheets go: --out FOLDER.');
+    const only = numberOption(context.options, 'sheet');
+    const fromSheet = numberOption(context.options, 'from-sheet');
+    if (only !== undefined && fromSheet !== undefined) throw usage('Use --sheet or --from-sheet, not both.');
+    for (const [name, value] of [['sheet', only], ['from-sheet', fromSheet]] as const) if (value !== undefined && (!Number.isInteger(value) || value < 1)) throw usage(`--${name} must be a whole number from 1, not ${value}.`);
+    const from = numberOption(context.options, 'from');
+    const to = numberOption(context.options, 'to');
+    const perSheet = numberOption(context.options, 'per-sheet');
+    const columns = numberOption(context.options, 'columns');
+    const scale = numberOption(context.options, 'scale');
+    const opened = await open(context);
+    try {
+      const plan = await planOverview(opened.doc, { ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}), ...(perSheet !== undefined ? { perSheet } : {}), ...(columns !== undefined ? { columns } : {}), ...(scale !== undefined ? { scale } : {}) });
+      const { manifest } = plan;
+      const total = manifest.sheets.length;
+      const first = only ?? fromSheet;
+      if (first !== undefined && first > total) throw usage(`There ${total === 1 ? 'is 1 sheet' : `are ${total} sheets`}; there is no sheet ${first}.`);
+      const folder = resolve(context.io.cwd, out);
+      const done = await renderOverview(opened.doc, plan, { outDir: folder, ...(only !== undefined ? { only: (n: number) => n === only } : fromSheet !== undefined ? { only: (n: number) => n >= fromSheet } : {}) });
+      const sheet = manifest.sheets[0] as { width: number; height: number };
+      const notes = [
+        ...plan.notes,
+        ...(done.failed.length > 0 ? [`${plural(done.failed.length, 'page')} could not be drawn (${done.failed.map((entry) => entry.page).join(', ')}): the cell says so; \`mcprep render PAGE\` shows the reason.`] : []),
+        ...(done.unlisted.length > 0 ? [`${plural(done.unlisted.length, 'file')} in the folder look like sheets of an earlier run and ${OVERVIEW_FILE} does not list them (${done.unlisted.slice(0, 3).join(', ')}${done.unlisted.length > 3 ? ', ...' : ''}): delete them or use a folder of its own.`] : []),
+      ];
+      const text = [
+        `Pages ${manifest.from}-${manifest.to} of ${manifest.pageCount}: ${plural(total, 'sheet')} of at most ${manifest.perSheet} pages (${manifest.columns} columns, cells ${manifest.cellWidth} x ${manifest.cellHeight} px at ${round4(manifest.scale)} px/pt, sheets up to ${sheet.width} x ${sheet.height} px); drew ${done.drawn.length === total ? 'all of them' : plural(done.drawn.length, 'sheet')} into ${folder}. ${OVERVIEW_FILE} lists the pages of each sheet.`,
+        'Look at every sheet: it shows the structure (headings, boxes, numbered items, figures, columns), not the small print. Look at a page that matters at reading size with `mcprep render PAGE`.',
+        ...notes,
+      ].join('\n');
+      return {
+        result: {
+          out: folder,
+          manifest: join(folder, OVERVIEW_FILE),
+          pageCount: manifest.pageCount,
+          from: manifest.from,
+          to: manifest.to,
+          perSheet: manifest.perSheet,
+          columns: manifest.columns,
+          scale: manifest.scale,
+          cellWidth: manifest.cellWidth,
+          cellHeight: manifest.cellHeight,
+          sheetWidth: sheet.width,
+          sheetHeight: sheet.height,
+          sheets: total,
+          rendered: done.drawn,
+          ...(done.failed.length > 0 ? { failed: done.failed } : {}),
+          ...(done.unlisted.length > 0 ? { unlisted: done.unlisted } : {}),
+        },
+        ...(notes.length > 0 ? { notes } : {}),
+        text,
       };
     } finally {
       await opened.close();

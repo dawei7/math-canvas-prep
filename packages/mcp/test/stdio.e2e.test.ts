@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -33,6 +33,22 @@ describe.skipIf(!existsSync(dist))('the built MCP server over stdio', () => {
       const exported = (await client.callTool({ name: 'export_bundle', arguments: {} })) as { structuredContent?: Record<string, unknown> };
       expect(exported.structuredContent).toMatchObject({ importCheck: { ok: true } });
       expect(existsSync(String(exported.structuredContent?.['path']))).toBe(true);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('draws the overview sheets of a PDF over stdio, without a project', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mcprep-stdio-pages-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'sheet.pdf'), readFileSync(sample));
+    const client = new Client({ name: 'e2e', version: '1.0.0' });
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [bin], cwd: dir, stderr: 'pipe' }));
+    try {
+      const done = (await client.callTool({ name: 'pages_sheets', arguments: { pdf: 'sheet.pdf', out_dir: 'overview' } })) as { isError?: boolean; structuredContent?: Record<string, unknown> };
+      expect(done.isError).toBeUndefined();
+      expect(done.structuredContent).toMatchObject({ pageCount: 3, sheets: 1, rendered: [1] });
+      expect(readdirSync(join(dir, 'overview')).sort()).toEqual(['overview-0001.png', 'overview.json']);
     } finally {
       await client.close();
     }

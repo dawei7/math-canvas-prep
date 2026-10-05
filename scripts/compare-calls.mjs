@@ -32,6 +32,7 @@ export const TOOLS = {
   get_page_lines: { command: 'lines', positional: ['page'] },
   render_page: { command: 'render', positional: ['page'] },
   render_crop: { command: 'crop', positional: ['frame'] },
+  pages_sheets: { command: 'pages sheets' },
   get_outline: { command: 'outline' },
   adopt_pdf_outline: { command: 'outline pdf', implied: { adopt: true } },
   derive_outline: { command: 'outline derive' },
