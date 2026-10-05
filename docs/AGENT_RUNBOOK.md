@@ -94,7 +94,9 @@ S larger than 3 percent of N: STOP `SCAN` (these tools do not read scans; report
 and look at the picture). Write `WORK/survey/structure.md`: the chapters and sections with their first and last page, and which parts are front matter, back matter or appendices.
 
 **S2. Every page, once.** `mcprep pages sheets --out "WORK/survey/pages" --per-sheet 8 --project "P"` draws overview pictures of 8 pages each (`overview-0001.png`, ... and
-`overview.json`). Look at EVERY picture, in order, none skipped. They show structure, not small print: headings, boxes, numbered items, figures, two columns, answer keys. For each
+`overview.json`). Look at EVERY picture, in order, none skipped. They show structure, not small print: headings, boxes, numbered items, figures, two columns, answer keys; body text is at the
+edge of readable, so NEVER take a label, a count or an answer from an overview picture (use `lines` and a close look for that); draw dense pages again larger (the answer key, tables:
+`--scale 0.8 --per-sheet 6 --columns 3 --from N --to M`). For each
 picture write ONE small file `WORK/survey/pages-0001.json` (its number) that says what each of its pages holds, as ranges of pages (zero-based, inclusive):
 `[{"from": 16, "to": 17, "kind": "text"}, {"from": 18, "to": 19, "kind": "exercises", "note": "set 1.2, two columns"}]`.
 `kind` is one of: `exercises` (the page holds an exercise or part of one: a set at the end of a section or chapter, or exercises inside the text), `answers` (answers or worked
