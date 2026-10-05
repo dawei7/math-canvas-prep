@@ -747,6 +747,75 @@ up for it. A file that fails (not a readable PDF) is a row marked FAILED with th
 fix what is systematic through the sidecar (a cap, `practiceWords`, `itemPattern`) and run that book again, correct single frames in the
 project after the last run (`mcprep ... --project results/<name>/<name>-audited.mcprep.json`, then `mcprep export`), and report.
 
+## Checking what an agent delivered
+
+When an agent audits a queue of books with [the runbook](AGENT_RUNBOOK.md), each book ends as a work folder: the project, the gate
+certificate, the visual record, the notes with the acknowledgements, the exported bundle. What the agent says about them (its report, its
+progress file, the certificate it wrote) is not evidence: a certificate is a JSON file that can be edited, and a bundle can be left behind by a
+repair after which nobody exported again. `scripts/check-delivery.mjs` checks every book of the queue again, from the delivered files alone,
+and says with reasons whether the delivery is perfect. It never writes into a work folder (no certificate, no export, no lock file) and
+uploads nothing.
+
+```console
+npm run build                                                        # once
+node scripts/check-delivery.mjs queue.json --work books/work         # or: npm run check-delivery -- queue.json --work books/work
+node scripts/check-delivery.mjs books/inbox --work books/work --out books/checks --only algebra,geometry --allow-zero preface --copy-bundles books/bundles
+```
+
+The queue is the one `audit-books.mjs` reads (a queue file, or a folder of PDFs with sidecars; the `reference` and `referenceChapterOffset` of a book
+are used), and the work folder of a book is `<work>/<book name>/` (the `WORK` of the runbook). `--out` is where `DELIVERY.md` and `DELIVERY.json` go
+(default: the work root; a place inside a work folder is refused), `--only NAME[,NAME]` checks some books, `--allow-zero NAME[,NAME]` names the books
+that really have no exercise, `--copy-bundles DIR` is described below. The exit code is 0 only when every book that was checked is `PERFECT`, 1 when
+any is not, 2 for a usage error.
+
+**What is checked for each book.**
+
+1. The work folder holds one project (`*.mcprep.json`) and its PDF record (`pdf.sha256`) is the SHA-256 of the book's PDF in the queue. The
+   certificate (`<project>.audit-gate.json`), the notes (`<project>.audit-notes.json`; a book without acknowledgements has none) and the bundle
+   (`*.mcbundle`) are found in the folder: more than one of a kind, or a certificate or notes file not named after the project (the tools read
+   only that name), is a reason.
+2. The gate is run again in memory, as `audit gate` runs it and without writing anything: with the item patterns that the certificate lists (the
+   patterns of the notes file apply by themselves), always with the pixel check of the edges, with the reference of the queue and its chapter offset
+   even if the agent ran its gate without it, and with the contact-sheet list and the visual record that the certificate names, when they exist.
+3. The certificate is current for the project (`audit gate --status`) and says `perfect`, and the new run is `perfect` too, for the same frames and
+   outline (the same hash). That is the gate's own verdict, whatever the gate asks for: the check holds no copy of the rule.
+4. No acknowledgement that applies is confirmed by the one who wrote it (`confirmedBy` equal to `by`, ignoring case and spaces).
+5. The importer's check accepts the bundle; its `frames.json` and `outline.json` are, byte for byte, those that `export` would write from the project
+   now; and the document of its manifest (title, folder, SHA-256 and size of the PDF, page count, author, series, description, licence, source
+   address, notice) is the project's. The time of the export and the name of the PDF file are not compared.
+6. The audit has at least one exercise, or the book is named in `--allow-zero`.
+
+**The statuses**, each with its reasons, the main one first:
+
+| Status | What it says |
+| --- | --- |
+| `PERFECT` | Everything above holds. |
+| `AWAITING CONFIRMATION` | As for `PERFECT`, except that acknowledgements wait for a second reviewer: the new run passed, and the gate calls the project perfect once every note is confirmed (the check asks the gate once more, on a copy of the project and of its notes in a temporary folder outside the work folder, in which every note is confirmed), and the bundle is the project's. |
+| `NOT FINISHED` | Something is still to do, and each reason says what: no certificate, a stale certificate, the pixel check did not run, the new run has N open findings (its three most frequent codes with their counts), the visual record covers X of Y exercises, acknowledgements still to confirm, no bundle, a stale bundle ("export again"), a bundle that the importer's check rejects. |
+| `MISMATCH` | What the delivery claims is not what the files show, and what differs is said exactly: a current certificate that says `passed` while the new run has open findings, or `perfect` while the new run is not (open findings, a visual record that lacks entries or is gone, a note that nobody confirmed); an acknowledgement confirmed by its own author; a current certificate that says `passed` beside a bundle that is not the project's (a repair after the last export); a project made on another PDF than the queue's. |
+| `ZERO EXERCISES` | The audit has 0 exercises and the book is not in `--allow-zero`: a person decides. If the reference of the queue lists exercises, the reasons say so. Never silently perfect. |
+| `UNREADABLE` | A file cannot be read (the message of the error is the reason), the project's PDF is missing or is not the one it was made on (`E_PDF_MISSING`, `E_PDF_CHANGED`), the folder holds several projects, or the new run stops. A book that the queue itself cannot use (a wrong sidecar) is listed this way too. |
+| `NOT STARTED` | There is no work folder, or no project in it. |
+
+A book in `--allow-zero` has no exercise to look at, and the gate cannot say `perfect` for it (that needs an entry in the visual record for every
+exercise): its certificate has to say `passed`, with the pixel check, and nothing may be unconfirmed.
+
+`DELIVERY.md` has the date, the queue, the version of the tools, one line of totals for each status, a row for each book (sections, exercises,
+visual record entries over exercises, acknowledgements over unconfirmed ones, bundle, main reason) and a block with every reason and what the new run
+found for each book that is not `PERFECT`. `DELIVERY.json` (format `math-canvas-delivery-check`) has the same and more for each book: the counts, the open
+findings by code, the differences from the reference, the state of the bundle and what differs, the SHA-256 of the PDF and of the bundle, and the seconds
+the check took. A run covers the books it checked: `--only` does not keep the rows of an earlier run.
+
+**`--copy-bundles DIR`** copies the bundle of every book whose bundle the importer's check accepts into `DIR/perfect/` (`PERFECT`),
+`DIR/awaiting-confirmation/` or `DIR/draft/` (every other status), as `<book name>.mcbundle`. A copy is written to a temporary file and renamed, an
+older copy replaces the earlier one, and a copy of the same book that an earlier run left in another of the three folders is removed. A work
+folder is never written into (a `DIR` inside one is refused).
+
+**What the check cannot see.** Whether anybody looked at the pictures of the visual pass. The visual record is checked entry by entry against
+the project and the text layer, but a record can be written without looking. A person samples a few books of every batch: imports the bundle (the
+`perfect/` copies are for that), and looks at the exercises, their instructions and their answers. Nor does the check know the printed number
+of exercises beyond what the reference of the queue says.
+
 ## Limits of the heuristics
 
 - A glyph that the PDF sets at an absurd size (some fonts report an unmapped "not equal" sign at 120 points) is read at the usual size
