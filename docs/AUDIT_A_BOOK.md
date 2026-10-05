@@ -342,6 +342,38 @@ or `solution:0`. **Look at exactly these**: `mcprep crop <ref> --region <region>
 cannot see: the right end of every line, text that a region holds below its last line, a figure that is cut, an answer that is not the
 answer to this exercise.
 
+## Looking at every page: `pages sheets`
+
+A book has 400 to 1,400 pages and nobody looks at that many images one by one. `mcprep pages sheets --out overview/` (MCP `pages_sheets`)
+draws **every page once, small, and puts eight of them side by side on one sheet**: four columns, each page under its caption `p. 12` (the
+zero-based page, as everywhere in the tools) and inside a thin border, in the order of the book, a sheet of about 1,560 x 1,100 pixels
+(a book of 637 pages is 80 sheets; a typeset page takes about a tenth of a second, and every sheet is written as soon as it is drawn). It is
+**for** seeing the *structure* of the whole book at a glance: where the chapters and headings are, the boxes, the numbered lists, the
+figures and tables, the two columns, the practice sets, the answer key, the blank, scanned and odd pages. It finds the pages where something
+is going on (a practice set that nobody expected, a key of an unusual kind, a page that is only a figure); those pages are then looked at at
+reading size, `mcprep render PAGE --grid 0.1` and `mcprep lines PAGE`. It is **not for reading**: the large print and the headings can be read,
+body text is at the edge of what can be read, and small print (subscripts, footnotes, a long list of numbers) cannot. Never take a label, a count
+or an answer from one of these sheets, and they are not the visual record of the gate (that is `exercises sheets`, a cell for every exercise).
+For denser print draw fewer pages larger: `--scale 0.8 --per-sheet 6 --columns 3` makes sheets of about 1,500 x 1,400 pixels on which body text can
+be read, at the price of more sheets. The default stays under about 1,568 pixels on the longer side, which is what most vision models take in
+without reducing the image; the command says so when a sheet is larger.
+
+```console
+mcprep pages sheets --out overview/ --pdf book.pdf          # every page: overview-0001.png, ... and overview.json (no project needed)
+mcprep pages sheets --out overview/ --from 100 --to 163     # a range of pages (zero-based, both included)
+mcprep pages sheets --out overview/ --sheet 12              # draw sheet 12 again; overview.json is always the whole list
+mcprep pages sheets --out overview/ --scale 0.8 --per-sheet 6 --columns 3
+```
+
+`overview.json` (format `math-canvas-overview`) lists for each sheet its file, its pages and its size, and the page count of the book, the
+scale (pixels per point), the size of a cell and the white between the cells; the page in position `i` of a sheet, counting from 0, is in
+column `i mod columns` and row `floor(i / columns)`. The cells are made for the page size that most pages of the range have, and a page of
+another size is fitted into its cell; a page that cannot be drawn gets a cell that says so, and the command names it. The same PDF and options
+give the same files, and nothing is uploaded. Look at every sheet and write down the pages that need a closer look. A book of a thousand pages
+takes a few minutes: `overview.json` is written before the first sheet, so a run that is cut off (a time limit of the tool that started it) goes on
+with `--from-sheet N`. Give the sheets a folder of their own: a sheet that an earlier run with other options left behind is not listed in
+`overview.json`, and the command says so.
+
 ## The gate: proving that an audit is complete
 
 Looking at a sample cannot show that every one of thousands of exercises is right. The **gate** is the end of an audit: it runs every

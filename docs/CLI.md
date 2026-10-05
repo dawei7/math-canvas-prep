@@ -68,6 +68,7 @@ A **validation issue** is `{ "severity": "error" | "repair" | "warning", "code",
 - [`lines`](#lines): List the text lines of a page with their coordinates.
 - [`render`](#render): Render a page to a PNG, optionally with a coordinate grid and the frames drawn on it.
 - [`crop`](#crop): Render one frame, or any rectangle of a page, to a PNG: the way to check a frame by looking at it.
+- [`pages sheets`](#pages-sheets): Overview sheets of every page of a book: several pages side by side under their page numbers, to see the structure of all of it.
 - [`outline`](#outline): Show the contents the bundle will carry (the sections of the book): the project's own outline with ids and exercise counts, or the PDF's.
 - [`outline pdf`](#outline-pdf): Read the PDF's own outline (its bookmarks).
 - [`outline derive`](#outline-derive): Find headings by font size, bold, position and numbering, for a PDF without an outline.
@@ -298,6 +299,42 @@ $ mcprep crop --all --section 1.2
 ```
 
 With `--json`, `result` is: `{ crops: [{ frame?, region, page, rect, path, width, height, scale, view }] }`
+
+## pages sheets
+
+Overview sheets of every page of a book: several pages side by side under their page numbers, to see the structure of all of it.
+
+```
+mcprep pages sheets --out <folder> [options]
+```
+
+To look at a whole book page by page without one image for each page: --per-sheet (default 8, at most 12) pages are drawn small, --columns (default 4) side by side, each in a cell about 380 pixels wide under its caption ("p. 12": the zero-based page) and inside a thin border, in the order of the book. At that size a sheet shows the structure of its pages (headings, boxes, numbered items, figures, an answer key, columns) and the large print can be read; body text is at the edge of what can be read and small print (subscripts, footnotes, the digits of a long list) cannot. It is for finding where something is going on, not for reading and never for copying a label, a count or an answer: look at those pages at reading size with `mcprep render PAGE`. For denser print draw fewer pages larger: --scale 0.8 --per-sheet 6 --columns 3 makes sheets of about 1,500 x 1,400 pixels on which body text can be read. --from and --to (zero-based, both included) draw a range of pages. Files in --out: overview-0001.png, overview-0002.png, ... and overview.json, which lists for each sheet its file, its pages and its size, and the scale, the size of a cell and the page count of the book (the page in cell i of a sheet, counting from 0, is in column i mod columns and row floor(i / columns)). Each page is drawn once and every sheet is written as soon as its pages are drawn, so the sheets do not pile up in memory; a typeset page takes about a tenth of a second. --sheet N draws only sheet N, --from-sheet N the sheets from N on (overview.json is always the whole list, and it is written before the first sheet is drawn, so that a run that is cut off can go on with --from-sheet). It works on a PDF directly (--pdf FILE) or on the project's. Nothing is uploaded; the same PDF and options give the same files. Use a folder of its own: a sheet that an earlier run with other options left behind is not listed in overview.json and is reported.
+
+Options:
+
+- `-o, --out <folder>` (required): Where the sheets and overview.json go.
+- `--from <page>`: The first page to draw (zero-based; default 0).
+- `--to <page>`: The last page to draw (zero-based, included; default the last page).
+- `--per-sheet <n>`: Pages on a sheet, at most (default 8, at most 12).
+- `--columns <n>`: Pages side by side (default 4; a sheet is never wider than its pages).
+- `--scale <px/pt>`: Pixels per point at which a page of the usual size is drawn, from 0.2 to 2 (default: a cell about 380 pixels wide, 0.62 for a letter page).
+- `--sheet <n>`: Draw only this sheet (1 is the first).
+- `--from-sheet <n>`: Draw only the sheets from this one on.
+- `--pdf <file>`: Work on this PDF directly, without a project (no frames, no numbering).
+- `-p, --project <file>`: The project file (or a folder holding exactly one). Default: $MCPREP_PROJECT, else the only *.mcprep.json in the current folder.
+- `--json`: Print one JSON document (stable, documented in docs/CLI.md) instead of text.
+- `--ignore-pdf-change`: Open the project even if the PDF is not the one it was made for (frames may then be misplaced).
+- `-h, --help`: Show help for the command.
+
+Examples:
+
+```console
+$ mcprep pages sheets --out overview/ --pdf book.pdf
+$ mcprep pages sheets --out overview/ --from 100 --to 163 --per-sheet 12
+$ mcprep pages sheets --out overview/ --sheet 3
+```
+
+With `--json`, `result` is: `{ out, manifest: path of overview.json, pageCount, from, to, perSheet, columns, scale, cellWidth, cellHeight, sheetWidth, sheetHeight, sheets: number of sheets, rendered: [sheet numbers drawn], failed?: [{ page, message }], unlisted?: [files of an earlier run] }; overview.json is { format: "math-canvas-overview", version: 1, pageCount, from, to, perSheet, columns, scale, pageSize: { width, height }, cellWidth, cellHeight, gap, captionHeight, sheets: [{ number, file, pages, width, height }] }`
 
 ## outline
 
