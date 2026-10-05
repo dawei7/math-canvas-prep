@@ -269,8 +269,51 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged([numbered(0), own(glued), numbered(2)])).toBe(true);
     // The pages around it have no page number on that row: it is a line of the page.
     expect(flagged([{ ...numbered(0), lines: [] }, own(glued), { ...numbered(2), lines: [] }])).toBe(false);
-    // A title without a number in it is not taken for a head by this rule.
-    expect(flagged([numbered(0), own({ ...glued, text: '9.3. CENTRAL LIMIT THEOREM FOR CONTINUOUS INDEPENDENT TRIALS' }), numbered(2)])).toBe(false);
+    // A title without a number in it is a head too (a chapter title that stands on a few pages only), when both pages next to it have their flagged line on that row.
+    expect(flagged([numbered(0), own({ ...glued, text: '9.3. CENTRAL LIMIT THEOREM FOR CONTINUOUS INDEPENDENT TRIALS' }), numbered(2)])).toBe(true);
+    // One neighbour with a line on that row is not enough: it takes both.
+    expect(flagged([numbered(0), own(glued), { ...numbered(2), lines: [] }])).toBe(false);
+    // The first line of a paragraph that starts at that height (a page without a head of its own) has the next line right under it: body text.
+    const paragraph: PageText = { ...own({ ...glued, text: '(b) Does First imply Second, or Second imply First,', rect: { left: 0.17, right: 0.8, ...row } }), lines: [{ ...glued, text: '(b) Does First imply Second, or Second imply First,', rect: { left: 0.17, right: 0.8, ...row } }, { ...glued, text: 'or both, or neither? Why?', rect: { left: 0.17, right: 0.5, top: 0.1385, bottom: 0.1497 } }] };
+    const list = [numbered(0), paragraph, numbered(2)];
+    expect(new PageIndex((number) => list[number]).page(1).pieces.find((piece) => piece.text.startsWith('(b)'))?.headerFooter).toBe(false);
+  });
+
+  it('does not take for a running head the first line of three pages that each start with an exercise named by a keyword', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const pages = (text: (index: number) => string): PageText[] =>
+      [0, 1, 2, 3].map((index) => ({ page: index, size, columns: 1, hasText: true, lines: [{ text: text(index), rect: { left: 0.117, right: 0.27, top: 0.1078, bottom: 0.1229 }, fontSize: 12, column: 0, chars: 20 }] }));
+    const flagged = (list: PageText[]): boolean | undefined => new PageIndex((number) => list[number]).page(1).pieces[0]?.headerFooter;
+    // "Exercise 4.3.4: Let" on three pages in a row, at the same place: an exercise each time.
+    expect(flagged(pages((index) => `Exercise 4.3.${index + 3}: Let`))).toBe(false);
+    // The same shape without an exercise keyword is a running head.
+    expect(flagged(pages((index) => `Fourier series, part ${index + 3}`))).toBe(true);
+  });
+
+  it('reads the label in the topmost row when an equation number stands in the left margin lower down, or the first line is indented', () => {
+    const page: PageText = {
+      page: 0,
+      size: { width: 595, height: 842, rotation: 0 },
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: '3. Prove that the map is continuous and', rect: { left: 0.22, top: 0.2, right: 0.8, bottom: 0.215 }, fontSize: 11, column: 0, chars: 38 },
+        { text: 'f(x) = x', rect: { left: 0.3, top: 0.24, right: 0.4, bottom: 0.255 }, fontSize: 11, column: 0, chars: 8 },
+        { text: '(2.1)', rect: { left: 0.1, top: 0.245, right: 0.15, bottom: 0.255 }, fontSize: 11, column: 0, chars: 5 },
+      ],
+    };
+    const make = (label: string, left: number): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [{ id: 'c', kind: 'exercise', page: 0, rect: { left, top: 0.195, right: 0.85, bottom: 0.26 }, authority: 'book', label, section: 's' }],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    const refs = (project: Project): string[] => verifyProject(project, lookup).findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref);
+    // The margin row is the equation number "(2.1)"; the topmost row starts with the label.
+    expect(refs(make('3', 0.09))).toEqual([]);
+    // Another label is still not there, and a region that starts right of the number cuts it.
+    expect(refs(make('4', 0.09))).toEqual(['s:4']);
+    expect(refs(make('3', 0.25))).toEqual(['s:3']);
   });
 
   it('says label-in-word, not label-not-first, when the number is in the first row glued to other text', () => {

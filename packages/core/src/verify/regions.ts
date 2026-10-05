@@ -32,6 +32,8 @@ const SAME_ROW = 0.5;
 export const MARGIN = 0.012;
 /** A line whose centre is outside a region but that covers this much of its width runs into it (two exercises joined into one line). */
 const STRADDLE = 0.4;
+/** Lines closer than this many line heights are one block of text (a paragraph); a running head stands further from the text under it. */
+const BLOCK_GAP = 1.7;
 /** A piece that starts this far left of a region's edge comes in from the left (a line joined across columns); a cut number is narrower. */
 const FROM_OUTSIDE = 0.03;
 
@@ -47,6 +49,12 @@ export interface RegionText {
   margin: string | undefined;
   /** The piece that starts that row: its text and its box. */
   marginPiece: { text: string; rect: Rect } | undefined;
+  /**
+   * The topmost row of the region (the piece that is highest, with what stands beside it on the right), and the piece that starts it: where an
+   * equation number stands in the left margin lower down, or the first line is indented, the margin row is not the first row of the text.
+   */
+  topRow?: string;
+  topPiece?: { text: string; rect: Rect };
   /** Everything in the region: the first row at the margin, then the rest from top to bottom. */
   text: string;
   /**
@@ -66,8 +74,10 @@ const HEAD_BAND = 0.16;
 const SAME_PLACE = 0.012;
 
 const hasWords = (text: string): boolean => /\p{L}{3}/u.test(text);
-/** A line that starts like an item ("3. x = 2", "(3)", "5a)") is an answer or an exercise, never a head. */
-const startsLikeNumber = (text: string): boolean => /^\(?\d{1,4}[a-z]?\s*[.)](?!\d)/.test(text);
+/** An exercise named by a keyword and a number ("Exercise 4.3.4: Let", "Problem 7.", "Aufgabe 1.2."). */
+const KEYWORD_ITEM = /^(?:exercise|problem|question|task|aufgabe|übung|uebung)\s+\d[\d.]*[a-z]?\s*[.:)]/iu;
+/** A line that starts like an item ("3. x = 2", "(3)", "5a)", "Exercise 4.3.4:") is an answer or an exercise, never a head. */
+const startsLikeNumber = (text: string): boolean => /^\(?\d{1,4}[a-z]?\s*[.)](?!\d)/.test(text) || KEYWORD_ITEM.test(text);
 const blur = (text: string): string => foldText(text).replace(/\d+/g, '#');
 /** Two boxes are in one row when they share this much of the height of the smaller. */
 function sameRow(a: Rect, b: Rect): boolean {
@@ -148,11 +158,27 @@ export class PageLines {
         piece.headerFooter = true;
         continue;
       }
-      // A head of a page that is a different one on every page (a section title) with its page number in the same line ("... TRIALS51"): the
-      // reader flags a lone page number, not one that is joined to the head, and it is the row where the pages next to this one have theirs.
+      // A head that is a different one on every page or on a few (the title of a chapter or a section), alone on the row where both pages next to
+      // this one have a running head or a page number that the reader flagged: the reader flags a head by its repeats and a number by its place,
+      // and a title with its number joined to it ("... TRIALS51") or a title that stands on two or three pages only is neither.
+      // It stands apart from the text: a line of a paragraph, with a line of the same column under it or over it at the usual leading, is body text
+      // that happens to start at the height of the heads of the neighbouring pages (the first line of an exam page that has no head of its own).
       const rows = [headRow(piece, -1), headRow(piece, 1)].filter((row) => row !== undefined);
-      if (rows.length > 0 && rows.every((row) => row === true) && /(?:^\d{1,4}\s)|(?:\d{1,4}$)/.test(piece.text)) piece.headerFooter = true;
+      if (rows.length === 2 && rows.every((row) => row === true) && !this.inBlock(piece)) piece.headerFooter = true;
     }
+  }
+
+  /** True when another line of the page stands right over or right under the piece (within the leading of a paragraph) and shares its column. */
+  private inBlock(piece: Piece): boolean {
+    const height = Math.max(1e-6, piece.rect.bottom - piece.rect.top);
+    const width = piece.rect.right - piece.rect.left;
+    return this.lines.some((other) => {
+      if (other === piece || other.headerFooter) return false;
+      const gap = other.rect.top >= piece.rect.bottom - 0.002 ? other.rect.top - piece.rect.bottom : piece.rect.top >= other.rect.bottom - 0.002 ? piece.rect.top - other.rect.bottom : Infinity;
+      if (gap > BLOCK_GAP * height) return false;
+      const across = Math.min(piece.rect.right, other.rect.right) - Math.max(piece.rect.left, other.rect.left);
+      return across >= 0.3 * Math.min(width, other.rect.right - other.rect.left);
+    });
   }
 
   /** Every piece of text of the page, from top to bottom (and from left to right in one row), running headers and footers included. */
@@ -207,11 +233,19 @@ export class PageLines {
       .sort((a, b) => a.rect.left - b.rect.left);
     const margin = row.map((piece) => piece.text).join(' ');
     const rest = inside.filter((piece) => !row.includes(piece)).map((piece) => piece.text);
+    const topPiece = inside[0] as Piece;
+    const topRow = inside
+      .filter((piece) => piece === topPiece || (piece.rect.left > topPiece.rect.left && sameRow(topPiece.rect, piece.rect)))
+      .sort((a, b) => a.rect.left - b.rect.left)
+      .map((piece) => piece.text)
+      .join(' ');
     return {
       pieces: inside.map((piece) => piece.text),
       straddling,
       margin,
       marginPiece: { text: first.text, rect: first.rect },
+      topRow,
+      topPiece: { text: topPiece.text, rect: topPiece.rect },
       text: [margin, ...rest].join(' '),
       lines: new Set(inside.map((piece) => piece.line)).size,
       entering,

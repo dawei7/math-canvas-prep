@@ -20,8 +20,7 @@ const isBlank = (text: RegionText): boolean => text.pieces.length === 0 && text.
  * so where the number ends is estimated from its share of the characters; a region that starts to the right of the middle
  * of the number does not show it.
  */
-function cutsNumber(text: RegionText, region: Rect, label: string): boolean {
-  const piece = text.marginPiece;
+function cutsNumber(piece: { text: string; rect: Rect } | undefined, region: Rect, label: string): boolean {
   if (piece === undefined || piece.text.length === 0) return false;
   const span = labelSpan(piece.text, label);
   if (span === undefined) return false;
@@ -86,12 +85,17 @@ export function checkExerciseText(exercises: readonly Exercise[], index: PageInd
     }
     // A text layer that joined two exercises of a row into one line cannot be cut at the column: a line that runs into the
     // region holds the label when the label starts one of its items.
+    const marginOk = text.margin !== undefined && rowStartsWithLabel(text.margin, label, patterns);
+    // The topmost row starts with the label where the margin row does not: an equation number in the left margin lower down, or a first line that
+    // is indented as a paragraph. A number above the label (a numerator, a figure label) is not the first row, and the margin rule stays as it was.
+    const topOk = !marginOk && text.topRow !== undefined && rowStartsWithLabel(text.topRow, label, patterns);
     const ok =
-      (text.margin !== undefined && rowStartsWithLabel(text.margin, label, patterns)) ||
+      marginOk ||
+      topOk ||
       text.straddling.some((line) => rowHasItem(line, label, patterns)) ||
       text.entering.some((line) => holdsLabel(line, frame.rect, label, charWidth(page))) ||
       (text.ownStart !== undefined && rowStartsWithLabel(text.ownStart, label, patterns));
-    const cut = ok && cutsNumber(text, frame.rect, label);
+    const cut = ok && (cutsNumber(text.marginPiece, frame.rect, label) || (topOk && cutsNumber(text.topPiece, frame.rect, label)));
     if (ok && !cut) continue;
     // The number is in the first row, glued to other text by the text layer ("where161f .", "This105."): the reader cannot tell
     // where the item starts, a person looking at the region can.
@@ -171,7 +175,7 @@ export function checkSolutionText(exercises: readonly Exercise[], index: PageInd
     const found = candidates.some((entry) => {
       const { region, text } = entry;
       if (text.margin !== undefined && rowHasItem(text.margin, label, patterns)) {
-        if (!cutsNumber(text, region.rect, label)) return true;
+        if (!cutsNumber(text.marginPiece, region.rect, label)) return true;
         cuts.push(entry);
         return false;
       }
