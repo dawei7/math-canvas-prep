@@ -312,7 +312,8 @@ describe('the boundary between two regions that stand one above the other', () =
 });
 
 describe('cleaning the regions of the proposals of a book', () => {
-  const exercise = (page: number, rect: Rect, extra: Record<string, unknown> = {}) => ({ page, rect, context: [], ...extra });
+  type Part = { page: number; rect: Rect };
+  const exercise = (page: number, rect: Rect, extra: { continues?: Part[]; context?: Part[] } = {}): { page: number; rect: Rect; context: Part[]; continues?: Part[] } => ({ page, rect, context: [], ...extra });
 
   it('cleans every region (the exercise, its continuation, its instruction, its answer), draws each page once, and counts what moved', async () => {
     const descender = (): DarkPicture => ink(blank(), [300, 275, 700, 296], [400, 297, 403, 303], [230, 345, 700, 375]);
@@ -332,7 +333,7 @@ describe('cleaning the regions of the proposals of a book', () => {
     );
     expect(drawn).toEqual([0, 1]);
     expect(result).toEqual({ edges: 4, regions: 4, pages: 2 });
-    for (const rect of [first.rect, (first.continues as { rect: Rect }[])[0]?.rect, first.context[0]?.rect, answer.regions[0]?.rect] as Rect[]) expect(Math.round(rect.top * H)).toBe(304);
+    for (const rect of [first.rect, first.continues?.[0]?.rect, first.context[0]?.rect, answer.regions[0]?.rect] as Rect[]) expect(Math.round(rect.top * H)).toBe(304);
   });
 
   it('does nothing for a book without proposals', async () => {

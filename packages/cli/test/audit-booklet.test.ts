@@ -49,7 +49,6 @@ interface Derived {
 
 interface Proposed {
   proposals: { section: string; label: string; page: number; rect: { top: number; bottom: number }; continues?: unknown[] }[];
-  counts: { sections: number; exercises: number };
   applied: boolean;
   created?: string[];
   replaced?: string[];
