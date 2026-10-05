@@ -47,6 +47,7 @@ export const VERIFY_CODES = [
   { code: 'context-missing', severities: ['error'] },
   { code: 'context-not-nearest', severities: ['warning'] },
   { code: 'context-inconsistent', severities: ['warning'] },
+  { code: 'context-group-end', severities: ['warning'] },
   { code: 'solution-section-mismatch', severities: ['error'] },
   { code: 'solution-order', severities: ['warning'] },
   { code: 'edge-on-ink', severities: ['warning'] },

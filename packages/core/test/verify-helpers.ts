@@ -104,6 +104,7 @@ export const COVERAGE_CODES = [
   'region-holds-item',
   'inline-section',
   'context-inconsistent',
+  'context-group-end',
   'stray-frame',
   'numbered-run-uncovered',
 ] as const;

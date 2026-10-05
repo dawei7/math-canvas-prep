@@ -10,6 +10,8 @@ import type { PageLines, Piece } from './regions.js';
 /** A line is a heading when it is at least this many times the usual font size of its page (or bold), and short. */
 export const HEADING_SIZE_FACTOR = 1.15;
 export const HEADING_MAX_LENGTH = 90;
+/** A section number of two or more parts and a word that starts with a capital: "14.2. Aufgaben zum Abgeben", "3.1 Exercises". */
+const NUMBERED_HEADING = /^\d+(?:\.\d+)+\.?\s+\p{Lu}/u;
 /** A page number stands in the top or the bottom band of the page. */
 const FURNITURE_BAND = 0.16;
 
@@ -87,7 +89,7 @@ export function headingNames(entries: readonly { title: string; label?: string |
 }
 
 /** True when no other piece of the page stands in the row of this one: a heading, a title, a marker is set alone on its row. */
-function aloneOnRow(page: PageLines, piece: Piece): boolean {
+export function aloneOnRow(page: PageLines, piece: Piece): boolean {
   const height = piece.rect.bottom - piece.rect.top;
   if (height <= 0) return true;
   for (const other of page.pieces) {
@@ -138,10 +140,13 @@ export class PageKinds {
     const lower = text.toLowerCase();
     if (this.names.labels.has(lower)) return 'heading';
     for (const title of this.names.titles) if (lower.includes(title) && text.length <= title.length + 40) return 'heading';
-    const instruction = isInstructionText(text, piece.bold);
     const body = this.page.bodySize;
     const large = body > 0 && piece.fontSize >= HEADING_SIZE_FACTOR * body;
-    if (!instruction && (piece.bold || large) && text.length <= HEADING_MAX_LENGTH && aloneOnRow(this.page, piece)) return 'heading';
+    const set = (piece.bold || large) && text.length <= HEADING_MAX_LENGTH && aloneOnRow(this.page, piece);
+    // A heading that starts with the number of its section ("14.2. Aufgaben zum Abgeben.") is a heading, though it ends with a full stop.
+    if (set && NUMBERED_HEADING.test(text)) return 'heading';
+    const instruction = isInstructionText(text, piece.bold);
+    if (!instruction && set) return 'heading';
     return instruction ? 'instruction' : 'text';
   }
 }

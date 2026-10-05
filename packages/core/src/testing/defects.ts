@@ -248,7 +248,7 @@ const GENERATORS: Record<string, Generator> = {
     const target = context.pick(groupEnds(context, 'end'));
     if (!target) return undefined;
     delete (frames.get(target.id) as Frame).context;
-    return { description: `${refOf(target)}: the last of its group, its instruction is dropped`, expect: { codes: ['context-inconsistent'], refs: [refOf(target)] } };
+    return { description: `${refOf(target)}: the last of its group, its instruction is dropped`, expect: { codes: ['context-inconsistent', 'context-group-end'], refs: [refOf(target)] } };
   },
   'context-wrong': (frames, context) => {
     const target = context.pick(insideGroups(context));

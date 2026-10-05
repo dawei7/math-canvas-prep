@@ -708,18 +708,57 @@ describe('context-inconsistent: an exercise between two that share an instructio
     const half = twoGroups();
     (half.frames[5] as Frame).context = [(half.frames[5] as Frame).context?.[0] as Region];
     expect(refs(await check(half.book), 'context-inconsistent')).toEqual(['a:6']);
-    // The last exercise of the group has none, and nothing is printed between it and the one before: it belongs to that group.
+    // The last exercise of the group has none, and nothing is printed between it and the one before: it belongs to that group, unless the
+    // subject of the instruction ends there. The instruction does not say for how many it is, so that is read in the exercise (acknowledgeable).
     const end = twoGroups();
     delete (end.frames[7] as Frame).context;
-    const last = all(await check(end.book), 'context-inconsistent');
+    expect(refs(await check(end.book), 'context-inconsistent')).toEqual([]);
+    const last = all(await check(end.book), 'context-group-end');
     expect(last.map((finding) => finding.ref)).toEqual(['a:8']);
     expect(last[0]?.message).toContain('a:7');
     expect(last[0]?.message).toContain('3 exercises share');
+    expect(last[0]?.message).toContain('does not say how many');
+    // A heading set alone and centred over the column between them ends the group: no finding.
+    const sheet = twoGroups();
+    delete (sheet.frames[7] as Frame).context;
+    sheet.book.text(1, 125, 199, 'Aufgaben zum Abgeben', 11);
+    expect(codes(await check(sheet.book))).not.toContain('context-group-end');
+    expect(codes(await check(sheet.book))).not.toContain('context-inconsistent');
     // A group of one with an instruction of its own is not judged.
     const alone = twoGroups();
     delete (alone.frames[7] as Frame).context;
     alone.book.text(1, 72, 200, 'Check your answer.', 11, BOLD);
     expect(refs(await check(alone.book), 'context-inconsistent')).toEqual([]);
+  });
+
+  /** Exercises 1 to 4 on one page; 1 and 2 under the instruction printed above them, 3 and 4 with none. */
+  function counted(instruction: string): Workbook {
+    const book = new Workbook(2);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, instruction, 11);
+    const region = around(0, 72, 60, { width: 400 });
+    for (let n = 1; n <= 4; n += 1) book.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1), n <= 2 ? { extra: { context: [region] } } : {});
+    return book;
+  }
+
+  it('ends a group where its instruction says, also through an umlaut that the text layer splits', async () => {
+    // "Die n¨achsten beiden Aufgaben": the count after the word, and the diaeresis set before its letter.
+    expect(codes(await check(counted('Die n¨achsten beiden Aufgaben verwenden diese Bezeichnung.')))).not.toContain('context-group-end');
+    expect(codes(await check(counted('Die beiden folgenden Aufgaben verwenden diese Bezeichnung.')))).not.toContain('context-inconsistent');
+    // A count that the group does not have: the group goes on.
+    expect(refs(await check(counted('Die drei folgenden Aufgaben verwenden diese Bezeichnung.')), 'context-inconsistent')).toEqual(['a:3']);
+    // No count: the subject of the instruction says where it ends.
+    expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
+  });
+
+  it('does not take a numbered heading in bold for an instruction', async () => {
+    const book = new Workbook(2);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, 'In den folgenden Aufgaben bezeichnet K einen Körper.', 11);
+    book.text(0, 72, 85, '14.2. Aufgaben zum Abgeben.', 11, BOLD);
+    const region = around(0, 72, 60, { width: 400 });
+    for (let n = 1; n <= 3; n += 1) book.exercise('a', String(n), 0, 72, 120 + 40 * (n - 1), { extra: { context: [region] } });
+    expect(codes(await check(book))).not.toContain('context-not-nearest');
   });
 
   it('says nothing about a book that prints no instruction, or in a lesson with its exercises inline', async () => {

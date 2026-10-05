@@ -1,7 +1,7 @@
 import type { Rect } from '../model/types.js';
 import { draft, type Draft, type Exercise } from './common.js';
 import { excerpt } from './labels.js';
-import { labelNumber, namedNumbers, namesNumber, type NamedNumbers } from './lineclass.js';
+import { aloneOnRow, labelNumber, namedNumbers, namesNumber, type NamedNumbers } from './lineclass.js';
 import type { Piece } from './regions.js';
 import { chainOf, coveredShare, pagesOfRange, pos, type Covering, type Run, type Zone } from './run.js';
 import { VERIFY_LIMITS } from './types.js';
@@ -51,22 +51,54 @@ function zoneOf(run: Run, exercise: Exercise): Zone | undefined {
   return run.layout.zones.find((zone) => zone.id === exercise.section);
 }
 
-/** True when a line that tells what to do is printed between two places (positions as `pos`), in the column of the rect, and is in no region of an exercise. */
 const COUNT_WORDS: Record<string, number> = { both: 2, beiden: 2, beide: 2, two: 2, zwei: 2, three: 3, drei: 3, four: 4, vier: 4, five: 5, 'fünf': 5, six: 6, sechs: 6 };
 const COUNT_BEFORE = /\b(both|beiden|beide|two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\s+(?:folgenden|nächsten|following|next)\b/iu;
-const COUNT_AFTER = /\b(?:folgenden|nächsten|following|next)\s+(two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\b/iu;
+const COUNT_AFTER = /\b(?:folgenden|nächsten|following|next)\s+(beiden|beide|two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\b/iu;
+const UMLAUTS: Record<string, string> = { a: 'ä', o: 'ö', u: 'ü', A: 'Ä', O: 'Ö', U: 'Ü' };
+/** A text layer of LaTeX sets an umlaut as a diaeresis before its letter ("n¨achsten"): put them together again. */
+const joinUmlauts = (text: string): string => text.normalize('NFC').replace(/(?:\u00a8| ?\u0308)\s?([aouAOU])/gu, (_, vowel: string) => UMLAUTS[vowel] as string);
 
 /** How many exercises an instruction says it is for ("die beiden folgenden Aufgaben", "the next three exercises"), from the text of its regions. */
 export function statedCount(run: Run, regions: readonly { page: number; rect: Rect }[]): number | undefined {
   const text = regions
     .flatMap((region) => run.index.page(region.page).pieces.filter((piece) => piece.rect.top >= region.rect.top - 0.004 && piece.rect.bottom <= region.rect.bottom + 0.004 && piece.rect.left >= region.rect.left - 0.01 && piece.rect.right <= region.rect.right + 0.01).map((piece) => piece.text))
     .join(' ');
-  const match = COUNT_BEFORE.exec(text) ?? COUNT_AFTER.exec(text);
+  const folded = joinUmlauts(text);
+  const match = COUNT_BEFORE.exec(folded) ?? COUNT_AFTER.exec(folded);
   if (!match) return undefined;
   const word = (match[1] as string).toLowerCase();
   return /^\d$/.test(word) ? Number(word) : COUNT_WORDS[word];
 }
 
+/**
+ * True when a heading is printed between two places (positions as `pos`), in the column of the rect, in no region: a heading of the outline,
+ * a bold or larger line alone on its row, or a short line of words set alone and centred over the column ("Aufgaben zum Abgeben").
+ * A heading starts another part of the section, and the group of an instruction printed before it ends there.
+ */
+function headingBetween(run: Run, from: number, to: number, rect: Rect): boolean {
+  const centre = (rect.left + rect.right) / 2;
+  const width = rect.right - rect.left;
+  for (let at = Math.max(0, Math.floor(from)); at <= Math.floor(to); at += 1) {
+    if (at >= run.project.pdf.pageCount) break;
+    const kinds = run.kinds(at);
+    const page = run.index.page(at);
+    for (const piece of page.pieces) {
+      const place = pos(at, piece.rect.top);
+      if (place < from || place >= to || piece.headerFooter) continue;
+      if (piece.rect.right < rect.left || piece.rect.left > rect.right) continue;
+      if (coveredShare(piece.rect, run.covering(at)) >= VERIFY_LIMITS.coveredShare) continue;
+      const kind = kinds.kind(piece);
+      if (kind === 'heading') return true;
+      const text = piece.text.trim();
+      const middle = (piece.rect.left + piece.rect.right) / 2;
+      const centred = Math.abs(middle - centre) <= 0.03 && piece.rect.right - piece.rect.left <= 0.6 * width;
+      if (kind === 'text' && centred && /^[\p{L}][\p{L}\d .:()-]*$/u.test(text) && /\p{L}{4}/u.test(text) && aloneOnRow(page, piece)) return true;
+    }
+  }
+  return false;
+}
+
+/** True when a line that tells what to do is printed between two places (positions as `pos`), in the column of the rect, and is in no region of an exercise. */
 function instructionBetween(run: Run, from: number, to: number, page: number, rect: Rect): boolean {
   for (let at = Math.max(0, Math.floor(from)); at <= Math.floor(to) && at <= page; at += 1) {
     if (at >= run.project.pdf.pageCount) break;
@@ -231,13 +263,15 @@ export function checkContexts(run: Run): Draft[] {
       if (lacking.length > 0) {
         const [, entry] = lacking[lacking.length - 1] as (typeof lacking)[number];
         const owners = entry.owners.filter((owner) => owner !== exercise);
+        // A heading between the instruction and the exercise: where the instruction holds is said by its words, not by where it is printed.
+        const acrossHeading = headingBetween(run, pos(entry.page, entry.rect.bottom), top, frame.rect);
         drafts.push(
           draft(
-            'context-inconsistent',
+            acrossHeading ? 'context-group-end' : 'context-inconsistent',
             'warning',
             exercise.ref,
             frame.page,
-            `${exercise.ref} ${own === '' ? 'has no instruction' : 'does not have the instruction'} printed right above it (page ${entry.page}), which is the instruction of ${owners
+            `${exercise.ref} ${own === '' ? 'has no instruction' : 'does not have the instruction'} printed ${acrossHeading ? 'above it, across a heading' : 'right above it'} (page ${entry.page}), which is the instruction of ${owners
               .slice(0, 3)
               .map((owner) => owner.ref)
               .join(', ')}${owners.length > 3 ? ` and ${owners.length - 3} more` : ''}.`,
@@ -273,14 +307,17 @@ export function checkContexts(run: Run): Draft[] {
       const group = before !== undefined ? keyOf(before) : '';
       const counted = group !== '' && before !== undefined ? statedCount(run, before.frame.context ?? []) : undefined;
       const complete = counted !== undefined && counted === (members.get(group) ?? 0);
-      if (practice && before !== undefined && own === '' && group !== '' && !complete && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect)) {
+      // A heading printed between them ("Aufgaben zum Abgeben") ends the group as well. An instruction that does not say how many exercises it is
+      // for ("In den folgenden Aufgaben geht es um Primzahlen") ends where its subject ends: that is read in the exercises, and
+      // the finding can be acknowledged with the page, for a second reviewer to confirm.
+      if (practice && before !== undefined && own === '' && group !== '' && !complete && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
         drafts.push(
           draft(
-            'context-inconsistent',
+            counted === undefined ? 'context-group-end' : 'context-inconsistent',
             'warning',
             exercise.ref,
             frame.page,
-            `${exercise.ref} has no instruction, though ${before.ref}, printed just before it with no other instruction in between, has one that ${members.get(group) as number} exercises share.`,
+            `${exercise.ref} has no instruction, though ${before.ref}, printed just before it with no other instruction in between, has one that ${members.get(group) as number} exercises share${counted === undefined ? ' and that does not say how many exercises it is for' : `, and it says it is for ${counted}`}.`,
             `${before.ref} and ${(members.get(group) as number) - 1} more have the same instruction`,
             exercise.where,
           ),
