@@ -54,6 +54,8 @@ export interface RegionText {
    * into one line ("4 . If two resistors 5 . A ladder is 6 .") ends with the number of the item whose region this is.
    */
   entering: { text: string; rect: Rect }[];
+  /** The first piece of the region's own text when the margin piece is a line that comes in from the left (joined across the columns). */
+  ownStart?: string;
   /** How many text lines of the page (as `mcprep lines` lists them) have a piece in the region. */
   lines: number;
 }
@@ -169,17 +171,17 @@ export class PageLines {
     const topmost = inside.length > 0 ? (inside[0] as Piece).rect : undefined;
     const entering = this.within(this.lines, region, (piece) => {
       const centre = (piece.rect.left + piece.rect.right) / 2;
-      return centre < region.left && piece.rect.right > region.left && piece.rect.right <= region.right;
+      // A line from the left: its centre is left of the region, or it starts well left of it (joined across the columns).
+      return (centre < region.left || piece.rect.left < region.left - FROM_OUTSIDE) && piece.rect.right > region.left;
     })
       .filter((piece) => (topmost === undefined ? piece.rect.top <= region.top + 2 * (piece.rect.bottom - piece.rect.top) : sameRow(piece.rect, topmost) || piece.rect.top <= topmost.top))
       .map((piece) => ({ text: piece.text, rect: piece.rect }));
     if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' '), lines: 0, entering };
-    // A piece that starts well left of the region is a line joined across the columns that comes in from the left: the region's
-    // own text starts at its edge, so such a piece is not at its margin (unless the region holds nothing else).
-    const own = inside.filter((piece) => piece.rect.left >= region.left - FROM_OUTSIDE);
-    const starts = own.length > 0 ? own : inside;
-    const leftmost = Math.min(...starts.map((piece) => piece.rect.left));
-    const first = starts.find((piece) => piece.rect.left <= leftmost + MARGIN) as Piece;
+    const leftmost = Math.min(...inside.map((piece) => piece.rect.left));
+    const first = inside.find((piece) => piece.rect.left <= leftmost + MARGIN) as Piece;
+    // A piece that starts well left of the region is a line joined across the columns that comes in from the left; the region's own
+    // text starts at its edge: the first piece of that text, when the margin piece is such a line.
+    const own = first.rect.left < region.left - FROM_OUTSIDE ? inside.find((piece) => piece.rect.left >= region.left - FROM_OUTSIDE) : undefined;
     const band = first.rect;
     const row = inside
       .filter((piece) => {
@@ -200,6 +202,7 @@ export class PageLines {
       text: [margin, ...rest].join(' '),
       lines: new Set(inside.map((piece) => piece.line)).size,
       entering,
+      ...(own !== undefined ? { ownStart: own.text } : {}),
     };
   }
 

@@ -21,6 +21,7 @@ export const SEVERITY_RANK: Record<FindingSeverity, number> = { error: 0, warnin
  */
 export const VERIFY_CODES = [
   { code: 'label-not-first', severities: ['error'] },
+  { code: 'label-in-word', severities: ['warning'] },
   { code: 'no-text', severities: ['warning'] },
   { code: 'solution-label-missing', severities: ['error'] },
   { code: 'solution-no-text', severities: ['info'] },

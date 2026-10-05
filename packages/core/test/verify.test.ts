@@ -251,6 +251,27 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(refs(make('49', 0.275, 0.32))).toEqual([]);
   });
 
+  it('says label-in-word, not label-not-first, when the number is in the first row glued to other text', () => {
+    const page: PageText = {
+      page: 0,
+      size: { width: 595, height: 842, rotation: 0 },
+      columns: 1,
+      hasText: true,
+      lines: [{ text: 'The graph of where161f . is a piecewise function', rect: { left: 0.36, top: 0.2, right: 0.66, bottom: 0.215 }, fontSize: 8, column: 0, chars: 47 }],
+    };
+    const make = (label: string): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [{ id: 'c', kind: 'exercise', page: 0, rect: { left: 0.355, top: 0.195, right: 0.67, bottom: 0.22 }, authority: 'book', label, section: 's' }],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    const codesOf = (label: string): string[] => verifyProject(make(label), lookup).findings.filter((finding) => finding.code.startsWith('label-')).map((finding) => finding.code);
+    expect(codesOf('161')).toEqual(['label-in-word']);
+    // A number that is not there, or only a piece of a larger number, stays label-not-first.
+    expect(codesOf('16')).toEqual(['label-not-first']);
+    expect(codesOf('7')).toEqual(['label-not-first']);
+  });
+
   it('trusts the pieces of a joined line over the line: a region on the wrong column does not hold its label through the whole line', () => {
     const left = { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 };
     const right = { left: 0.55, top: 0.2, right: 0.75, bottom: 0.22 };

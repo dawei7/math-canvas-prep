@@ -89,9 +89,29 @@ export function checkExerciseText(exercises: readonly Exercise[], index: PageInd
     const ok =
       (text.margin !== undefined && rowStartsWithLabel(text.margin, label, patterns)) ||
       text.straddling.some((line) => rowHasItem(line, label, patterns)) ||
-      text.entering.some((line) => holdsLabel(line, frame.rect, label, charWidth(page)));
+      text.entering.some((line) => holdsLabel(line, frame.rect, label, charWidth(page))) ||
+      (text.ownStart !== undefined && rowStartsWithLabel(text.ownStart, label, patterns));
     const cut = ok && cutsNumber(text, frame.rect, label);
     if (ok && !cut) continue;
+    // The number is in the first row, glued to other text by the text layer ("where161f .", "This105."): the reader cannot tell
+    // where the item starts, a person looking at the region can.
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const glued = new RegExp(`(?<=\\p{L})${escaped}(?![\\d]|\\.\\d)|(?<![\\d.])${escaped}(?=\\p{L})`, 'u');
+    const firstRow = [text.margin ?? '', ...text.entering.map((line) => line.text)];
+    if (!cut && firstRow.some((row) => glued.test(row))) {
+      drafts.push(
+        draft(
+          'label-in-word',
+          'warning',
+          exercise.ref,
+          frame.page,
+          `The number ${label} is in the first row of the region of ${exercise.ref} on page ${frame.page}, but the text layer glues it to other text: look at the region, and acknowledge when it starts with its number.`,
+          excerpt(firstRow.find((row) => glued.test(row)) as string, VERIFY_LIMITS.evidenceLength),
+          exercise.where,
+        ),
+      );
+      continue;
+    }
     drafts.push(
       draft(
         'label-not-first',
