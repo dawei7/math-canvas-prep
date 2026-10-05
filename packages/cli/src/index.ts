@@ -19,3 +19,16 @@ export {
   suggestFrontMatter,
 } from './audit-queue.js';
 export type { AcceptanceRun, AcceptanceSummary, BookFacts, BookOptions, FrontMatterSuggestion, IndexInput, IndexRow, ParseContext, Queue, QueueProblem, QueuedBook } from './audit-queue.js';
+export {
+  DELIVERY_STATUSES,
+  DELIVERY_USAGE,
+  checkDelivery,
+  copyBundles,
+  deliveryMarkdown,
+  deliveryReport,
+  deliveryTable,
+  deliveryTotals,
+  parseDeliveryArguments,
+  runDeliveryCheck,
+} from './delivery.js';
+export type { BundleState, CopyResult, DeliveryArguments, DeliveryIO, DeliveryInput, DeliveryOptions, DeliveryReport, DeliveryResult, DeliveryStatus } from './delivery.js';
