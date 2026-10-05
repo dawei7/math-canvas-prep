@@ -226,7 +226,7 @@ visual record is missing; a person or another agent then finishes Phase C with t
 
 1. `mcprep audit gate PATTERNS --survey "WORK/survey" [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --final --project "P"`. Exit 0: the book is **perfect**. Exit 4 with only
    `unconfirmed` left: go on at 2. Anything else open (a missing survey or visual record included): back to Phase S, B or C. Without Phase S and Phase C the book is not finished: do not report it as passed.
-2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS --survey "WORK/survey" [--reference "REF" ...] --sheets-seen "WORK/sheets/seen.txt" --visual "WORK/visual" --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
+2. Acknowledgements (if any): `mcprep audit review --out "WORK/review" PATTERNS --survey "WORK/survey" [--reference "REF" ...] --project "P"` writes a picture, the reason and the quote of each one and `index.md`. You stop
    here for them: **somebody with another name** looks at each and runs `mcprep audit confirm --by NAME --all` (or `--ref REF --code CODE`), then `--final` is run again.
 3. `mcprep export --out "BUNDLE" --project "P"`; it says whether the certificate is current and how many acknowledgements are not yet confirmed. A later change makes the
    certificate stale: run the gate again.
