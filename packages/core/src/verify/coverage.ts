@@ -1,3 +1,4 @@
+import { DEFAULT_BOOK_PATTERNS } from '../audit/scan.js';
 import { LIMITS } from '../rules/constants.js';
 import type { Rect } from '../model/types.js';
 import { draft, type Draft, type Exercise, type Where } from './common.js';
@@ -23,6 +24,11 @@ interface Uncovered {
 }
 
 const height = (piece: Piece): number => Math.max(1e-6, piece.rect.bottom - piece.rect.top);
+
+const escapeWord = (word: string): string => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A heading that names answers ("Warm-up Answers", "Answers - Chapter 1"): the words the audit stops a practice set at and reads the key by. */
+const ANSWER_HEADING = new RegExp(`(?:${[...DEFAULT_BOOK_PATTERNS.stopWords, ...DEFAULT_BOOK_PATTERNS.answerWords].map((word) => word.trim().split(/\s+/).map(escapeWord).join('\\s+')).join('|')})`, 'iu');
 
 function median(values: readonly number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -207,6 +213,8 @@ export function checkCoverage(run: Run): Draft[] {
   const stats = new Map<Zone, { covered: number; total: number }>();
   const byGap = new Map<Gap, Uncovered[]>();
   const byGroup = new Map<string, { zone: Zone | undefined; domain: 'exercise' | 'answers'; page: number; items: Uncovered[] }>();
+  // Answers that stand in a section after a heading that names them ("Warm-up Answers"), up to the next heading: not exercises.
+  let answerBlock = false;
   for (const page of [...pages].sort((a, b) => a - b)) {
     const lines = run.index.page(page);
     if (!lines.hasText) continue;
@@ -215,9 +223,11 @@ export function checkCoverage(run: Run): Draft[] {
     const band = bands.get(page);
     for (const piece of lines.pieces) {
       const kind = kinds.kind(piece);
+      if (kind === 'heading') answerBlock = ANSWER_HEADING.test(piece.text);
       if (kind === 'furniture' || kind === 'heading' || kind === 'symbol') continue;
       const middle = (piece.rect.top + piece.rect.bottom) / 2;
       const inBand = band !== undefined && middle >= band.top - 0.01 && middle <= band.bottom + 0.04;
+      if (answerBlock && !inBand) continue;
       const hit = zoneAt(pos(page, middle));
       const zone = hit?.zone;
       // Above the first exercise only a numbered line is looked at: the exercise before the first, that the audit missed.

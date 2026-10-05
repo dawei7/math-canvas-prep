@@ -6,9 +6,10 @@ through a command line or an MCP server; a person does it in a desktop app that 
 work on one document. The result is a single **bundle** file (`.mcbundle`: the PDF plus its metadata) that the Android app
 imports straight into its library.
 
-A whole book (one with a free licence, say) can also be **audited once as an authority**: its exercises keep the numbers the
-book prints (`5a`, `A.3`) inside the sections of the book, each is one exercise (never cut into parts), the answers of the
-answer key at the back are attached as hidden solutions to grade with, and the licence and the notice travel with the file.
+A whole book can also be **audited once as an authority**: its exercises keep the numbers the book prints (`5a`, `A.3`)
+inside the sections of the book, each is one exercise (never cut into parts), the answers of the answer key at the back are
+attached as hidden solutions to grade with, and the author, licence and notice (optional) travel with the file. A bundle
+contains the whole book, so keep it private: make your own from your own copy of the book. The tools never upload anything.
 Chapter 14 of the [agent guide](docs/AGENT_GUIDE.md) describes it; a transcript of a whole audit is in
 [examples/workbook/audit-session.md](examples/workbook/audit-session.md).
 
@@ -19,7 +20,7 @@ Chapter 14 of the [agent guide](docs/AGENT_GUIDE.md) describes it; a transcript 
 | Part | State |
 | --- | --- |
 | `packages/core` | Works. Model, rules, numbering, PDF reading and rendering, proposals, project file, bundle writer and importer check; authoritative book exercises, hidden solution regions, sections, document information (licence, notice) and the book summary; proposals for a whole book (the sections from the printed contents, the numbered exercises of the practice sets with their instruction, the answers of the answer key). 727 tests. |
-| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands, and `outline derive --book`, `exercises propose` and `solutions propose` for a whole book, and `exercises verify` and `exercises sample` (a text-only check and a fixed review sample, the same for every agent). 91 tests, plus two end-to-end tests of the built binary. |
+| `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands, and `outline derive --book`, `exercises propose` and `solutions propose` for a whole book, `exercises verify` and `exercises sample` (a text-only check and a fixed review sample, the same for every agent), and `scripts/audit-books.mjs` for a folder of books. 114 tests, plus two end-to-end tests of the built binary. |
 | `packages/mcp` | Works. 54 tools over stdio. 16 tests, plus an end-to-end test of the built server. |
 | `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file, and for auditing a book: book exercises with their printed numbers and sections, hidden solutions drawn on the answer key, the list of sections, the licence and notice of the document, an export that says which parts of the format the bundle uses and checks it as the importer does, and lists that stay quick with 5,000 exercises. It also finds the sections of a book from its printed text (**Derive sections**) and proposes its numbered exercises and the answers of its answer key, with progress and a Stop button, a review of every proposal against what the project has, ghosts on the page and one atomic, undoable, repeatable batch (the same the command line writes). 187 unit tests and 76 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux: see [docs/DESKTOP.md](docs/DESKTOP.md). |
 | Docs | [Agent guide](docs/AGENT_GUIDE.md), [audit a book](docs/AUDIT_A_BOOK.md), [runbook for an audit agent](docs/AGENT_RUNBOOK.md), [prompts](docs/AGENT_PROMPTS.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [reading a bundle](docs/READING_A_BUNDLE.md), [dependencies](docs/DEPENDENCIES.md). |
@@ -111,10 +112,11 @@ generated.
 
 ```console
 npm run build        # TypeScript for the packages, the desktop app's bundles
-npm test             # unit tests (Vitest, against the sources): 936 tests
+npm test             # unit tests (Vitest, against the sources): 1044 tests
 npm run lint
-npm run test:e2e     # the built binary, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
+npm run test:e2e     # the built binary, the batch script, the MCP server over stdio and the desktop app (build first; the desktop test needs a display)
 npm run docs         # regenerate docs/CLI.md and the tool reference of docs/MCP.md
+npm run audit-books -- <inbox> --out <results>   # audit every PDF of a folder (or a queue file) and write results/INDEX.md: docs/AUDIT_A_BOOK.md, "Several books at once"
 npm run docs:licenses -- --write   # refresh the tables of docs/DEPENDENCIES.md
 node examples/build-examples.mjs   # rebuild the examples after a build
 npm run desktop      # start the desktop app from the checkout

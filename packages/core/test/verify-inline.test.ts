@@ -25,7 +25,7 @@ function prose(book: Workbook, page: number, y: number, lines: number, tag: stri
 }
 
 /** Exercises 1.1.2 and 1.1.5 on page 0, 1.1.8 to 1.1.11 on page 1, their solutions on page 2: each solution headed "Lösung" and its label. */
-function inline(): { book: Workbook; frames: Frame[] } {
+function inline(solutionWord = 'Lösung'): { book: Workbook; frames: Frame[] } {
   const book = new Workbook(3);
   book.outline = sectionEntries([{ id: '1.1', page: 0, top: 0.02, label: '1.1', title: 'Matrices' }]);
   const frames: Frame[] = [];
@@ -48,7 +48,7 @@ function inline(): { book: Workbook; frames: Frame[] } {
   prose(book, 1, 600, 5, 'Eighth');
   frames.forEach((frame, index) => {
     const y = 100 + 45 * index;
-    book.text(2, 72, y, `Lösung ${frame.label as string} The sum is ${index + 3}.`);
+    book.text(2, 72, y, `${solutionWord} ${frame.label as string} The sum is ${index + 3}.`);
     frame.solution = [around(2, 72, y, { width: 330 })];
   });
   return { book, frames };
@@ -98,11 +98,16 @@ describe('solutions headed by a keyword and the label ("Lösung 1.1.2")', () => 
     expect(all(await check(book, { itemPatterns: KEYWORD_FIRST }), 'solution-label-missing')).toEqual([]);
   });
 
-  it('are not found without it: each region is then one that does not start with its number', async () => {
+  it('are found without it too: the default patterns read "Lösung 1.1.2" and "1.1.2 Aufgabe" the way the audit does', async () => {
     const { book } = inline();
+    expect(all(await check(book), 'solution-label-missing')).toEqual([]);
+  });
+
+  it('are not found when the book heads them with a word the default patterns do not know: each region is then one that does not start with its number', async () => {
+    const { book } = inline('Musterlösung');
     const report = await check(book);
     expect(refs(report, 'solution-label-missing')).toHaveLength(6);
-    expect(all(report, 'solution-label-missing')[0]?.evidence).toBe('Lösung 1.1.2 The sum is 3.');
+    expect(all(report, 'solution-label-missing')[0]?.evidence).toBe('Musterlösung 1.1.2 The sum is 3.');
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INK_CLEAN, nearestWhiteRow, rowInk } from '../src/geometry/ink.js';
+import { INK_CLEAN, inkAbove, nearestWhiteRow, rowInk } from '../src/geometry/ink.js';
 import { INK_MAP_SIDE } from '../src/model/types.js';
 import { PdfDocument } from '../src/pdf/document.js';
 import { buildSampleSheet } from '../src/testing/sample.js';
@@ -38,6 +38,18 @@ describe('the ink of a page', () => {
   it('is white where the columns do not reach the ink', () => {
     expect(nearestWhiteRow(map, 0.405, 0.4, 0.41, 0.4, 0.9)).toBeDefined();
     expect(rowInk(map, 0.405, 0.5, 0.5)).toBe(0);
+  });
+
+  it('measures the white between a position and the ink above it, within the columns asked for and no higher than the limit', () => {
+    // The second band ends at 0.41 (columns 0.1 to 0.3): from 0.43 the white above is 0.02 under the columns of the band, and the first band
+    // (the whole width, to 0.21) is further up.
+    expect(inkAbove(map, 0.43, 0.3, 0.1, 0.3)).toBeCloseTo(0.02, 3);
+    // Beside the band there is only the first band, 0.22 up; with a limit below it there is none at all.
+    expect(inkAbove(map, 0.43, 0.2, 0.5, 0.9)).toBeCloseTo(0.22, 3);
+    expect(inkAbove(map, 0.43, 0.3, 0.5, 0.9)).toBe(Infinity);
+    // Ink right above counts as no white at all, and the rows of the position itself are not looked at.
+    expect(inkAbove(map, 0.41, 0.3, 0.1, 0.3)).toBe(0);
+    expect(inkAbove(map, 0.4, 0.3, 0.1, 0.3)).toBe(Infinity);
   });
 });
 

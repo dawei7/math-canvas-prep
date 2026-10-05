@@ -240,7 +240,8 @@ export interface VerifyOptions {
   ink?: InkLookup;
   /**
    * How the number of an exercise or an answer starts a line, when the book does not print `5.`, `5)` or `(5)`: regular
-   * expressions with the label as printed in group 1 (the same patterns `exercises propose --item-pattern` takes).
+   * expressions with the label as printed in group 1 (the same patterns `exercises propose --item-pattern` takes). Without
+   * any, the forms the audit reads by default are read: "1.2.3 Aufgabe" for an exercise and "Lösung 1.2.3" for an answer.
    */
   itemPatterns?: readonly RegExp[];
 }

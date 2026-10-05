@@ -1,30 +1,39 @@
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
+  DEFAULT_BOOK_PATTERNS,
   LIMITS,
+  MIN_LABELLED,
   McPrepError,
   bookKey,
   bookKeyOf,
   bookReference,
+  cleanProposals,
   compareSolution,
   compareWithProposal,
   deriveSections,
+  deriveSectionsFromBookmarks,
   exerciseToOperation,
+  findLabelledAnswers,
+  findLabelledItems,
+  labelledPages,
   locateSections,
   proposeExercises,
   proposeSolutions,
+  renderDark,
   solutionToOperation,
   toOutlineEntries,
+  type AnswerKey,
   type BookEntry,
   type BookExercises,
   type BookPatterns,
   type BookSolutions,
+  type CleanResult,
   type ExerciseProposal,
   type Frame,
   type ItemPattern,
   type Operation,
   type PageText,
-  type PlaceOnPage,
   type ProjectSession,
   type Region,
   type SectionExercises,
@@ -44,8 +53,18 @@ import { REPORT_OPTIONS, applyAndReport, reportFlags } from './common.js';
 /** The words that make a heading of a book recognisable; the defaults are English, German, French, Spanish and Italian. */
 export const BOOK_WORD_OPTIONS: OptionSpec[] = [
   { name: 'chapter-words', type: 'string', value: '<chapter,part,...>', description: 'Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults (chapter, part, unit, kapitel, chapitre, capítulo, ...).' },
-  { name: 'practice-words', type: 'string', value: '<practice,exercises,...>', description: 'Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, übungen, aufgaben, ...).' },
-  { name: 'answer-words', type: 'string', value: '<answers,solutions,...>', description: 'Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).' },
+  { name: 'practice-words', type: 'string', value: '<practice,exercises,...>', description: 'Words and phrases that name a practice set in a heading ("3.2 Practice - Title", "3.2.4 Exercises", or the phrase alone on its line: "Exercises", "Review Questions"), comma separated, replacing the defaults (practice, exercises, problems, review questions, review, übungen, aufgaben, ...). A word earlier in the list wins over a later one when a section has several such headings.' },
+  { name: 'answer-words', type: 'string', value: '<answers,solutions,...>', description: 'Words that open the answer key and the header of a section in it ("Answers - Title"), and that name the answers printed right after a section ("3.2.5 Answers"), comma separated, replacing the defaults (answers, answer key, solutions, lösungen, ...).' },
+  { name: 'stop-words', type: 'string', value: '<review queue answers,...>', description: 'Phrases that end the exercises of a section when a heading says them alone on its line, comma separated, replacing the default (review queue answers). The answer words, the answers of the section and the next section end them too.' },
+  { name: 'item-words', type: 'string', value: '<aufgabe,exercise,...>', description: 'The words that name one exercise printed on its own, comma separated, replacing the defaults (aufgabe, übung, exercise, problem, task, question, ...). A line that starts with a number of two or three levels and one of these words and a colon or a full stop ("1.2.3 Aufgabe: ..."), or with one of these words and the number ("Aufgabe 1.2 (Title). ..."), is an exercise of its own; it ends at a link word at the right margin (an answer word: "Lösung"), above the next such line or heading, or at the last ink of its page.' },
+  { name: 'back-words', type: 'string', value: '<zurück,back,...>', description: 'The words of the link that leads back from an answer to its place, alone at the right margin ("zurück", "back"), comma separated, replacing the defaults. An answer that starts with a line like "Lösung 1.2.3" ends at it.' },
+  {
+    name: 'answer-marker',
+    type: 'string',
+    multiple: true,
+    value: '<regex>',
+    description: 'A line of the answer key that marks where the answers of a section start, as a regular expression whose group 1 is the section label (default: "Section 1.1 (p. 5)"). A line that holds the label alone ("2.3") and a large heading that starts with a label are markers anyway. Give the option more than once for several; they replace the default.',
+  },
 ];
 
 export const ITEM_PATTERN_OPTION: OptionSpec = {
@@ -56,6 +75,35 @@ export const ITEM_PATTERN_OPTION: OptionSpec = {
   description:
     'How the number of an exercise (or of an answer) starts a line, as a regular expression: group 1 is the label as printed (without the closing mark), group 2 the text after it. Replaces the defaults, which read "5)", "5.", "(5)" and "5a)"; give the option more than once for several. Example: --item-pattern "^([A-Z]\\.\\d+)\\s+(.*)$" for labels like "A.3".',
 };
+
+export const KEEP_EDGES_OPTION: OptionSpec = {
+  name: 'keep-edges',
+  type: 'boolean',
+  description:
+    'Keep the regions as they are cut from the text layer. Without it an edge that cuts printed ink (the descender of the line above, the rule at the foot of a table, a figure) is moved to the nearest row or column that does not, by the same measure as the pixel check of `exercises verify --ink` (the pages are drawn once; nothing is moved when they cannot be drawn).',
+};
+
+/** The edges of the proposed regions that cut printed ink go to where they do not (see `cleanProposals`); the proposals change in place. */
+async function cleanEdges(
+  context: CommandContext,
+  session: ProjectSession,
+  pages: readonly PageText[],
+  exercises: BookExercises | undefined,
+  solutions: BookSolutions | undefined,
+): Promise<{ cleaned: CleanResult | undefined; notes: string[] }> {
+  if (flag(context.options, 'keep-edges')) return { cleaned: undefined, notes: [] };
+  try {
+    const pdf = await session.document();
+    const cleaned = await cleanProposals((page) => renderDark(pdf, page), pages, exercises, solutions);
+    return {
+      cleaned,
+      notes: cleaned.edges > 0 ? [`${plural(cleaned.edges, 'edge')} of ${plural(cleaned.regions, 'region')} moved out of printed ink (\`exercises verify --ink\` measures the same ink); --keep-edges leaves the regions as cut from the text layer.`] : [],
+    };
+  } catch (error) {
+    if (error instanceof McPrepError && error.code === 'E_RENDER_UNAVAILABLE') return { cleaned: undefined, notes: ['The edges of the regions were not moved out of printed ink: the pages cannot be drawn here (the pixel check needs the @napi-rs/canvas package).'] };
+    throw error;
+  }
+}
 
 function wordList(options: CommandContext['options'], name: string): string[] | undefined {
   const text = stringOption(options, name);
@@ -69,8 +117,29 @@ function patternsFrom(options: CommandContext['options']): Partial<BookPatterns>
   const chapterWords = wordList(options, 'chapter-words');
   const practiceWords = wordList(options, 'practice-words');
   const answerWords = wordList(options, 'answer-words');
-  if (!chapterWords && !practiceWords && !answerWords) return undefined;
-  return { ...(chapterWords ? { chapterWords } : {}), ...(practiceWords ? { practiceWords } : {}), ...(answerWords ? { answerWords } : {}) };
+  const stopWords = wordList(options, 'stop-words');
+  const itemWords = wordList(options, 'item-words');
+  const backWords = wordList(options, 'back-words');
+  const given = options['answer-marker'];
+  const markers = Array.isArray(given) ? given.map(String) : typeof given === 'string' ? [given] : [];
+  for (const source of markers) {
+    try {
+      const groups = (new RegExp(`${source}|`, 'u').exec('') as RegExpExecArray).length - 1;
+      if (groups < 1) throw new Error('it has no group for the section label');
+    } catch (error) {
+      throw usage(`--answer-marker "${source}" is not usable: ${(error as Error).message}.`, 'It must be a regular expression with a group (group 1) for the label of the section, such as "^Section\\s+(\\d+\\.\\d+)".');
+    }
+  }
+  if (!chapterWords && !practiceWords && !answerWords && !stopWords && !itemWords && !backWords && markers.length === 0) return undefined;
+  return {
+    ...(chapterWords ? { chapterWords } : {}),
+    ...(practiceWords ? { practiceWords } : {}),
+    ...(answerWords ? { answerWords } : {}),
+    ...(stopWords ? { stopWords } : {}),
+    ...(itemWords ? { itemWords } : {}),
+    ...(backWords ? { backWords } : {}),
+    ...(markers.length > 0 ? { answerMarkers: markers } : {}),
+  };
 }
 
 function itemPatternsFrom(options: CommandContext['options']): ItemPattern[] | undefined {
@@ -109,19 +178,28 @@ async function load(context: CommandContext, ink: ReadonlySet<number> = new Set(
 
 interface Sections {
   entries: BookEntry[];
-  answerKey: PlaceOnPage | undefined;
+  answerKey: AnswerKey | undefined;
   /** `project`: the outline stored in the project; `derived`: found now, from the printed contents and the headings. */
   source: 'project' | 'derived';
   notes: string[];
 }
 
-function sectionsFor(session: ProjectSession, pages: PageText[], patterns?: Partial<BookPatterns>): Sections {
+/** The sections that the text finds, or, when it finds none, the ones that counting the bookmarks of the PDF gives. */
+async function deriveFor(session: ProjectSession, pages: PageText[], patterns?: Partial<BookPatterns>): Promise<ReturnType<typeof deriveSections>> {
+  const derived = deriveSections(pages, patterns ? { patterns } : {});
+  if (derived.sections > 0 && derived.generic !== true) return derived;
+  const bookmarks = await (await session.document()).outline();
+  const counted = bookmarks ? deriveSectionsFromBookmarks(pages, bookmarks, patterns ? { patterns } : {}) : undefined;
+  return counted ?? derived;
+}
+
+async function sectionsFor(session: ProjectSession, pages: PageText[], patterns?: Partial<BookPatterns>): Promise<Sections> {
   const outline = session.project.outline?.entries ?? [];
   if (outline.some((entry) => entry.id !== undefined)) {
     const located = locateSections(pages, outline, patterns ? { patterns } : {});
     return { entries: located.entries, answerKey: located.answerKey, source: 'project', notes: located.notes };
   }
-  const derived = deriveSections(pages, patterns ? { patterns } : {});
+  const derived = await deriveFor(session, pages, patterns);
   return {
     entries: derived.entries,
     answerKey: derived.answerKey,
@@ -136,6 +214,25 @@ function inkPages(entries: readonly BookEntry[]): Set<number> {
     const practice = entry.practice;
     if (!practice) continue;
     for (let page = practice.page; page <= Math.min(practice.end.page, practice.page + 40); page += 1) pages.add(page);
+  }
+  return pages;
+}
+
+/** The pages of exercises and answers that are printed inside the text ("1.2.3 Aufgabe:", "Lösung 1.2.3"): the page of each and the two after it. */
+function labelledInk(pages: readonly PageText[], patterns: Partial<BookPatterns> | undefined, answers: boolean): Set<number> {
+  const words: BookPatterns = { ...DEFAULT_BOOK_PATTERNS, ...patterns };
+  const hits = answers ? findLabelledAnswers(pages, words) : findLabelledItems(pages, words);
+  return new Set(hits.length >= MIN_LABELLED ? labelledPages(hits, pages.length) : []);
+}
+
+/** The pages of the answers: the key at the back, and the answers printed right after the sections. */
+function answerPages(entries: readonly BookEntry[], answerKey: AnswerKey | undefined, pageCount: number): Set<number> {
+  const pages = new Set<number>();
+  if (answerKey) for (let page = answerKey.page; page <= Math.min(answerKey.end?.page ?? pageCount - 1, pageCount - 1); page += 1) pages.add(page);
+  for (const entry of entries) {
+    const answers = entry.answers;
+    if (!answers) continue;
+    for (let page = answers.page; page <= Math.min(answers.end.page, answers.page + 40, pageCount - 1); page += 1) pages.add(page);
   }
   return pages;
 }
@@ -164,7 +261,7 @@ function appliedResult(result: object, done: CommandOutput): object {
 export async function runBookDerive(context: CommandContext): Promise<CommandOutput> {
   const { session, pages } = await load(context);
   const patterns = patternsFrom(context.options);
-  const structure = deriveSections(pages, patterns ? { patterns } : {});
+  const structure = await deriveFor(session, pages, patterns);
   const rows = structure.entries.map((entry) => [
     entry.id,
     entry.label ?? '',
@@ -190,6 +287,7 @@ export async function runBookDerive(context: CommandContext): Promise<CommandOut
     numbering: structure.numbering,
     toc: structure.toc,
     answerKey: structure.answerKey ?? null,
+    practiceAnchors: structure.practiceAnchors,
     bodyFontSize: structure.bodyFontSize,
     notes: structure.notes,
     applied: false,
@@ -299,6 +397,7 @@ export const exercisesPropose: CommandSpec = {
     { name: 'instructions', type: 'string', value: 'bold|margin|auto|none', description: 'How instructions are recognised: bold (set in bold, at the margin), margin (at the margin, above an item), auto (bold when the pages carry font information, else margin; the default), none.' },
     ITEM_PATTERN_OPTION,
     ...BOOK_WORD_OPTIONS,
+    KEEP_EDGES_OPTION,
     { name: 'ops', type: 'string', value: '<file>', description: 'Write the operations as a JSON batch (for `frames apply`).' },
     { name: 'details', type: 'string', value: '<file>', description: 'Write everything (every proposal with its evidence, the instructions, the rejected numbers) as JSON.' },
     { name: 'apply', type: 'boolean', description: 'Apply the proposals to the project now (one atomic batch). Exercises the project already has are skipped (see --replace).' },
@@ -307,14 +406,14 @@ export const exercisesPropose: CommandSpec = {
   ],
   examples: ['mcprep exercises propose', 'mcprep exercises propose --section 0.1,0.2 --ops batch.json', 'mcprep exercises propose --solutions --apply', 'mcprep exercises propose --section 1.7 --replace --apply'],
   output:
-    '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution, added, unchanged, solutionsAdded, changed, replaced }, changed: string[] (SECTION:LABEL of exercises of the project that differ from the proposal), notProposed: string[], refused: string[], proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has the fields of every command that changes the project (created, replaced, counts, book, validation)',
+    '{ source: "project"|"derived", sections: [{ section, label, title, count, first, last, pages, gaps, duplicates, rejected, excluded, instructions: [{ text, governs }], notes, lowConfidence: [{ label, confidence, evidence }] }], counts: { sections, exercises, withSolution, added, unchanged, solutionsAdded, changed, replaced }, edges?: { moved, regions } (the edges moved out of printed ink, see --keep-edges), changed: string[] (SECTION:LABEL of exercises of the project that differ from the proposal), notProposed: string[], refused: string[], proposals?: [...] (all, when there are at most 300; else proposalsOmitted: n and the details file), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has the fields of every command that changes the project (created, replaced, counts, book, validation)',
   async run(context) {
     const first = await load(context);
     const patterns = patternsFrom(context.options);
     const itemPatterns = itemPatternsFrom(context.options);
-    const sections = sectionsFor(first.session, first.pages, patterns);
+    const sections = await sectionsFor(first.session, first.pages, patterns);
     const chosen = chooseSections(sections.entries, (stringOption(context.options, 'section') ?? '').split(',').map((value) => value.trim()).filter(Boolean));
-    const ink = inkPages(chosen);
+    const ink = new Set([...inkPages(chosen), ...labelledInk(first.pages, patterns, false)]);
     const { session, pages } = ink.size > 0 ? await withInk(first, ink) : first;
     const maxItems = numberOption(context.options, 'max-items');
     const instructionMode = stringOption(context.options, 'instructions');
@@ -322,6 +421,7 @@ export const exercisesPropose: CommandSpec = {
     const exercises: BookExercises = proposeExercises(pages, chosen, {
       ...(maxItems !== undefined ? { maxItems } : {}),
       ...(itemPatterns ? { itemPatterns } : {}),
+      ...(patterns ? { patterns } : {}),
       ...(instructionMode !== undefined ? { instructions: instructionMode as 'bold' | 'margin' | 'auto' | 'none' } : {}),
     });
     const wantSolutions = flag(context.options, 'solutions');
@@ -329,7 +429,7 @@ export const exercisesPropose: CommandSpec = {
     const proposals = exercises.sections.flatMap((section) => section.proposals);
     if (wantSolutions) {
       const needInk = new Set<number>();
-      if (sections.answerKey) for (let page = sections.answerKey.page; page < pages.length; page += 1) needInk.add(page);
+      for (const page of [...answerPages(sections.entries, sections.answerKey, pages.length), ...labelledInk(pages, patterns, true)]) needInk.add(page);
       const loaded = needInk.size > 0 ? await withInk({ session, pages }, needInk) : { session, pages };
       solutions = proposeSolutions(loaded.pages, sections.entries, proposals.map((proposal) => ({ section: proposal.section, label: proposal.label })), {
         ...(sections.answerKey ? { answerKey: sections.answerKey } : {}),
@@ -337,6 +437,7 @@ export const exercisesPropose: CommandSpec = {
         ...(itemPatterns ? { itemPatterns } : {}),
       });
     }
+    const cleaning = await cleanEdges(context, session, pages, exercises, solutions);
     const solutionMap = new Map<string, readonly Region[]>();
     for (const answer of solutions?.sections.flatMap((section) => section.answers) ?? []) solutionMap.set(bookKey(answer.section, answer.label), answer.regions);
     const replace = flag(context.options, 'replace');
@@ -357,11 +458,12 @@ export const exercisesPropose: CommandSpec = {
       changed: plan.changed.length,
       replaced: plan.replaced,
     };
-    const notes = [...sections.notes, ...exercises.notes, ...(solutions?.notes ?? []), ...plan.refused];
+    const notes = [...sections.notes, ...exercises.notes, ...(solutions?.notes ?? []), ...plan.refused, ...cleaning.notes];
     const result = {
       source: sections.source,
       sections: summaries,
       counts,
+      ...(cleaning.cleaned ? { edges: { moved: cleaning.cleaned.edges, regions: cleaning.cleaned.regions } } : {}),
       changed: plan.changed,
       notProposed: plan.notProposed,
       refused: plan.refused,
@@ -390,6 +492,7 @@ export const exercisesPropose: CommandSpec = {
       ...(plan.notProposed.length > 0 ? [`In the project but not in this proposal (left as they are): ${listed(plan.notProposed)}.`] : []),
       ...(plan.refused.length > 0 ? ['Left out:', ...plan.refused.slice(0, 12).map((line) => `  - ${line}`)] : []),
       ...(sections.notes.length > 0 ? sections.notes.map((note) => note) : []),
+      ...cleaning.notes,
       ...(opsFile !== undefined ? [`Wrote ${plural(operations.length, 'operation')} to ${opsFile}; apply them with \`mcprep frames apply ${opsFile}\`.`] : []),
       ...(detailsFile !== undefined ? [`Wrote the details to ${detailsFile}.`] : []),
     ].join('\n');
@@ -439,7 +542,7 @@ function summarize(section: SectionExercises, solutions: BookSolutions | undefin
     instructions: section.instructions.map((instruction) => ({ text: instruction.text, governs: instruction.governs })),
     notes: section.notes,
     lowConfidence: section.proposals.filter((proposal) => proposal.confidence < 0.8).map((proposal: ExerciseProposal) => ({ label: proposal.label, confidence: proposal.confidence, evidence: proposal.evidence })),
-    ...(solved ? { answers: solved.answers.length, withoutAnswer: solved.withoutAnswer, withoutExercise: solved.withoutExercise } : {}),
+    ...(solved ? { answers: solved.answers.length, withoutAnswer: solved.withoutAnswer, withoutExercise: solved.withoutExercise, ...(solved.selected === true ? { selected: true } : {}), ...(solved.coverage ? { coverage: solved.coverage } : {}) } : {}),
   };
 }
 
@@ -459,25 +562,27 @@ export const solutionsPropose: CommandSpec = {
     { name: 'replace', type: 'boolean', description: 'Overwrite the solution of an exercise that has a different one; without it that exercise is kept and listed.' },
     ITEM_PATTERN_OPTION,
     ...BOOK_WORD_OPTIONS,
+    KEEP_EDGES_OPTION,
     ...REPORT_OPTIONS,
   ],
   examples: ['mcprep solutions propose', 'mcprep solutions propose --ops solutions.json', 'mcprep solutions propose --apply', 'mcprep solutions propose --replace --apply'],
   output:
-    '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise, added, unchanged, changed }, changed: string[] (SECTION:LABEL of exercises whose solution differs from the proposal), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has dryRun, created, replaced, removed, book and validation',
+    '{ sections: [{ section, label, title, answers, first, last, gaps, duplicates, withoutAnswer, withoutExercise, headers, selected?, coverage?: { exercises, answered }, notes }], counts: { exercises, answers, matched, withoutAnswer, withoutExercise, added, unchanged, changed }, edges?: { moved, regions } (the edges moved out of printed ink, see --keep-edges), coverage?: { exercises, answered, sections, selectedSections } (for a key that answers selected exercises only), changed: string[] (SECTION:LABEL of exercises whose solution differs from the proposal), operations? (when there are at most 300; else operationsOmitted: n and the --ops file), notes, applied }; with --apply the result also has dryRun, created, replaced, removed, book and validation',
   async run(context) {
     const first = await load(context);
     const patterns = patternsFrom(context.options);
     const itemPatterns = itemPatternsFrom(context.options);
-    const sections = sectionsFor(first.session, first.pages, patterns);
+    const sections = await sectionsFor(first.session, first.pages, patterns);
     const frames = first.session.project.frames.filter((frame): frame is Frame & { section: string; label: string } => frame.authority === 'book' && frame.section !== undefined && frame.label !== undefined);
     const needInk = new Set<number>();
-    if (sections.answerKey) for (let page = sections.answerKey.page; page < first.pages.length; page += 1) needInk.add(page);
+    for (const page of [...answerPages(sections.entries, sections.answerKey, first.pages.length), ...labelledInk(first.pages, patterns, true)]) needInk.add(page);
     const { pages } = needInk.size > 0 ? await withInk(first, needInk) : first;
     const solutions = proposeSolutions(pages, sections.entries, frames.map((frame) => ({ section: frame.section, label: frame.label })), {
       ...(sections.answerKey ? { answerKey: sections.answerKey } : {}),
       ...(patterns ? { patterns } : {}),
       ...(itemPatterns ? { itemPatterns } : {}),
     });
+    const cleaning = await cleanEdges(context, first.session, pages, undefined, solutions);
     const byKey = new Map(frames.map((frame) => [bookKey(frame.section, frame.label), frame]));
     const replace = flag(context.options, 'replace');
     const operations: Operation[] = [];
@@ -512,7 +617,7 @@ export const solutionsPropose: CommandSpec = {
     const withoutAnswer = solutions.sections.reduce((sum, section) => sum + section.withoutAnswer.length, 0);
     const withoutExercise = solutions.sections.reduce((sum, section) => sum + section.withoutExercise.length, 0);
     const counts = { exercises: frames.length, answers: solutions.sections.reduce((sum, section) => sum + section.answers.length, 0), matched, withoutAnswer, withoutExercise, added, unchanged, changed: changed.length };
-    const notes = [...(frames.length === 0 ? ['The project has no authoritative exercises yet: propose them first (`mcprep exercises propose --apply`), or use `exercises propose --solutions` to do both at once.'] : []), ...solutions.notes, ...refused];
+    const notes = [...(frames.length === 0 ? ['The project has no authoritative exercises yet: propose them first (`mcprep exercises propose --apply`), or use `exercises propose --solutions` to do both at once.'] : []), ...solutions.notes, ...refused, ...cleaning.notes];
     const result = {
       sections: solutions.sections.map((section) => ({
         section: section.section,
@@ -526,15 +631,20 @@ export const solutionsPropose: CommandSpec = {
         withoutAnswer: section.withoutAnswer,
         withoutExercise: section.withoutExercise,
         headers: section.headers,
+        ...(section.selected === true ? { selected: true } : {}),
+        ...(section.coverage ? { coverage: section.coverage } : {}),
         notes: section.notes,
       })),
       counts,
+      ...(cleaning.cleaned ? { edges: { moved: cleaning.cleaned.edges, regions: cleaning.cleaned.regions } } : {}),
+      ...(solutions.coverage ? { coverage: solutions.coverage } : {}),
       changed,
       ...(operations.length <= 300 ? { operations } : { operationsOmitted: operations.length }),
       notes,
       applied: false,
     };
-    const anomalies = solutions.sections.flatMap((section) => section.notes.map((note) => `${section.section}: ${note}`));
+    // A key that answers selected exercises only is said once for the book (a note below), not for every section.
+    const anomalies = solutions.sections.flatMap((section) => section.notes.filter((note) => !note.endsWith('(selected answers)')).map((note) => `${section.section}: ${note}`));
     const text = [
       `${plural(counts.answers, 'answer')} found in the answer key (pages ${solutions.key?.firstPage ?? '?'}-${solutions.key?.lastPage ?? '?'}); ${plural(matched, 'is', 'are')} matched to an exercise of the project (${added} to be added${unchanged > 0 ? `, ${unchanged} there already` : ''}${changed.length > 0 ? `, ${changed.length} different: ${replace ? 'to be replaced' : 'kept, --replace overwrites them'}` : ''}), ${plural(withoutAnswer, 'exercise')} without an answer, ${plural(withoutExercise, 'answer')} without an exercise. Nothing is written unless you say --apply.`,
       table(

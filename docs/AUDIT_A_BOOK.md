@@ -1,9 +1,10 @@
 # Auditing a book as an authority
 
-A textbook with a free licence can be audited **once**, on a computer, and then be offered to many learners: its exercises keep the
+A textbook can be audited **once**, on a computer, and then be worked on, on the tablet, as an authority: its exercises keep the
 numbers the book prints (`1`, `5a`, `A.3`), they cannot be edited or renumbered on the tablet, the instruction printed for a group of
 exercises is shown with each of them, and the answer key printed in the same PDF is hidden **solution context** that only the grader
-sees. The bundle also carries the book's contents as sections. The contract is [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md) (section 3,
+sees. The bundle also carries the book's contents as sections. **A bundle contains the whole book (the PDF is inside), so keep it
+private: make your own from your own copy of the book. The tools never upload anything.** The contract is [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md) (section 3,
 "Authoritative exercises" and "Solution context", and section 4); the commands are listed in [CLI.md](CLI.md), the same tools for an agent in
 [MCP.md](MCP.md); [AGENT_GUIDE.md](AGENT_GUIDE.md) explains how frames are drawn and checked (chapter 14 is the manual way to audit a
 book exercise by exercise, section 6 how the proposals below work).
@@ -88,6 +89,32 @@ Exercises are identified by their section and label, so the commands can be run 
 - `--dry-run` runs the whole batch and its validation and writes nothing; `--force` writes a batch even if it introduces validation
   errors (almost never what you want).
 
+### Where the edges go: ink
+
+The regions are cut from the boxes of the lines of the text layer, which are taller than what is printed in them: an edge between two
+lines can run through the descender of the line above or the ascender of the line below. `exercises propose` and `solutions propose`
+therefore draw each page that has a proposed region once (2 pixels per point, the way `exercises verify --ink` does) and move an edge
+that cuts printed ink to the nearest row or column that does not, by the very measure of `edge-on-ink`:
+
+- Whose ink it is says which way the edge moves, by where most of the ink lies. Ink that reaches in from outside (the descender of the line
+  above, the corner of a figure above, the border of a neighbour) is let go: the edge moves **in**, past the part that reaches into the
+  region (as far as it reaches, at most 2.4 percent of the page). Ink that is mostly inside (the tail of an own letter, a bracket) is the
+  region's own: the edge moves **out**, past the rest of it (at most 1.2 percent of the page). A mixture, a rule that lies on the edge, goes
+  to the nearest clean place either way, into the region only a few pixels.
+- An edge never takes in printed ink of a piece of text that is not part of the region (nor a piece that the text check would then read as
+  inside it), never leaves a piece of its own text less than 60 percent inside (unless the answer or exercise next to it holds more of that
+  piece, as the numerator of the next answer that the box of the one above reaches into), and a left or right edge never enters the own text
+  (a white column between a number and its words is no place for it).
+- No move makes a region smaller or taller than `region-size` allows. Two regions of one kind that lie on each other after the moves get one
+  row or column between their texts, or their edges stay as they were. A region that would have an edge cutting ink after all its moves, which
+  it did not have before, is left as it was.
+- An edge that cuts nothing is never touched: a book without such edges comes back exactly as proposed, and running it again proposes the
+  same regions (so `--apply` twice stores nothing new).
+
+`--keep-edges` keeps the regions as cut from the text layer. The result has `edges: { moved, regions }` and a note says how many edges
+moved. What a rectangle cannot fix stays, and `edge-on-ink` reports it (see Limits): lines set so tight that fewer than three pixels of
+white lie between them, figures and brackets that interlock, a rule or a table border that is the edge.
+
 ## Checking without looking: `exercises verify`
 
 `mcprep exercises verify` (MCP tool `exercises_verify`) reads the project that is stored on disk and the text layer of its PDF (no
@@ -123,7 +150,7 @@ some other way (`Problem 12.`).
 | `overlap` | error | The regions of two different exercises on a page (an exercise's own region or one of its continuations) share more than 5 percent of the smaller region and at least 0.004 of the page height (a quarter of a line: less than that and regions only touch). Instructions (`context`) are not compared here. Reported once for the two, under the first of them. | `crop` both; move an edge (`frames update`) so the two only touch. |
 | `context-overlaps-frame` | warning | An instruction region (`context`, which several exercises share) lies on an exercise: at least a tenth of the smaller region and 0.004 of the page height, as in `validate`. One finding for each exercise and each region, however many exercises share it. | `crop --region context:0`; shorten the instruction's region (`context.set`) or the exercise's. |
 | `duplicate-region` | error | Two exercises have the same main region (every edge within 0.001 on the same page): one is framed on the other's text. | Frame each printed exercise on its own text; delete the copy. |
-| `region-size` | warning | The exercise's region is taller than 0.45 of the page, narrower than 0.05 or smaller than 0.002 in area (the parts of a unit are not measured): not the size of one printed exercise. | Look: a region that holds several exercises is split, a sliver that only holds the number is widened. |
+| `region-size` | warning | The exercise's region is taller than 0.45 of the page, narrower than 0.05 or smaller than 0.002 in area (the parts of a unit are not measured): not the size of one printed exercise. An exercise that is alone on its page (a booklet prints one to a page, with room to answer in) may be as tall as the page: its height is not measured. | Look: a region that holds several exercises is split, a sliver that only holds the number is widened. |
 | `section-unknown` | error | The exercise is filed under a section id that is not an entry of the outline (or the project has no outline). | `outline` shows the ids; `exercises section SECTION:LABEL <id>` or `outline update`. |
 | `section-page` | error | The exercise is on a page before the page its section starts on, or after the page where the next entry of the same or a lower depth starts. (An exercise on the page of the next heading is not judged: only its position could tell, and `validate` warns `section-mismatch` for it.) | The exercise is in another section, or the heading's `page` is wrong: `exercises section`, or `outline update <id> --page ...`. |
 | `gap` | warning | Numbers between the first and the last are missing from the section: labels that start with an integer, strays (`label-outlier`) left out. One finding for each run of missing numbers, under the exercise before it. | Look for them on the page: an exercise that the proposal missed is added (`exercises add`); a number the book itself skips stays skipped. |
@@ -135,7 +162,7 @@ some other way (`Problem 12.`).
 | `span-gap` | error | An exercise goes on in other regions (`continues`, in the order they are read), and text lies between two of them that no region holds: lines below the first region, whole pages in between, lines above the next region. The span skips part of the exercise. Evidence: the first 40 characters of that text. | `mcprep crop SECTION:LABEL --region continues:0`. Add the missing part (`continues add SECTION:LABEL --page P --rect l,t,r,b --snap`) or lengthen the region that ends early (`frames update`). |
 | `continuation-order` | error | The continuations of an exercise (or the regions of an answer) are not in reading order: each must be on a later page, or on the same page in a column to the right or further down. A region that was deleted or swapped shows the text in the wrong order. | `continues remove` the region that is out of place and add the continuations again in the order of the text (`solution.set` for an answer). |
 | `continuation-limit` | warning | The exercise already has the 8 continuation regions a frame can have, and text goes on after the last one. | The printed exercise is longer than a frame can hold: look at the page, and keep what fits only if the rest is no part of the exercise (then say so in the notes of the audit). |
-| `numbered-text-left-behind` | error | In the exercises of a **practice-set** section (see below) a line starts like an item (`7.`, `7)`, `(7)`, `5a.`, a part marker `(a)`, a dotted number `1.1.7`, or what `--item-pattern` reads) and no region holds it: an exercise or a part that the proposal missed. Several such lines on a page that no region touches are one finding. Named by the number the line starts with. Evidence: the first 40 characters. | Look at the page (`mcprep render P --frames`). A missed exercise is added (`exercises add --section S --label L --page P --rect l,t,r,b --snap`), a part is a part of the exercise above (`frames update`); a numbered line that is no exercise at all (a list in the text) is what the book prints: acknowledge it with the reason. |
+| `numbered-text-left-behind` | error | In the exercises of a **practice-set** section (see below) a line starts like an item (`7.`, `7)`, `(7)`, `5a.`, a part marker `(a)`, a dotted number `1.1.7`, or what `--item-pattern` reads) and no region holds it: an exercise or a part that the proposal missed. Several such lines on a page that no region touches are one finding. The numbered lines under a heading that names answers (one of the stop words or answer words of the audit, such as "Answers - Chapter 1"), up to the next heading, are answers that stand in the section and are not looked at here. Named by the number the line starts with. Evidence: the first 40 characters. | Look at the page (`mcprep render P --frames`). A missed exercise is added (`exercises add --section S --label L --page P --rect l,t,r,b --snap`), a part is a part of the exercise above (`frames update`); a numbered line that is no exercise at all (a list in the text) is what the book prints: acknowledge it with the reason. |
 | `answer-left-behind` | error | In the answers (the key at the back, or the answers that follow a chapter) a line starts like an item and no solution region holds it: an answer that belongs to no exercise, or an exercise that was missed. Named by the section whose marker is above it in the key, when the key has markers. | As for `numbered-text-left-behind`, in the key: the exercise it answers is missing (`exercises add`) or its answer was not matched (`solution add SECTION:LABEL --page P --rect l,t,r,b --snap`). |
 | `text-left-behind` | warning (info in the answers) | In a practice-set section a line of text is in no region of any frame: not an exercise, a continuation, an instruction or an answer, and neither furniture (a running header, a page number, a line of marks without words) nor a heading (the title of a section, a bold or larger line alone on its row that does not tell what to do). One finding for a block of lines. It is named by the exercise it goes on from when the block starts right under the region of one (the bottom edge may cut the exercise off) or when it stands at the top of a page and the exercise above ended on the page before (a continuation is missing); else by the section. In the answers the same is information. | Look at the page. The rest of an exercise belongs to it (`frames update` to lengthen the region, `continues add` for the next page); an instruction printed for a group belongs to each exercise of it as `context` (`context add`); a remark that the book prints between its exercises is acknowledged with the reason. |
 | `answer-clipped` | warning | A line of text starts right under a solution region, in its column, and no region holds it: the answer goes on below the region's bottom edge. | `crop SECTION:LABEL --region solution:0`; lengthen the region (`solution.set`, or `solution remove` and `solution add --snap`). |
@@ -143,9 +170,9 @@ some other way (`Problem 12.`).
 | `context-missing` | error | An instruction line of the section names this exercise's number (`Exercises 2 - 3`) and is not its context (nor inside its own region). | `context add SECTION:LABEL --page P --rect l,t,r,b --snap` with the instruction's region. |
 | `context-not-nearest` | warning | An instruction (a bold line that tells what to do, or one that starts like an instruction) is printed between the instruction the exercise has and the exercise, and is neither inside the region of an exercise nor attached to this one. | Look at the page: the nearer instruction is probably the exercise's own (`context remove`, `context add`); a bold line that is no instruction (a heading of a part) is acknowledged. |
 | `context-inconsistent` | warning | The instruction of an exercise (`context`, compared as the set of its regions: an instruction across a page break is two) is not the one of its group: (a) an instruction printed right above it, between the end of the previous exercise and its top, that other exercises have and it does not (the first exercise of a group, an exercise that was put back without it); (b) the exercises before and after it share an instruction that it does not have, and it has none or another one that is not printed above it; (c) it has none, the exercise before it has an instruction that two or more exercises share, and nothing is printed between them (the last exercise of a group). Not judged: an exercise with an instruction of its own printed above it, an exercise alone in its group, a section whose exercises stand inline. Can never be acknowledged. | `crop SECTION:LABEL --region context:0`; copy the regions of its neighbour: `exercises list --section S --regions`, then `context add SECTION:LABEL --page P --rect l,t,r,b` for each region (`context remove` for a wrong one). |
-| `solution-section-mismatch` | error | The answer key is set in sections, with a marker (the section's number alone on a row, or a heading with its unique title), and the solution region of an exercise lies under the marker of another section. | `crop SECTION:LABEL --region solution:0`; point the exercise at its own answer (`solution remove`, `solution add`). |
+| `solution-section-mismatch` | error | The answer key is set in sections, with a marker (the section's number alone on a row, a heading that starts with the section's number, "2.1 Counting, Review Answers", also when its title is broken over two lines, or a heading that holds its title when no other title holds that title; what an answer region holds is never a marker, a table cell "7.5" can be a label), and the solution region of an exercise lies under the marker of another section. | `crop SECTION:LABEL --region solution:0`; point the exercise at its own answer (`solution remove`, `solution add`). |
 | `solution-order` | warning | The answers of one section do not run in the order of their numbers within a column of the key (numbers are compared as numbers, a dotted label number by number). Answers that share one region are left out. | Look at the answer and its neighbours: a region that was put on the wrong exercise (`solution add`) or a label that was mistyped (`exercises label`). |
-| `edge-on-ink` | warning | The pixel check of the edges: always in the gate (`audit gate`, `audit ack`, `audit review`; `--no-ink` skips it, MCP `ink: false`), on `exercises verify` only with `--ink` (MCP `ink: true`). An edge of a region of an exercise, instruction, continuation or solution **cuts printed ink**. Each page that has a region is drawn once at 2 pixels per point; a pixel is dark below luminance 150. Along the edge take the pixels at which the row (top and bottom edge) or the column (left and right edge) **just inside** the region and the one **just outside** it are both dark, at the same place: those are the places where the ink goes on across the edge (the **crossing count**). The edge is reported when the crossing count is **2 or more** (an edge in white paper has 0; one pixel is the tip of a glyph that grazes the edge; a hairline of a figure that the edge cuts is two pixels wide), **or** when more than 2 percent of the pixels in the three rows or columns around it are dark (the edge lies on ink). A region that has the border of a box whole, or none of it, has 0 crossing pixels; one whose edge runs inside the border has the whole edge. An edge at the border of the page has nothing outside, so 0. **What the finding says is what can be changed.** (1) A position of the same edge **within 6 pixels (3 points)** either way at which the rule is passed (crossing below 2, no more than 2 percent dark around it): the finding names it, "Move it to y=0.5123 (4 pixels, 2 points up)" (`x=` for a left or right edge), and the evidence has `move top to y=0.5123 (-4 px)`; one `frames update` repairs it (for an instruction, continuation or solution region, remove it and add it again with the new rectangle; the message names it as `solution:1`, `context:0` or `continues:0`, as `crop --region` does). A position is only named when moving the edge there leaves **the text that the region holds as it is** (no label that is no longer first, no line left behind), does not run into the region of another exercise (more than a point), and, inwards, gives up nothing but the tips that go across the edge now; the least crossing comes first, then the shortest move, then down or to the right (two regions that lie on each other choose the same line). (2) No such position, and **every piece of ink that goes across the edge pokes at most 3 pixels (1.5 points) across it on its shorter side**, with no run of 4 crossing pixels along the edge (a descender of the line above into the region, an ascender of the line below): `edge-interlocked`, information, nothing to repair (below). (3) No such position and more is cut (a numerator, a figure, a box, a rule, a brace): a warning; with the nearest clear position **outwards** within 20 points that does not run into another exercise as a hint ("the nearest clear position outwards is y=0.4419 (22 pixels, 11 points up)": look at the crop and move there when what is cut belongs to this region), else the message says that no rectangle keeps it whole, and the finding is acknowledged only when the book prints it so. Worst first, with the side. Evidence: the side, the dark share, the crossing pixels and the position. | `crop SECTION:LABEL` and move the edge to the position the finding names (`frames update`); where it names none, take the whole figure or formula into the region, or leave it out; a figure or a box that the region must hold whole is framed with its border. |
+| `edge-on-ink` | warning | The pixel check of the edges: always in the gate (`audit gate`, `audit ack`, `audit review`; `--no-ink` skips it, MCP `ink: false`), on `exercises verify` only with `--ink` (MCP `ink: true`). An edge of a region of an exercise, instruction, continuation or solution **cuts printed ink**. Each page that has a region is drawn once at 2 pixels per point; a pixel is dark below luminance 150. Along the edge take the pixels at which the row (top and bottom edge) or the column (left and right edge) **just inside** the region and the one **just outside** it are both dark, at the same place: those are the places where the ink goes on across the edge (the **crossing count**). The edge is reported when the crossing count is **2 or more** (an edge in white paper has 0; one pixel is the tip of a glyph that grazes the edge; a hairline of a figure that the edge cuts is two pixels wide), **or** when more than 2 percent of the pixels in the three rows or columns around it are dark (the edge lies on ink). A region that has the border of a box whole, or none of it, has 0 crossing pixels; one whose edge runs inside the border has the whole edge. An edge at the border of the page has nothing outside, so 0. **What the finding says is what can be changed.** (1) A position of the same edge **within 6 pixels (3 points)** either way at which the rule is passed (crossing below 2, no more than 2 percent dark around it): the finding names it, "Move it to y=0.5123 (4 pixels, 2 points up)" (`x=` for a left or right edge), and the evidence has `move top to y=0.5123 (-4 px)`; one `frames update` repairs it (for an instruction, continuation or solution region, remove it and add it again with the new rectangle; the message names it as `solution:1`, `context:0` or `continues:0`, as `crop --region` does). A position is only named when moving the edge there leaves **the text that the region holds as it is** (no label that is no longer first, no line left behind), does not run into the region of another exercise (more than a point), and, inwards, gives up nothing but the tips that go across the edge now; the least crossing comes first, then the shortest move, then down or to the right (two regions that lie on each other choose the same line). (2) No such position, and **every piece of ink that goes across the edge pokes at most 3 pixels (1.5 points) across it on its shorter side**, with no run of 4 crossing pixels along the edge (a descender of the line above into the region, an ascender of the line below): `edge-interlocked`, information, nothing to repair (below). (3) No such position and more is cut (a numerator, a figure, a box, a rule, a brace): a warning; with the nearest clear position **outwards** within 20 points that does not run into another exercise as a hint ("the nearest clear position outwards is y=0.4419 (22 pixels, 11 points up)": look at the crop and move there when what is cut belongs to this region), else the message says that no rectangle keeps it whole, and the finding is acknowledged only when the book prints it so. Worst first, with the side. Evidence: the side, the dark share, the crossing pixels and the position. | `crop SECTION:LABEL` and move the edge to the position the finding names (`frames update`); where it names none, take the whole figure or formula into the region, or leave it out; a figure or a box that the region must hold whole is framed with its border. `exercises propose` and `solutions propose` already move most edges out of ink (see "Where the edges go: ink"): what is still reported is a place where no clean row or column lies within reach, or where moving the edge would take in or cut off the text of a neighbour. |
 | `edge-interlocked` | info | An edge that fails the rule of `edge-on-ink`, with no position within 3 points at which the rule is passed (that leaves the text of the region as it is and runs into no other exercise) and with ink that goes across it only by tips: every piece of ink (a connected group of dark pixels) that goes across it pokes at most 3 pixels (1.5 points) across it on its shorter side, and no 4 crossing pixels lie in a row along it. The lines are set too tightly for a rectangle to separate them (descenders of one line and ascenders of the next that overlap in height, an edge that lies on ink and cuts nothing), and the learner loses nothing when a tip of the next line is in the crop. It needs no acknowledgement and does not keep the gate from passing; it is counted in the summary and in `checks.verify.interlocked` of the certificate, which lists each one under `interlocked` with its crossing pixels so that nothing is silent. | Nothing. |
 | `region-open-end` | warning | In a section whose exercises stand inline (see below): the line of text that follows the region of an exercise comes at the pitch of the lines inside it, in its column, is no item, no heading and in no region, and the region's last line reaches the right margin: the text goes on below the region's bottom edge. | Lengthen the region (`frames update`). |
 | `region-holds-item` | error | In a section whose exercises stand inline: a region holds a line that starts another exercise of the same section (by its label): the region reaches into the next exercise. | `frames update SECTION:LABEL --rect l,t,r,b` so that the region ends before it. |
@@ -195,6 +222,12 @@ hand:
 - **A line is covered** when at least half of its box lies inside regions: the main region or a continuation of any frame, an instruction
   (`context`) or a solution. A line that the text layer joined from pieces standing side by side (two columns, a fraction) is judged
   piece by piece.
+- **Running heads** that the reader did not flag are furniture too: a head that changes with the chapter stands on a few pages only, below
+  the number of pages the reader needs to take a line for a running one. A line at the top of the page on the row of a flagged one (the
+  page number: "14   Prerequisites") is one; so is a line that stands at the same place with the same text (digits blurred) on three
+  consecutive pages; and so is every line of a page whose text stands in the bottom sixth of it, with no line that starts like an item (the
+  imprint of a booklet). A line that starts like an item ("3. x = 2") is never a head. The two pages on each side of the pages that are
+  read are read too, for the repetition.
 - **Left out of the check:** running headers and footers, a bare page number alone on its row at the top or bottom of the page, a line of
   marks without a letter or a digit (the box that ends a proof, a bracket, a bullet), and headings: a line that holds the title of an
   outline entry or is the label of one, and a bold line or one set larger than the usual font of its page, alone on its row, that does
@@ -473,12 +506,48 @@ arguments):
 | `--chapter-words chapter,kapitel` | Words that open a chapter heading ("Kapitel 3"). | chapter, part, unit, kapitel, chapitre, capítulo, ... |
 | `--practice-words exercises,problems` | Words that name a practice set in a heading ("3.2 Exercises - Title"). | practice, exercises, problems, übungen, aufgaben, ... |
 | `--answer-words answers,solutions` | Words that open the answer key and the header of a section in it. | answers, answer key, solutions, lösungen, ... |
+| `--stop-words "review queue answers"` | Headings alone on a line that end the exercises of a section (the answers or a block printed after the set). | review queue answers |
 | `--item-pattern "^([A-Z]\.\d+)\s+(.*)$"` | How the number of an exercise or an answer starts a line (group 1 is the label, group 2 the text after it; repeat for several). | `5)`, `5.`, `(5)`, `5a)` |
+| `--item-words aufgabe,übung` | The words that come with the number of an exercise printed on its own ("Aufgabe 1.2 (Title).", "1.2.3 Aufgabe:"); singular and plural are read alike. | aufgabe, übung, exercise, problem, task, question, ... |
+| `--back-words zurück,back` | The words of the link back that ends an answer headed by its number ("Lösung 1.2.3"). | zurück, back, return, retour, ... |
+| `--answer-marker "^Teil\s+(\d+\.\d+)"` | How the answers of one section start in a key (group 1 is the label of the section; repeat for several). | `Section 1.1 (p. 5)`, the label alone |
 | `--instructions bold\|margin\|auto\|none` | How instructions are recognised. | auto: bold when the pages carry font information |
 
 Sections whose numbers are not like `3.2` (a book that numbers its sections `1`, `2`, `3` through the chapters) are not read by
-`outline derive --book`; write the outline by hand (`outline set`) with an `id` for every section, and `exercises propose` finds the
-practice sets from it (by the `id` or `label`, or by an unlabelled "Practice" or "Exercises" heading inside the section).
+`outline derive --book` from their headings; write the outline by hand (`outline set`) with an `id` for every section, and `exercises
+propose` finds the practice sets from it (by the `id` or `label`, or by an unlabelled "Practice" or "Exercises" heading inside the
+section). The practice heading is looked for in a fixed order for every section, and the notes say which kind was used: a labelled
+heading ("3.2 Practice - Title"), a numbered part of the section ("3.2.4 Exercises"), a heading alone on its line ("Exercises").
+
+### Exercises and answers that are anchors, not sets
+
+Some books print no set of numbered items: each exercise is a block that starts with a line of its own, and the answers are entries of
+a chapter. They are found without a practice heading, with the default words and options, when a book has at least three such lines
+(a single one in a book is no layout):
+
+- **The number first, ended by a link:** `1.2.3 Aufgabe: ...` (a number of two or three levels and an item word). The exercise ends at a
+  link word alone at the right margin ("Lösung"), else above the next anchor or heading, and may run over page breaks. The answer is
+  an entry of an answer chapter that starts with `Lösung 1.2.3` and ends at the link back ("zurück") or above the next entry. An
+  exercise belongs to the section whose label is its first two numbers (else the nearest section whose label starts it), and the
+  answers are matched to the exercises by their numbers. The notes name the links that belong to no exercise, the exercises without a
+  link and the exercises and answers that have no partner.
+- **The word first, ended by the page:** `Aufgabe 1.3 (Title). ...` as an exercise booklet prints it, an exercise to a page or several. The
+  word is followed by the number and then a bracket, a colon, a full stop or a dash (a sentence that names an exercise, "Aufgabe 1.3
+  zeigt ...", is not an anchor, nor is a line of the printed contents: it has leader dots). The region reaches from the label to the last
+  ink of the page (a figure drawn without text is inside, room to answer in is not) or to the line above the next label or heading,
+  and is as wide as the text block; a box that the template draws around the statement (a dark border on both sides of the first line)
+  is inside the region, border included, and a side that would stand on ink (a rule, a stem) moves out into the white. The exercise goes
+  on at the top of the next page only when its page is filled to the bottom
+  (text or ink below four fifths of the page); the first line of that page is not a head or a page number. The exercises of the chapter
+  `1` have the numbers `1.1`, `1.2`, ...; the section of `1.3` is the section `1`.
+- **The sections of such a book** come from the headings when they are numbered, else from the bookmarks of the PDF, which are numbered by
+  counting (chapters count through the book, sections start again in each chapter; the depth that shows most of the numbers the exercises
+  print is the depth of the chapters), else from the printed contents. When the chapters hold no numbered sections and the exercises
+  print their number under the chapter's, the chapters are the sections: a bookmark "1 Erste Schritte" gives the section `1` with the
+  title "Erste Schritte" (the printed number is kept when the numbers rise), and so does a line of the contents "1 Erste Schritte ....... 5"
+  with the exercises "Aufgabe 1.1 (...) ..... 5" listed under it. The lines of the contents that list an exercise are no entries.
+- `exercises verify` reads both forms by default: "1.2.3 Aufgabe", "Aufgabe 1.2" and "Lösung 1.2.3" count as the number of an exercise
+  or an answer.
 
 ## Checking the proposals against a real book
 
@@ -492,13 +561,105 @@ node scripts/acceptance-book.mjs book.pdf [reference.json] --out results --name 
 ```
 
 It creates the project next to the results, stores the sections, applies the exercises with their solutions, applies them a second time
-(nothing may change), validates, exports and checks the bundle, compares the sections and the exercise counts with the reference (a JSON
+(nothing may change), validates, exports and checks the bundle, runs the text check **with the pixel check** (`exercises verify --ink`: all
+four edges of every region), compares the sections and the exercise counts with the reference (a JSON
 with `chapters: [{ number, title, sections: [{ number, title, exercise_count }] }]` or `sections: [{ label, title, count }]`), and checks
 **every stored region against the ink of its page**: a top or bottom edge whose pixel row is dark runs through a printed glyph. The
 report (`acceptance-report.md`) has the counts per chapter and section, every difference with the pages it was read from, the answers
 without an exercise and exercises without an answer, the validation warnings, the edges on ink and the timings; `crops/` and `sheets/`
 hold a stratified sample of exercise and solution crops and contact sheets of them (red frame, orange continuation, blue instruction,
 green solution) to look at.
+
+## Several books at once
+
+`scripts/audit-books.mjs` audits every book of a folder with the steps above and writes one index of them. Keep the folder **outside
+every repository** (the PDFs and what comes out of them are the owner's, not the project's); nothing in it is ever committed.
+
+```text
+books/
+  inbox/                  the PDFs to audit (the folders inside it are not looked at)
+    algebra.pdf
+    algebra.meta.json     optional: what is known about the book (below)
+    geometry.pdf          no sidecar: the title is the file name, no author, licence or notice
+  results/                written by the tool
+    INDEX.md              a row per book, what to look at, what to do next
+    algebra/              algebra-audited.mcbundle, algebra-audited.mcprep.json, acceptance-report.md,
+                          acceptance-summary.json, sheets/, crops/, run.log
+```
+
+```console
+npm run build                                                   # once
+node scripts/audit-books.mjs books/inbox --out books/results    # or: npm run audit-books -- books/inbox --out books/results
+node scripts/audit-books.mjs books/inbox --out books/results --only algebra --sample 30
+```
+
+Every `*.pdf` of the folder is a book, named by its file. Each book is run through `scripts/acceptance-book.mjs` as a child process
+(its output goes to `results/<name>/run.log`); a book that fails does not stop the others, and the exit code is 1 when one failed or
+could not be read. `--only NAME` (several names with commas) runs those books again and leaves the rows of the others as they were;
+`--sample N` sets how many exercises are cropped and put on the contact sheets. A run starts the project of that book over, so a
+correction made by hand in `<name>-audited.mcprep.json` is lost when the book is run again: put what should last into the sidecar
+(a cap, words, a pattern), and correct single frames after the last run. The project refers to the PDF by its relative path: leave the
+PDFs where they are.
+
+**The sidecar** `<name>.meta.json` beside the PDF says what is known about the book. Everything is optional; a field the tool does
+not know is refused (`licence` is reported with "did you mean license?"), and what a document may say about itself is checked the way
+`book meta` checks it.
+
+```json
+{
+  "title": "Beginning Algebra",
+  "folder": "Books/Algebra",
+  "author": "A. Author",
+  "series": "Prerequisites",
+  "description": "A short description.",
+  "license": { "name": "CC BY 3.0", "url": "https://creativecommons.org/licenses/by/3.0/" },
+  "sourceUrl": "https://example.org/the-book",
+  "notice": "Beginning Algebra by A. Author, licensed under CC BY 3.0. Sections, exercise numbers and answer regions were added by Math Canvas Prep; the PDF itself is unchanged.",
+  "options": { "chapterWords": ["chapter", "kapitel"], "practiceWords": ["exercises", "problems"], "answerWords": ["answers"], "itemPattern": ["^([A-Z]\\.\\d+)\\s+(.*)$"], "instructions": "auto" },
+  "maxItems": 40,
+  "reference": "algebra.reference.json",
+  "referenceChapterOffset": -1
+}
+```
+
+| Field | Meaning | Default |
+| --- | --- | --- |
+| `title` | The title in the library. | The file name. |
+| `folder` | The library folder (`A/B`, at most seven levels). | `Books` |
+| `author`, `series`, `description`, `license` (`name`, `url`), `sourceUrl`, `notice` | What the book says about itself, as `book meta` takes it. **Only what the book states.** | none |
+| `options` | The words and patterns of "Other books" above (`chapterWords`, `practiceWords`, `answerWords` as a list or one text with commas; `itemPattern` a list of expressions; `instructions`). | the defaults |
+| `maxItems` | At most this many exercises per section. | no cap |
+| `reference` | A list of the sections and exercise counts to compare with (path relative to the sidecar). | none |
+| `referenceChapterOffset` | The chapter numbers of the reference plus this are the numbers the book prints (`-1`: the reference counts from 1, the book from 0). | `0` |
+
+**A queue file** instead of a folder, for PDFs that live in different places: `node scripts/audit-books.mjs queue.json --out results`
+with the same fields per book, paths relative to the queue file, `name` optional (default: the file name):
+
+```json
+{ "books": [
+  { "pdf": "inbox/algebra.pdf", "license": { "name": "CC BY 3.0", "url": "https://creativecommons.org/licenses/by/3.0/" }, "maxItems": 40 },
+  { "pdf": "D:/other/geometry.pdf", "name": "geometry", "folder": "Books/Geometry" }
+] }
+```
+
+**The author, the licence and the notice are optional and are never guessed.** A book without them is audited like any other; `INDEX.md`
+says in one line which books state none, and its bundle carries none. They are what the sidecar says. The acceptance run reads the first
+pages of such a book and prints what they seem to say (a Creative Commons line, an address, "by Jane Public", "all rights reserved") as
+**suggestions**, each with the line and the page it comes from: confirm them against the book if you want them, then write them into the
+sidecar yourself; they are not written into the bundle by themselves.
+
+**`INDEX.md`** has a row per book (pages, chapters, sections, exercises, how many have an answer, validation, importer check, the licence
+if the sidecar names one, differences from the reference, time, links to the bundle, the project, the report and the sheets), then for each book
+what to look at (the findings that its report marks; the same finding for many sections is one line) and three next steps: look at the
+contact sheets, decide caps and facts and run again with `--only`, and copy the `.mcbundle` of a book you are happy with to the tablet.
+A book for which the tool finds sections but **no exercises** says so first: its exercises are not printed as numbered practice sets
+under a heading the tool reads (for example "Exercises" in the middle of a section, or an answer key of another kind). The words and
+patterns of "Other books" can be set in the sidecar; a book that still gives nothing needs the heuristics extended, and nothing is made
+up for it. A file that fails (not a readable PDF) is a row marked FAILED with the reason, and the others go on.
+
+**What an agent does per book:** run the tool, read `INDEX.md`, look at the contact sheets and at every point of "To look at",
+fix what is systematic through the sidecar (a cap, `practiceWords`, `itemPattern`) and run that book again, correct single frames in the
+project after the last run (`mcprep ... --project results/<name>/<name>-audited.mcprep.json`, then `mcprep export`), and report.
 
 ## Limits of the heuristics
 
@@ -509,9 +670,28 @@ green solution) to look at.
 - A book without numbered sections is read with the generic heading detection (ids made from the titles) and has no practice sets to read.
 - A figure is framed with the ink profile of the page, which cannot tell to which column a drawing belongs; a figure beside other columns
   stops at the column to its right and above a heading.
-- In rows of an answer key that are set very tight, the edge of a region can still touch the first line of the next answer (the edge
-  moves into the white between the lines when there is some within reach of the own text); the ink check counts these.
+- In rows of an answer key that are set very tight, the edge of a region can still touch the first line of the next answer: the audit
+  moves an edge out of ink where a clean row or column lies within reach (see "Where the edges go: ink"), and the ink check counts what is
+  left. Three classes stay: lines or answers with fewer than three pixels of white between them (at 2 pixels per point), figures or
+  brackets that interlock (the big bracket of one exercise reaching up between the lines of the exercise above), and a grid of graphs
+  whose frames touch (the labels of a graph that stand under it are its own when the ink of the graph reaches them).
 - Pages without a text layer (scans) cannot be read: frame them by eye (AGENT_GUIDE section 8).
+- An instruction is read from a bold line, from a line that names its items ("For Exercises 1-4", "Use the picture for questions
+  13-16", "... listed in Exercises 41 - 52:", anywhere in a paragraph that stands at the margin and is followed by the item it names, also in a
+  later line of the paragraph: "The chart below shows ..." / "Use it to answer Exercises 6 - 9."), and
+  from a paragraph set in the weight of the text that an item follows. An instruction whose sentence is broken by displayed matrices, or
+  that names no numbers and is not followed by an item, is not found as one; the check `context-missing` and `text-left-behind` say so.
+- A figure or a table that stands above the number of its exercise, or around it, is framed from the ink; where the number stands alone
+  the frame is a guess that the confidence says (lowered for a figure, and for a frame that was cut from its neighbour's).
+- Wide irregular grids of short items (a page of limits, a page of matrices) are cut by columns of numbers; where an item's number and
+  its text stand on different rows, or the text layer joins two rows, the frames can lie on each other: `overlap` and `label-not-first`
+  find them. Rows whose items stand wherever the text before them ends (not under the numbers of the rows above) are read by row, and the
+  labels of a figure that stand a quarter of a page and more under it belong to the item of another column that starts under the figure and
+  runs over them; a line of running text that runs over two columns or more under a row of four items or more, with what goes on right under
+  it, is a paragraph of its own and not the second line of an item of the row; a table that follows the picture of an exercise and stands closer to the next exercise than to its own is given to the next
+  one (the proof tables of a geometry book: `numbered-text-left-behind` finds the rows that are left).
+- An answer key that prints the answers to some exercises only (the odd ones) is read as such, and the notes say so once; the exercises
+  without an answer are then no defect.
 - The answer key is found from a heading like "Answers - Chapter 1" or from the contents; an answer that is only a picture is framed only
   when its number stands in the text layer.
 - `validate` warns about edges that cut a line (`clips-line`) and about a running header inside a region (`includes-header-footer`)
@@ -524,6 +704,33 @@ The procedure for an agent is [AGENT_RUNBOOK.md](AGENT_RUNBOOK.md): the phases, 
 report. [AGENT_PROMPTS.md](AGENT_PROMPTS.md) holds the prompts that point an agent at it (the audit, the visual pass alone, the reviewer who confirms the
 acknowledgements, a resumed run). Use them instead of a list of steps of your own: two agents that follow the runbook make the same calls and reach the same
 result, and [the gate](#the-gate-proving-that-an-audit-is-complete) is the proof that the audit is complete.
+
+### For several books
+
+Say exactly where the PDFs are, what you know about each book, and the cap; the agent does the rest on this machine.
+
+```text
+Audit the textbooks in <inbox folder> for Math Canvas as authorities, entirely on this machine (do not upload any PDF or page).
+Read docs/AUDIT_A_BOOK.md first, the section "Several books at once".
+
+What I tell you: the library folder is "<Books/...>"; the cap is <N> exercises per section (or: no cap). For these books I know the facts
+(all optional: title, author, licence name and address, source address, notice): <list, or "none: take nothing from the books">.
+
+1. For every PDF in the inbox without a <name>.meta.json: look at its first pages (render_page) and write the sidecar with ONLY what the
+   book itself states. If the book states no author, licence or notice, write none: never guess them. Put the library folder and the cap
+   into every sidecar.
+2. Run: node scripts/audit-books.mjs <inbox> --out <results>. Read <results>/INDEX.md: every row and every "To look at".
+3. For each book open the contact sheets (<results>/<name>/sheets/*.png) and look at every kind of layout (first and last exercises of the
+   sections, figures, graph answers, a page break, fractions, the last answer before a chapter heading): at least 30 exercises and 15
+   solutions per book. Fix what is systematic through the sidecar (maxItems, practiceWords, itemPattern, instructions) and run the book
+   again with --only <name>. Correct single frames last, in <results>/<name>/<name>-audited.mcprep.json with the mcprep commands, then
+   export again (a new run of the book starts its project over).
+4. Finish when INDEX.md shows no errors and every importer check accepts. Report per book: the counts, the differences from the book's own
+   contents with the page evidence, what you framed by hand, what you were unsure about, and where the bundle is (it holds the whole book:
+   keep it private).
+
+Never invent an exercise, a number, an answer, an author, a licence or a notice that the book does not print.
+```
 
 ## Checklist
 

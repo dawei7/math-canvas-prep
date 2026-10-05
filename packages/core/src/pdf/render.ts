@@ -5,6 +5,7 @@ import type { Rect } from '../model/types.js';
 import { McPrepError } from '../rules/issues.js';
 import type { PdfDocument } from './document.js';
 import { loadCanvas, pdfDataDirs } from './runtime.js';
+import type { DarkPicture } from '../verify/edge-ink.js';
 
 export interface RenderOptions {
   /** Pixels per point. When absent it is chosen so that the longer side is about `maxSide` pixels. */
@@ -125,12 +126,7 @@ export async function renderPage(doc: PdfDocument, index: number, options: Rende
   return renderView(doc, index, { left: 0, top: 0, right: 1, bottom: 1 }, options, 1600);
 }
 
-/** A page as a bitmap of dark pixels (1) and light ones (0): a pixel is dark when its luminance is below `threshold` (default 150). */
-export interface DarkPicture {
-  width: number;
-  height: number;
-  dark: Uint8Array;
-}
+export type { DarkPicture } from '../verify/edge-ink.js';
 
 /**
  * A whole page drawn at `scale` pixels per point (default 2, reduced for a huge page) and reduced to dark and light pixels,

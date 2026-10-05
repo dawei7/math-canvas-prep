@@ -202,7 +202,9 @@ function joinText(boxes: Box[]): { text: string; chars: number } {
     if (previous) {
       const gap = box.left - right;
       const em = Math.max(previous.item.fontSize, box.item.fontSize);
-      const needSpace = gap > 0.12 * em && !/\s$/.test(text) && !/^\s/.test(piece);
+      // A printed item number is a text run of its own, and what follows it is separate from it, however close.
+      const afterNumber = /^\s*\d{1,3}[.)]$/.test(previous.item.text);
+      const needSpace = (gap > 0.12 * em || afterNumber) && !/\s$/.test(text) && !/^\s/.test(piece);
       if (needSpace) text += ' ';
     }
     text += piece;
@@ -211,6 +213,102 @@ function joinText(boxes: Box[]): { text: string; chars: number } {
   }
   const clean = text.replace(/\s+/g, ' ').trim();
   return { text: clean, chars: clean.replace(/\s/g, '').length };
+}
+
+/**
+ * Whether the text before a number can be the end of an item. Its brackets are closed, and it does not stop at an
+ * operator or a comma: "( - inf, - 5) U [5, inf)" holds the number 5 twice, and neither is the start of an item.
+ */
+export function endsLikeAnItem(before: string, barsClose = false): boolean {
+  const trimmed = before.trimEnd();
+  if (trimmed.length === 0) return false;
+  const open = (trimmed.match(/[([{]/g) ?? []).length;
+  const close = (trimmed.match(/[)\]}]/g) ?? []).length;
+  if (open > close) return false;
+  // A bar that closes a pair ("|z1||z2|": an even number of them) ends an expression; the others are an operator's neighbour.
+  if (barsClose && /\|$/.test(trimmed) && ((trimmed.match(/\|/g) ?? []).length % 2 === 0)) return true;
+  return !/[-−–—+±<>≤≥≠×·÷/,;([{|^_⋃⋂∪∩]$/u.test(trimmed);
+}
+
+const LABEL_BOX = /^\s*(\d{1,3})[.)](?:\s|$)/u;
+
+/**
+ * The pieces of a line that holds printed item numbers: the text runs from each number up to the next. A number is the
+ * start of its own text run, so the pieces begin where the numbers do. A line has them when it holds two numbers, or one
+ * number after the end of an item that began on another line (the rest of the item before it stands first: a cell without
+ * a number); each number is one to three further than the one before.
+ */
+function itemCells(boxes: Box[], page: PageSize): LinePart[] | undefined {
+  const ordered = [...boxes].sort((a, b) => a.left - b.left);
+  const starts: number[] = [];
+  const numbers: number[] = [];
+  ordered.forEach((box, at) => {
+    const found = LABEL_BOX.exec(box.item.text);
+    if (!found) return;
+    // A number that closes a bracket or follows an operator belongs to the expression before it, not to a new item.
+    const last = starts[starts.length - 1] ?? 0;
+    // (A gap of two lines of type or more is a column, whatever the text before it ends in: the sign belongs to a row of its own.)
+    const gap = at > 0 ? box.left - Math.max(...ordered.slice(0, at).map((other) => other.right)) : 0;
+    if (at > 0 && gap < 2 * box.item.fontSize && !endsLikeAnItem(joinText(ordered.slice(last, at)).text, true)) return;
+    starts.push(at);
+    numbers.push(Number(found[1]));
+  });
+  const first = starts[0];
+  if (first === undefined) return undefined;
+  const prefix = first > 0;
+  if (starts.length < 2 && !prefix) return undefined;
+  if (!numbers.every((n, at) => at === 0 || (n > (numbers[at - 1] as number) && n - (numbers[at - 1] as number) <= 3))) return undefined;
+  const clamp = (value: number): number => Math.min(1, Math.max(0, value));
+  const bounds: [number, number][] = [...(prefix ? [[0, first] as [number, number]] : []), ...starts.map((from, k): [number, number] => [from, starts[k + 1] ?? ordered.length])];
+  return bounds.map(([begin, end]) => {
+    const group = ordered.slice(begin, end);
+    const { text, chars } = joinText(group);
+    return {
+      text,
+      chars,
+      rect: {
+        left: clamp(Math.min(...group.map((b) => b.left)) / page.width),
+        top: clamp(Math.min(...group.map((b) => b.top)) / page.height),
+        right: clamp(Math.max(...group.map((b) => b.right)) / page.width),
+        bottom: clamp(Math.max(...group.map((b) => b.bottom)) / page.height),
+      },
+    };
+  });
+}
+
+const LABEL_PART = /^\s*(\d{1,3})[.)](?:\s|$)/u;
+
+/**
+ * The items of a line that was joined from rows standing above each other whose boxes overlap (a row with an arrow, a root or
+ * a fraction over it makes the rows around it one line). The rows are the pieces the line was joined from; a row that holds
+ * several numbers is cut into its own cells first. The cells, in reading order, are the items (the ones that start with a number)
+ * and the text that goes on from one row to the next (the ones that do not); a small piece that stands over a row (an arrow, the
+ * sign of a root) joins the cell it stands over.
+ */
+function partCells(parts: LinePart[] | undefined): LinePart[] | undefined {
+  if (!parts || parts.length < 2) return undefined;
+  const isOverlay = (part: LinePart): boolean => part.chars <= 4 && part.rect.right - part.rect.left <= 0.12 && !LABEL_PART.test(part.text);
+  const rows = parts.filter((part) => !isOverlay(part)).sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+  const cells = rows.flatMap((row) => (row.cells ?? [row]).map((cell): LinePart => ({ text: cell.text, chars: cell.chars, rect: { ...cell.rect } })));
+  const labelled = cells.filter((cell) => LABEL_PART.test(cell.text));
+  // One number with the rows of its fraction is one item, not several: two numbers at least make a line of items.
+  if (cells.length < 2 || labelled.length < 2) return undefined;
+  const numbers = labelled.map((cell) => Number((LABEL_PART.exec(cell.text) as RegExpExecArray)[1]));
+  if (!numbers.every((n, at) => at === 0 || (n > (numbers[at - 1] as number) && n - (numbers[at - 1] as number) <= 3))) return undefined;
+  const overlap = (a: LinePart, b: LinePart): number => Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top);
+  for (const overlay of parts.filter(isOverlay)) {
+    const centre = (overlay.rect.left + overlay.rect.right) / 2;
+    // The cell that it stands over: the one whose row it overlaps and whose width holds it, else the one it overlaps most.
+    const standing = cells.filter((cell) => overlap(overlay, cell) > 0 && centre >= cell.rect.left - 0.02 && centre <= cell.rect.right + 0.02);
+    const best = [...(standing.length > 0 ? standing : cells)].sort((a, b) => overlap(overlay, b) - overlap(overlay, a) || Math.abs(a.rect.top - overlay.rect.bottom) - Math.abs(b.rect.top - overlay.rect.bottom))[0] as LinePart;
+    best.rect = {
+      left: Math.min(best.rect.left, overlay.rect.left),
+      top: Math.min(best.rect.top, overlay.rect.top),
+      right: Math.max(best.rect.right, overlay.rect.right),
+      bottom: Math.max(best.rect.bottom, overlay.rect.bottom),
+    };
+  }
+  return cells;
 }
 
 function toLine(segment: Segment, page: PageSize): TextLine {
@@ -224,9 +322,14 @@ function toLine(segment: Segment, page: PageSize): TextLine {
   const known = boxes.filter((b) => b.item.bold !== undefined);
   const boldChars = known.filter((b) => b.item.bold === true).reduce((sum, b) => sum + b.item.text.replace(/\s/g, '').length, 0);
   const knownChars = known.reduce((sum, b) => sum + b.item.text.replace(/\s/g, '').length, 0);
+  // The items by the rows the line was joined from, or by the numbers that stand in it: the way that finds more of them wins.
+  const byParts = partCells(segment.parts);
+  const byNumbers = itemCells(boxes, page);
+  const cells = byParts && (!byNumbers || byParts.length >= byNumbers.length) ? byParts : byNumbers;
   return {
     ...(known.length > 0 ? { bold: knownChars > 0 && boldChars >= 0.6 * knownChars } : {}),
     ...(segment.parts && segment.parts.length >= 2 ? { parts: segment.parts } : {}),
+    ...(cells ? { cells } : {}),
     text,
     rect: {
       left: clamp(left / page.width),
@@ -256,8 +359,8 @@ function mergeFractionRows(segments: Segment[], lines: Map<Segment, TextLine>): 
       if (smaller > 0 && overlap / smaller >= MERGE_OVERLAP && sideways > -reach) {
         // The line made of the segment before it was merged: what the piece looked like on its own.
         const own = lines.get(previous) as TextLine;
-        previous.parts = previous.parts ?? [{ text: own.text, chars: own.chars, rect: own.rect }];
-        previous.parts.push({ text: line.text, chars: line.chars, rect: line.rect });
+        previous.parts = previous.parts ?? [{ text: own.text, chars: own.chars, rect: own.rect, ...(own.cells ? { cells: own.cells } : {}) }];
+        previous.parts.push({ text: line.text, chars: line.chars, rect: line.rect, ...(line.cells ? { cells: line.cells } : {}) });
         previous.boxes.push(...segment.boxes);
         previous.baseline = Math.max(previous.baseline, segment.baseline);
         box = {

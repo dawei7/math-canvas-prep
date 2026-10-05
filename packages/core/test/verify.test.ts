@@ -54,9 +54,10 @@ describe('the check of a clean book', () => {
     ]);
   });
 
-  it('reads the pages it needs, and only those: the exercises and the answer key', () => {
+  it('reads the pages it needs, the exercises and the answer key, and the two pages beside each of them (they tell a running head from text)', () => {
     expect(pagesToVerify(sampleProject())).toEqual([0, 1, 2, 3]);
-    expect(pagesToVerify(sampleProject(), { sections: ['2.1'] })).toEqual([2, 3]);
+    // The pages of section 2.1 are 2 and 3; 0 and 1 stand beside them, the pages after them do not exist.
+    expect(pagesToVerify(sampleProject(), { sections: ['2.1'] })).toEqual([0, 1, 2, 3]);
   });
 
   it('only looks at the sections it is asked for, and says when a section does not exist', async () => {

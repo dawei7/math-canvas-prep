@@ -160,7 +160,7 @@ export function checkContextOverlaps(exercises: readonly Exercise[], byPage: Rea
  * A region taller than `maxHeight`, narrower than `minWidth` or smaller than `minArea`: not one printed exercise. A continuation
  * of an exercise that spans pages may be as tall as a page, so it is only measured for width and area.
  */
-export function checkRegionSizes(exercises: readonly Exercise[]): Draft[] {
+export function checkRegionSizes(exercises: readonly Exercise[], byPage: ReadonlyMap<number, readonly OwnRegion[]> = new Map()): Draft[] {
   const drafts: Draft[] = [];
   for (const exercise of exercises) {
     if (exercise.frame.unit !== undefined) continue;
@@ -170,7 +170,9 @@ export function checkRegionSizes(exercises: readonly Exercise[]): Draft[] {
       const width = rectWidth(rect);
       const area = rectArea(rect);
       const found: string[] = [];
-      if (main && height > VERIFY_LIMITS.maxHeight) found.push(`height ${measure(height)} is more than ${VERIFY_LIMITS.maxHeight}`);
+      // An exercise that is alone on its page (a booklet prints one to a page, with room to answer in) may be as tall as the page.
+      const alone = (byPage.get(page) ?? []).every((entry) => entry.exercise === exercise);
+      if (main && height > VERIFY_LIMITS.maxHeight && !alone) found.push(`height ${measure(height)} is more than ${VERIFY_LIMITS.maxHeight}`);
       if (width < VERIFY_LIMITS.minWidth) found.push(`width ${measure(width)} is less than ${VERIFY_LIMITS.minWidth}`);
       if (area < VERIFY_LIMITS.minArea) found.push(`area ${measure(area, 5)} is less than ${VERIFY_LIMITS.minArea}`);
       if (found.length === 0) continue;

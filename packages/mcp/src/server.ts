@@ -596,7 +596,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     {
       title: 'Export the .mcbundle',
       description:
-        'Validates, then writes the bundle (the PDF byte for byte plus frames and outline, and for a book the sections, the book exercises, their hidden solution regions and the author, licence and notice from book_meta) atomically and reads it back with the importer\'s own checks; a bundle that fails them is removed. Errors in the project stop the export. A project with book exercises must be exported with its own outline (the default). Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.',
+        'Validates, then writes the bundle (the PDF byte for byte plus frames and outline, and for a book the sections, the book exercises, their hidden solution regions and the author, licence and notice from book_meta) atomically and reads it back with the importer\'s own checks; a bundle that fails them is removed. Errors in the project stop the export. A project with book exercises must be exported with its own outline (the default). Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library. The author, licence and notice (book_meta) are optional. A bundle contains the whole book: tell the user to keep it private; nothing is uploaded.',
       inputSchema: {
         project: projectArg,
         out: z.string().optional().describe('Where to write the bundle (name.mcbundle).'),

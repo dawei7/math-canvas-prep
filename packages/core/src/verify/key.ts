@@ -1,7 +1,7 @@
 import { findSection } from '../book/sections.js';
 import { draft, type Draft, type Exercise } from './common.js';
 import { compareNumeric, excerpt, foldText, parseNumeric } from './labels.js';
-import { pos, type Run } from './run.js';
+import { coveredShare, pos, type Run } from './run.js';
 import { VERIFY_LIMITS } from './types.js';
 
 /**
@@ -18,7 +18,14 @@ export interface Marker {
 
 const markersOf = new WeakMap<Run, Marker[]>();
 
-/** Lines of the key pages that name a section that has exercises: its label alone on a row, or a heading that holds its (unique) title. */
+/** Whether a heading (in lower case) starts with the label of a section, as "2.1 Counting Rules, Review Answers" does: more of a number ("2.10", "2.1.3") is another label. */
+const startsWithLabel = (lower: string, label: string): boolean => lower.startsWith(label) && !/^(?:[0-9a-z]|\.[0-9])/.test(lower.slice(label.length));
+
+/**
+ * Lines of the key pages that name a section that has exercises: its label alone on a row (not inside an answer), a heading that starts with its label (the
+ * audit's own marker: "2.1 Counting, Review Answers", also when the title is broken over two lines), or a heading that holds its
+ * title, when no other title holds that title.
+ */
 export function keyMarkers(run: Run): Marker[] {
   const cached = markersOf.get(run);
   if (cached) return cached;
@@ -29,24 +36,29 @@ export function keyMarkers(run: Run): Marker[] {
     for (const frame of run.project.frames) if (frame.authority === 'book' && frame.section !== undefined) ids.add(frame.section);
     const tree = run.state.tree;
     const named: { id: string; title: string; label: string | undefined }[] = [];
-    const titleCount = new Map<string, number>();
     for (const id of ids) {
       const node = findSection(tree, id);
       if (node === undefined) continue;
       const title = foldText(node.entry.title).toLowerCase();
       const label = node.entry.label === undefined ? undefined : foldText(node.entry.label).toLowerCase();
       named.push({ id, title, label });
-      titleCount.set(title, (titleCount.get(title) ?? 0) + 1);
     }
+    // A title names its section only when no other title holds it: "Fractions" is in the heading of "Proofs about Fractions and Ratios".
+    const titleCount = new Map<string, number>();
+    for (const entry of named) titleCount.set(entry.title, named.filter((other) => other.title.includes(entry.title)).length);
     for (let page = key.first; page <= Math.min(key.last, run.project.pdf.pageCount - 1); page += 1) {
       const kinds = run.kinds(page);
       for (const piece of run.index.page(page).pieces) {
         const kind = kinds.kind(piece);
-        if (kind !== 'heading' && kind !== 'text') continue;
+        // A line that starts with a label and reads as an instruction can only be a bold one that ends in a colon ("5.6 Counting, Extension:"): a heading all the same.
+        const heading = kind === 'heading' || kind === 'instruction';
+        if (kind !== 'heading' && kind !== 'text' && !heading) continue;
         const lower = piece.text.toLowerCase();
+        // A number in an answer ("7.5") can be the label of a section and a line of one ("775 complete rotations") hold a title: what an answer region holds is no marker.
+        const inAnswer = (): boolean => coveredShare(piece.rect, run.covering(page).filter((region) => region.kind === 'solution')) >= VERIFY_LIMITS.coveredShare;
         for (const entry of named) {
-          const byLabel = entry.label !== undefined && entry.label.length >= 3 && /\D/.test(entry.label) && lower === entry.label;
-          const byTitle = entry.title.length >= 6 && titleCount.get(entry.title) === 1 && kind === 'heading' && lower.includes(entry.title) && lower.length <= entry.title.length + 30;
+          const byLabel = entry.label !== undefined && entry.label.length >= 3 && /\D/.test(entry.label) && (lower === entry.label ? !inAnswer() : heading && startsWithLabel(lower, entry.label));
+          const byTitle = entry.title.length >= 6 && titleCount.get(entry.title) === 1 && kind === 'heading' && lower.includes(entry.title) && lower.length <= entry.title.length + 30 && !inAnswer();
           if (byLabel || byTitle) markers.push({ section: entry.id, at: pos(page, piece.rect.top) });
         }
       }

@@ -128,6 +128,12 @@ export interface TextLine {
    * tell what and where each one is. `rect` is the union of them.
    */
   parts?: LinePart[];
+  /**
+   * Set only for a line that holds several printed item numbers one after the other ("19. sin 12 20. sin 34 21. cos 56"):
+   * the text and the box of what stands from each number to the next, so that a reader can cut the line where the items
+   * begin. A number stands at the start of its own text run in the PDF, so the cuts are exact.
+   */
+  cells?: LinePart[];
 }
 
 /** One of the pieces a text line was joined from. */
@@ -135,6 +141,8 @@ export interface LinePart {
   text: string;
   chars: number;
   rect: Rect;
+  /** When the piece itself held several printed item numbers: the cells it was cut into (see `TextLine.cells`). */
+  cells?: LinePart[];
 }
 
 export interface PageSize {

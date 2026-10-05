@@ -45,10 +45,15 @@ describe('exercises of the synthetic book', () => {
     expect(proposals().length).toBe(book.truth.items.length);
   });
 
-  it('reports a section with its first and last label and no notes when everything is in order', () => {
+  it('reports a section with its first and last label and no notes when everything is in order (a word problem over a page break is listed)', () => {
     const first = result.sections[0];
     expect([first?.first, first?.last]).toEqual(['1', '70']);
-    for (const section of result.sections) expect(section.notes, section.section).toEqual([]);
+    const isSpan = (note: string): boolean => /go(?:es)? on after/.test(note);
+    for (const section of result.sections) expect(section.notes.filter((note) => !isSpan(note)), section.section).toEqual([]);
+    // The one word problem of the book that crosses a page break is the only span, and the notes name it.
+    const listed = result.sections.flatMap((section) => section.notes.filter(isSpan).map((note) => `${section.section}: ${note}`));
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatch(/^0\.2: one exercise goes on after the end of its page or column: 11 \(pages \d+-\d+, 1 continuation region\)$/);
   });
 
   it('keeps the text of an item inside its frame and the text of every other item outside', () => {
@@ -143,7 +148,8 @@ describe('exercises of the synthetic book', () => {
     for (const proposal of proposals()) {
       expect(proposal.id).toMatch(/^[A-Za-z0-9_-]{1,40}$/);
       expect(proposal.evidence.length).toBeGreaterThan(2);
-      expect(proposal.confidence).toBeGreaterThanOrEqual(0.85);
+      // A figure is framed by a guess and says so with a lower confidence.
+      expect(proposal.confidence).toBeGreaterThanOrEqual(proposal.layout === 'figure' ? 0.75 : 0.85);
     }
   });
 

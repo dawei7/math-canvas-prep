@@ -10,7 +10,7 @@ export const exportBundle: CommandSpec = {
   name: 'export',
   summary: 'Write the project as a .mcbundle: the PDF plus its frames and outline, ready for the Android app\'s library.',
   description:
-    'Validates the project (errors stop the export), writes the bundle atomically (a temporary file, then a rename), and reads it back with the importer\'s own checks; a bundle that fails them is removed. The PDF inside is byte for byte the original. The output is deterministic: the same project and --created-at give the same bytes (also with SOURCE_DATE_EPOCH set).',
+    'Validates the project (errors stop the export), writes the bundle atomically (a temporary file, then a rename), and reads it back with the importer\'s own checks; a bundle that fails them is removed. The PDF inside is byte for byte the original. The output is deterministic: the same project and --created-at give the same bytes (also with SOURCE_DATE_EPOCH set). The author, licence and notice (see `book meta`) are optional: nothing is ever made up for them. A bundle contains the whole book, so keep it private; nothing is uploaded.',
   options: [
     { name: 'out', short: 'o', type: 'string', value: '<file.mcbundle>', description: 'Where to write the bundle (default: <pdf name>.mcbundle next to the project).' },
     { name: 'title', type: 'string', value: '<text>', description: 'Library title for this export (default: the project\'s).' },

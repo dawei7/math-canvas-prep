@@ -29,6 +29,20 @@ export function rowInk(map: InkMap, y: number, left: number, right: number): num
 }
 
 /**
+ * The distance from `top` up to the nearest row that has ink between `left` and `right`, looking no higher than `from` (page
+ * fractions); Infinity when the stretch is white.
+ */
+export function inkAbove(map: InkMap, top: number, from: number, left: number, right: number): number {
+  const first = Math.max(0, Math.ceil(left * map.width));
+  const last = Math.min(map.width - 1, Math.floor(right * map.width));
+  const stop = Math.max(0, Math.floor(from * map.height));
+  for (let row = Math.min(map.height - 1, Math.round(top * map.height) - 1); row >= stop; row -= 1) {
+    for (let x = first; x <= last; x += 1) if (dark(map, x, row)) return Math.max(0, top - (row + 1) / map.height);
+  }
+  return Infinity;
+}
+
+/**
  * The white row closest to `y` between `from` and `to` (page fractions), or undefined when there is none: every row
  * there has ink between `left` and `right`.
  */

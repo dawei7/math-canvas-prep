@@ -51,6 +51,22 @@ export interface RegionText {
   lines: number;
 }
 
+/** The top and the bottom of a page, where running heads, page numbers and an imprint stand. */
+const HEAD_BAND = 0.16;
+/** Two lines of consecutive pages are the same place when their edges are this close. */
+const SAME_PLACE = 0.012;
+
+const hasWords = (text: string): boolean => /\p{L}{3}/u.test(text);
+/** A line that starts like an item ("3. x = 2", "(3)", "5a)") is an answer or an exercise, never a head. */
+const startsLikeNumber = (text: string): boolean => /^\(?\d{1,4}[a-z]?\s*[.)](?!\d)/.test(text);
+const blur = (text: string): string => foldText(text).replace(/\d+/g, '#');
+/** Two boxes are in one row when they share this much of the height of the smaller. */
+function sameRow(a: Rect, b: Rect): boolean {
+  const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  const smaller = Math.min(a.bottom - a.top, b.bottom - b.top);
+  return smaller > 0 && overlap / smaller >= SAME_ROW;
+}
+
 export class PageLines {
   /** False when the page has no text layer (a scan), or when no text was given for the page. */
   readonly hasText: boolean;
@@ -72,6 +88,49 @@ export class PageLines {
       }
     });
     this.lines.sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left);
+    this.markHeads();
+  }
+
+  /**
+   * Running heads that the reader did not flag (a head that changes with the chapter stands on a few pages only): a line at the top
+   * of the page on the row of a flagged one (the page number: "14   Prerequisites"), and every line of a page whose text stands in
+   * the bottom band alone (the imprint at the end of a booklet) are running furniture.
+   */
+  private markHeads(): void {
+    const anchors = this.lines.filter((piece) => piece.headerFooter && piece.rect.bottom <= HEAD_BAND);
+    for (const piece of this.lines) {
+      if (piece.headerFooter || piece.rect.bottom > HEAD_BAND || !hasWords(piece.text) || startsLikeNumber(piece.text)) continue;
+      if (anchors.some((anchor) => sameRow(anchor.rect, piece.rect))) piece.headerFooter = true;
+    }
+    const text = this.lines.filter((piece) => !piece.headerFooter);
+    if (text.length > 0 && text.every((piece) => piece.rect.top >= 1 - HEAD_BAND && !startsLikeNumber(piece.text))) for (const piece of text) piece.headerFooter = true;
+  }
+
+  /**
+   * A line at the top or the bottom of the page that stands at the same place with the same text (digits blurred) on three
+   * consecutive pages (this one and two of its neighbours, before or after) is a running head. `neighbour(offset)` gives the text of
+   * the page that many pages away, or undefined when it was not read.
+   */
+  markRepeats(neighbour: (offset: number) => PageText | undefined): void {
+    const near = new Map<number, PageText['lines']>();
+    for (const offset of [-2, -1, 1, 2]) {
+      const page = neighbour(offset);
+      if (page?.hasText === true) near.set(offset, page.lines);
+    }
+    if (near.size < 2) return;
+    const repeats = (piece: Piece, offset: number): boolean => {
+      const lines = near.get(offset);
+      if (!lines) return false;
+      const text = blur(piece.text);
+      return lines.some((line) => Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && blur(line.text) === text);
+    };
+    for (const piece of this.lines) {
+      if (piece.headerFooter || !hasWords(piece.text) || startsLikeNumber(piece.text)) continue;
+      if (piece.rect.bottom > HEAD_BAND && piece.rect.top < 1 - HEAD_BAND) continue;
+      const before = [repeats(piece, -1), repeats(piece, -2)];
+      const after = [repeats(piece, 1), repeats(piece, 2)];
+      if ((before[0] && before[1]) || (before[0] && after[0]) || (after[0] && after[1])) piece.headerFooter = true;
+    }
   }
 
   /** Every piece of text of the page, from top to bottom (and from left to right in one row), running headers and footers included. */
@@ -160,6 +219,7 @@ export class PageIndex {
     let found = this.cache.get(page);
     if (!found) {
       found = new PageLines(this.lookup(page));
+      found.markRepeats((offset) => this.lookup(page + offset));
       this.cache.set(page, found);
     }
     return found;

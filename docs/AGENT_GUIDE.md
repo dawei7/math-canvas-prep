@@ -272,7 +272,9 @@ it crosses a page break (two regions); a practice set without an instruction giv
 book exercises in one atomic batch (`add` with `authority`, `label`, `section`, `context`, `continues`, `solution`); they are named
 `SECTION:LABEL` (`0.1:5`). It can be run again: an exercise the project has exactly like this is skipped, one that only lacks its
 answer gets the answer, one that differs (you corrected the frame) is kept and listed under `changed`, and `--replace` overwrites it in
-place (it keeps its id). `--dry-run` shows the batch and its validation without writing.
+place (it keeps its id). `--dry-run` shows the batch and its validation without writing. The edges of the regions are moved out of
+printed ink (the pages that have a region are drawn once; see "Where the edges go: ink" in AUDIT_A_BOOK.md), so that most of what
+`exercises verify --ink` would report does not arise; `--keep-edges` leaves the regions as cut from the text layer.
 
 **`solutions propose`** cuts the answer key into bands by the small section markers and the headers (a band runs across all columns
 and over page breaks), reads the answers of a band with the same engine (a number that stands alone with a graph below it, an answer of
@@ -488,9 +490,10 @@ mcprep frames update f1 --rect 0.08,0.115,0.92,0.305
 
 Chapters 1 to 13 are about exercises a person frames for themselves: their numbers are free and positional (`E1`, `E2.1`),
 they can be cut into parts, and they change when a frame is added before them. This chapter is about the other kind: a
-book (usually one with a free licence) that is **audited once, on a computer, and then offered to many learners as an
-authority**. Every exercise of such a book has an address that never changes: the number the book prints. You produce that
-address, the sections the book is divided into, the context each exercise needs and the answer it is graded against.
+book that is **audited once, on a computer, and then worked on as an authority**. Every exercise of such a book has an address
+that never changes: the number the book prints. You produce that address, the sections the book is divided into, the context each
+exercise needs and the answer it is graded against. The bundle you export contains the whole book: it is private to the person
+whose copy of the book it is; nothing is ever uploaded.
 
 ### 14.1 Two kinds of exercise
 
@@ -551,10 +554,10 @@ mcprep outline add --title "Review exercises" --page 31 --depth 1 --id review --
 1. **Create the project and look.** `mcprep init book.pdf --title "Pre-Algebra" --folder "Books/Algebra"`, `mcprep info`, then
    `mcprep render <page> --grid 0.1` on a few pages: where do the chapters start, how are exercises numbered, where is the
    answer key (page numbers of the **PDF**, zero-based, not the printed ones).
-2. **Say what the book is.** `mcprep book meta --author "A. Author" --series "Prerequisites" --license-name "CC BY 3.0"
+2. **Say what the book is** (optional). `mcprep book meta --author "A. Author" --series "Prerequisites" --license-name "CC BY 3.0"
    --license-url https://creativecommons.org/licenses/by/3.0/ --source-url https://example.org/the-book --notice @notice.txt`.
-   Copy the licence and the attribution **exactly** from the book's own front matter or licence page; never invent them. A licence
-   that asks for attribution travels with the bundle, and the app shows the notice.
+   Copy the author, licence and attribution **exactly** from the book's own front matter or licence page; never invent them, and
+   leave out what the book does not state. A notice travels with the bundle, and the app shows it.
 3. **Sections.** Adopt or write the outline, give it ids (14.2), and check it against the page images.
 4. **Exercises, section by section.** Find where each printed exercise starts and ends exactly as in chapters 5 and 6 (start a little
    above the line that carries the number, end before the next number, figures inside, no headers or footers), then

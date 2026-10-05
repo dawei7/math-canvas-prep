@@ -405,7 +405,7 @@ Arguments:
 
 ### `export_bundle`
 
-Validates, then writes the bundle (the PDF byte for byte plus frames and outline, and for a book the sections, the book exercises, their hidden solution regions and the author, licence and notice from book_meta) atomically and reads it back with the importer's own checks; a bundle that fails them is removed. Errors in the project stop the export. A project with book exercises must be exported with its own outline (the default). Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library.
+Validates, then writes the bundle (the PDF byte for byte plus frames and outline, and for a book the sections, the book exercises, their hidden solution regions and the author, licence and notice from book_meta) atomically and reads it back with the importer's own checks; a bundle that fails them is removed. Errors in the project stop the export. A project with book exercises must be exported with its own outline (the default). Default path: name.mcbundle next to the project. Tell the user where it is: it goes to the tablet and is opened in the Math Canvas library. The author, licence and notice (book_meta) are optional. A bundle contains the whole book: tell the user to keep it private; nothing is uploaded.
 
 Arguments:
 
@@ -641,8 +641,12 @@ Arguments:
 
 - `apply` (boolean): Store the proposal as the outline of the project (with ids, labels and tops); it replaces the outline the project has.
 - `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
-- `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
-- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
+- `practice_words` (string): Words and phrases that name a practice set in a heading ("3.2 Practice - Title", "3.2.4 Exercises", or the phrase alone on its line: "Exercises", "Review Questions"), comma separated, replacing the defaults (practice, exercises, problems, review questions, review, ...). A word earlier in the list wins over a later one.
+- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), and that name the answers printed right after a section ("3.2.5 Answers"), comma separated, replacing the defaults.
+- `stop_words` (string): Phrases that end the exercises of a section when a heading says them alone on its line ("Warm-up Answers"), comma separated, replacing the default; the answer words and the next section end them too.
+- `item_words` (string): The words that name one exercise printed on its own, comma separated, replacing the defaults (aufgabe, übung, exercise, problem, task, question, ...): a line that starts with a number of two or three levels and one of these words and a colon or a full stop ("1.2.3 Aufgabe: ..."), or with one of these words and the number ("Aufgabe 1.2 (Title). ..."), is an exercise of its own, ending at a link word at the right margin (an answer word such as "Lösung"), above the next such line or heading, or at the last ink of its page.
+- `back_words` (string): The words of the link that leads back from an answer to its place, alone at the right margin ("zurück", "back"), comma separated, replacing the defaults: an answer that starts with a line like "Lösung 1.2.3" ends at it.
+- `answer_markers` (string[]): Regular expressions whose group 1 is a section label, for the lines of an answer key that mark where the answers of a section start (default "^Section\s+(\d+\.\d+)", as in "Section 1.1 (p. 5)"); a line with the label alone and a large heading that starts with a label are markers anyway.
 - `dry_run` (boolean): Compute and validate but do not write the project.
 - `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
 
@@ -660,8 +664,12 @@ Arguments:
 - `instructions` ("bold" | "margin" | "auto" | "none"): How instructions are recognised: bold (set in bold, at the margin), margin (at the margin, above an item), auto (bold when the pages carry font information; the default), none.
 - `item_patterns` (string[]): How the number of an exercise or answer starts a line, as regular expressions: group 1 is the label as printed, group 2 the text after it. Replaces the defaults ("5)", "5.", "(5)", "5a)"). Example: "^([A-Z]\.\d+)\s+(.*)$" for labels like A.3.
 - `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
-- `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
-- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
+- `practice_words` (string): Words and phrases that name a practice set in a heading ("3.2 Practice - Title", "3.2.4 Exercises", or the phrase alone on its line: "Exercises", "Review Questions"), comma separated, replacing the defaults (practice, exercises, problems, review questions, review, ...). A word earlier in the list wins over a later one.
+- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), and that name the answers printed right after a section ("3.2.5 Answers"), comma separated, replacing the defaults.
+- `stop_words` (string): Phrases that end the exercises of a section when a heading says them alone on its line ("Warm-up Answers"), comma separated, replacing the default; the answer words and the next section end them too.
+- `item_words` (string): The words that name one exercise printed on its own, comma separated, replacing the defaults (aufgabe, übung, exercise, problem, task, question, ...): a line that starts with a number of two or three levels and one of these words and a colon or a full stop ("1.2.3 Aufgabe: ..."), or with one of these words and the number ("Aufgabe 1.2 (Title). ..."), is an exercise of its own, ending at a link word at the right margin (an answer word such as "Lösung"), above the next such line or heading, or at the last ink of its page.
+- `back_words` (string): The words of the link that leads back from an answer to its place, alone at the right margin ("zurück", "back"), comma separated, replacing the defaults: an answer that starts with a line like "Lösung 1.2.3" ends at it.
+- `answer_markers` (string[]): Regular expressions whose group 1 is a section label, for the lines of an answer key that mark where the answers of a section start (default "^Section\s+(\d+\.\d+)", as in "Section 1.1 (p. 5)"); a line with the label alone and a large heading that starts with a label are markers anyway.
 - `apply` (boolean): Apply the proposals to the project now, as one atomic batch. Exercises the project already has are skipped (see replace).
 - `replace` (boolean): Overwrite the exercises of the project that differ from the proposal, in place (they keep their ids); without it they are kept and listed in "changed".
 - `dry_run` (boolean): Compute and validate but do not write the project.
@@ -677,8 +685,12 @@ Arguments:
 - `details_file` (string): Write every answer with its evidence and the sequences as JSON to this file.
 - `item_patterns` (string[]): How the number of an exercise or answer starts a line, as regular expressions: group 1 is the label as printed, group 2 the text after it. Replaces the defaults ("5)", "5.", "(5)", "5a)"). Example: "^([A-Z]\.\d+)\s+(.*)$" for labels like A.3.
 - `chapter_words` (string): Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.
-- `practice_words` (string): Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).
-- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.
+- `practice_words` (string): Words and phrases that name a practice set in a heading ("3.2 Practice - Title", "3.2.4 Exercises", or the phrase alone on its line: "Exercises", "Review Questions"), comma separated, replacing the defaults (practice, exercises, problems, review questions, review, ...). A word earlier in the list wins over a later one.
+- `answer_words` (string): Words that open the answer key and the header of a section in it ("Answers - Title"), and that name the answers printed right after a section ("3.2.5 Answers"), comma separated, replacing the defaults.
+- `stop_words` (string): Phrases that end the exercises of a section when a heading says them alone on its line ("Warm-up Answers"), comma separated, replacing the default; the answer words and the next section end them too.
+- `item_words` (string): The words that name one exercise printed on its own, comma separated, replacing the defaults (aufgabe, übung, exercise, problem, task, question, ...): a line that starts with a number of two or three levels and one of these words and a colon or a full stop ("1.2.3 Aufgabe: ..."), or with one of these words and the number ("Aufgabe 1.2 (Title). ..."), is an exercise of its own, ending at a link word at the right margin (an answer word such as "Lösung"), above the next such line or heading, or at the last ink of its page.
+- `back_words` (string): The words of the link that leads back from an answer to its place, alone at the right margin ("zurück", "back"), comma separated, replacing the defaults: an answer that starts with a line like "Lösung 1.2.3" ends at it.
+- `answer_markers` (string[]): Regular expressions whose group 1 is a section label, for the lines of an answer key that mark where the answers of a section start (default "^Section\s+(\d+\.\d+)", as in "Section 1.1 (p. 5)"); a line with the label alone and a large heading that starts with a label are markers anyway.
 - `apply` (boolean): Apply the solutions to the project now, as one atomic batch.
 - `replace` (boolean): Overwrite the solution of an exercise that has a different one; without it that exercise is kept and listed in "changed".
 - `dry_run` (boolean): Compute and validate but do not write the project.

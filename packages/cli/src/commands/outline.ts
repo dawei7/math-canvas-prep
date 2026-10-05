@@ -64,7 +64,7 @@ export const outlineDerive: CommandSpec = {
     ...REPORT_OPTIONS,
   ],
   examples: ['mcprep outline derive', 'mcprep outline derive --apply', 'mcprep outline derive --book', 'mcprep outline derive --book --apply'],
-  output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }; with --book each entry also has id, label, top, kind, differences and practice, and the result has chapters, sections, numbering, toc and answerKey',
+  output: '{ entries: [{ title, page, depth, confidence, evidence: string[] }], bodyFontSize, applied: boolean, notes: string[] }; with --book each entry also has id, label, top, kind, differences, practice (where the practice set is, how its heading was recognised and where it ends) and answers (where the answers printed right after the section are), and the result has chapters, sections, numbering, toc, answerKey (where it starts and ends), practiceAnchors (how many practice sets were found from each kind of heading) and notes',
   async run(context) {
     if (flag(context.options, 'book')) return runBookDerive(context);
     const session = await context.session();

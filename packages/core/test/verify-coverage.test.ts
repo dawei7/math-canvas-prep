@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { Frame, Rect, Region } from '../src/model/types.js';
 import { newProject, type Project } from '../src/project/model.js';
 import { buildSpanBook } from '../src/testing/span.js';
+import type { PdfText } from '../src/testing/pdf-writer.js';
 import { VERIFY_CODES, type EdgeCount, type EdgeDetail, type EdgeInk, type VerifyCode, type VerifyFinding, type VerifyOptions, type VerifyReport } from '../src/verify/types.js';
 import { verifyProject, type PageSource } from '../src/verify/verify.js';
+import { STOP_HEADING } from './audit-pages.js';
 import { COVERAGE_CODES, Workbook, around, pagesOf, sectionEntries } from './verify-helpers.js';
 
 /**
@@ -68,6 +70,25 @@ describe('text left behind: the lines of the exercises of a section that no regi
     expect(all(report, 'numbered-text-left-behind')[0]).toMatchObject({ severity: 'error', page: 0 });
     expect(all(report, 'numbered-text-left-behind')[0]?.message).toContain('2 lines');
     expect(all(report, 'text-left-behind')).toEqual([]);
+  });
+
+  it('takes the numbered lines under a heading that names answers for answers, not for missed exercises, up to the next heading', async () => {
+    const { book } = small();
+    book.text(0, 72, 340, STOP_HEADING, 14, BOLD);
+    book.text(0, 72, 370, '1. Examples could be circles.');
+    book.text(0, 72, 400, '2. A line has no width.');
+    // A heading ends the block: a numbered line under it is a missed exercise again.
+    book.text(0, 72, 440, 'More Practice', 14, BOLD);
+    book.text(0, 72, 470, '8. Evaluate the expression.');
+    expect(refs(await check(book), 'numbered-text-left-behind')).toEqual(['a:8']);
+  });
+
+  it('still looks for answers that no region holds under the heading of the answer key', async () => {
+    const { book } = small();
+    book.text(1, 72, 60, 'Answers', 14, BOLD);
+    book.text(1, 72, 250, '7. 77');
+    const report = await check(book);
+    expect(refs(report, 'answer-left-behind')).toEqual(['key:7']);
   });
 
   it('takes a heading for what it is: the title of a section, a bold line alone on its row, a section marker', async () => {
@@ -366,6 +387,85 @@ describe('the answer key by section', () => {
     const report = await check(book);
     expect(refs(report, 'solution-section-mismatch')).toEqual(['a:2', 'b:1']);
     expect(all(report, 'solution-section-mismatch')[0]).toMatchObject({ severity: 'error', page: 1, evidence: 'under the marker of b' });
+  });
+
+  it('takes a heading that starts with the label of a section as its marker, though its title is not in it, and not one that starts with a longer label', async () => {
+    // Sections 1.10 and 1.1, in this order; the key has a bold heading for each, in a large size: "1.1 Review Answers", "1.10 Review Answers".
+    const book = new Workbook(2);
+    book.outline = sectionEntries([
+      { id: 'b', page: 0, top: 0.02, label: '1.10', title: 'Word Problems' },
+      { id: 'a', page: 0, top: 0.2, label: '1.1', title: 'Whole Numbers' },
+      { id: 'key', page: 1, top: 0.02, title: 'Answers' },
+    ]);
+    const frames = [book.exercise('b', '1', 0, 72, 100), book.exercise('b', '2', 0, 72, 140), book.exercise('a', '1', 0, 72, 240), book.exercise('a', '2', 0, 72, 280)];
+    book.text(1, 72, 60, '1.1 Review Answers', 18, 'Helvetica-Bold');
+    // The first answer takes two lines: the second starts with another label, which is no marker: only a heading is.
+    const first = book.answer(frames[2] as Frame, 1, 72, 100, '1. 11');
+    book.text(1, 72, 112, '1.10: a decimal');
+    first.rect.bottom += 0.02;
+    book.answer(frames[3] as Frame, 1, 72, 135, '2. 22');
+    book.text(1, 72, 170, '1.10 Review Answers', 18, 'Helvetica-Bold');
+    book.answer(frames[0] as Frame, 1, 72, 210, '1. 33');
+    book.answer(frames[1] as Frame, 1, 72, 235, '2. 44');
+    expect((await check(book)).findings).toEqual([]);
+    // Swapped, the answers of 1.10 lie under the marker of 1.1 and the other way round.
+    const [a1, b1] = [frames[2] as Frame, frames[0] as Frame];
+    [a1.solution, b1.solution] = [b1.solution, a1.solution];
+    expect(refs(await check(book), 'solution-section-mismatch')).toEqual(['b:1', 'a:1']);
+  });
+
+  it('takes no number inside an answer for a marker, though it is the label of a section, nor a line of an answer that holds a title', async () => {
+    // The first answer of 1.1 has a second line "1.2" (a table cell: the label of section 1.2) and a third that holds the title of 1.2.
+    const { book, frames } = two();
+    const first = (frames[0] as Frame).solution?.[0] as Region;
+    book.text(1, 72, 112, '1.2');
+    book.text(1, 72, 124, 'Word Problems, answered');
+    first.rect.bottom += 0.04;
+    // The second answer moves down under them.
+    book.pages[1] = (book.pages[1] as PdfText[]).filter((entry) => entry.text !== '2. 22');
+    (frames[1] as Frame).solution = [];
+    book.answer(frames[1] as Frame, 1, 72, 145, '2. 22');
+    const report = await check(book);
+    expect(refs(report, 'solution-section-mismatch')).toEqual([]);
+  });
+
+  it('takes a title that another title holds for no marker: "Fractions" is in the heading of "Proofs about Fractions"', async () => {
+    // Sections b (1.2, "Proofs about Fractions") and a (1.1, "Fractions"), in this order; the key has a heading with the title of each and no label.
+    const book = new Workbook(2);
+    book.outline = sectionEntries([
+      { id: 'b', page: 0, top: 0.02, label: '1.2', title: 'Proofs about Fractions' },
+      { id: 'a', page: 0, top: 0.2, label: '1.1', title: 'Fractions' },
+      { id: 'key', page: 1, top: 0.02, title: 'Answers' },
+    ]);
+    const frames = [book.exercise('b', '1', 0, 72, 100), book.exercise('b', '2', 0, 72, 140), book.exercise('a', '1', 0, 72, 240), book.exercise('a', '2', 0, 72, 280)];
+    book.text(1, 72, 60, 'Fractions, Review', 18, 'Helvetica-Bold');
+    book.answer(frames[2] as Frame, 1, 72, 100, '1. 11');
+    book.answer(frames[3] as Frame, 1, 72, 125, '2. 22');
+    book.text(1, 72, 170, 'Proofs about Fractions, Review', 18, 'Helvetica-Bold');
+    book.answer(frames[0] as Frame, 1, 72, 210, '1. 33');
+    book.answer(frames[1] as Frame, 1, 72, 235, '2. 44');
+    expect((await check(book)).findings).toEqual([]);
+  });
+
+  it('takes a bold line that starts with the label of a section for its marker, though it ends in a colon and reads as an instruction', async () => {
+    const book = new Workbook(2);
+    book.outline = sectionEntries([
+      { id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' },
+      { id: 'b', page: 0, top: 0.2, label: '1.2', title: 'Word Problems' },
+      { id: 'key', page: 1, top: 0.02, title: 'Answers' },
+    ]);
+    const frames = [book.exercise('a', '1', 0, 72, 100), book.exercise('a', '2', 0, 72, 140), book.exercise('b', '1', 0, 72, 240), book.exercise('b', '2', 0, 72, 280)];
+    book.text(1, 72, 60, '1.1 Review Answers', 18, 'Helvetica-Bold');
+    book.answer(frames[0] as Frame, 1, 72, 100, '1. 11');
+    book.answer(frames[1] as Frame, 1, 72, 125, '2. 22');
+    book.text(1, 72, 170, '1.2 Word Problems - Third Edition, Extension:', 11, 'Helvetica-Bold');
+    book.answer(frames[2] as Frame, 1, 72, 210, '1. 33');
+    book.answer(frames[3] as Frame, 1, 72, 235, '2. 44');
+    // (The line itself is text that no region holds: the text check says so, and nothing about the sections.)
+    expect(refs(await check(book), 'solution-section-mismatch')).toEqual([]);
+    const [a2, b1] = [frames[1] as Frame, frames[2] as Frame];
+    [a2.solution, b1.solution] = [b1.solution, a2.solution];
+    expect(refs(await check(book), 'solution-section-mismatch')).toEqual(['a:2', 'b:1']);
   });
 
   it('warns about an answer that is out of order in its column of the key', async () => {

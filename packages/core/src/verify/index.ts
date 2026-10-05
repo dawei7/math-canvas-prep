@@ -3,3 +3,4 @@ export type { EdgeCount, EdgeDetail, EdgeFix, EdgeInk, EdgeSide, FindingSeverity
 export { explainEdges, type EdgePicture } from './edge-detail.js';
 export { pagesToVerify, regionsToMeasure, verifyProject, type PageSource } from './verify.js';
 export { startsLikeItem, namedNumbers } from './lineclass.js';
+export * from './edge-ink.js';

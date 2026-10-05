@@ -6,3 +6,7 @@ export * from './toc.js';
 export * from './exercises.js';
 export * from './ops.js';
 export * from './solutions.js';
+export * from './labelled.js';
+export * from './bookmarks.js';
+export * from './runningheads.js';
+export * from './cleanedges.js';

@@ -1,5 +1,6 @@
 import type { PageText, Rect } from '../model/types.js';
 import type { Project } from '../project/model.js';
+import { labelledItemPatterns } from '../audit/labelled.js';
 import { LIMITS } from '../rules/constants.js';
 import { McPrepError } from '../rules/issues.js';
 import { isAuthoritative } from '../model/authority.js';
@@ -73,6 +74,8 @@ export function pagesToVerify(project: Project, options: VerifyOptions = {}): nu
   const layout = computeLayout(project, state);
   for (const zone of layout.zones) for (const page of pagesOfRange(zoneLead(zone), zone.end, pageCount)) pages.add(page);
   if (layout.key !== undefined && chosenSections(project, options) === undefined) for (let page = layout.key.first; page <= layout.key.last; page += 1) pages.add(page);
+  // The pages beside them tell running heads from text (a line at the same place on three consecutive pages).
+  for (const page of [...pages]) for (const offset of [-2, -1, 1, 2]) pages.add(page + offset);
   return [...pages].filter((page) => Number.isInteger(page) && page >= 0 && page < pageCount).sort((a, b) => a - b);
 }
 
@@ -130,7 +133,8 @@ const compareDrafts = (a: Draft, b: Draft): number =>
 export function verifyProject(project: Project, pages: PageSource, options: VerifyOptions = {}): VerifyReport {
   const state = prepared(project, options);
   const index = new PageIndex(pages);
-  const patterns = stateless(options.itemPatterns);
+  // Without patterns of its own the check also reads "1.2.3 Aufgabe" and "Lösung 1.2.3" as the number of an exercise and of an answer.
+  const patterns = stateless(options.itemPatterns) ?? labelledItemPatterns();
   const own = ownRegionsByPage(state.exercises);
   const sectioned = checkSections(state);
   const run = buildRun(project, state, index, patterns, chosenSections(project, options) !== undefined);
@@ -139,7 +143,7 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
     ...checkSolutionText(state.exercises, index, patterns),
     ...checkSharedPlaces(own),
     ...checkContextOverlaps(state.exercises, own),
-    ...checkRegionSizes(state.exercises),
+    ...checkRegionSizes(state.exercises, own),
     ...sectioned.drafts,
     ...checkContinuations(state.exercises),
     ...checkCoverage(run),

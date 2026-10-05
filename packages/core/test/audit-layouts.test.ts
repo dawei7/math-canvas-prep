@@ -289,6 +289,23 @@ describe('small fragments between two rows', () => {
     expect(first?.rect.bottom).toBeLessThan(0.245);
     expect(second?.rect.top).toBeLessThanOrEqual(0.2384);
   });
+
+  it('stay with the item they stack on when ink above touches them: only the coordinates of a figure go by the ink', () => {
+    // The numerator of item 2 stands 0.006 above its number and 0.08 under the text of item 1; ink of the line above reaches down to it.
+    const specs: Spec[] = [
+      { text: '1) first item', left: 0.143, top: 0.2 },
+      { text: 'n + 1', left: 0.205, top: 0.296, right: 0.26, height: 0.016 },
+      { text: '2) 2', left: 0.143, top: 0.318, right: 0.196, height: 0.0167 },
+      { text: '3) third item', left: 0.143, top: 0.36 },
+      { text: '4) fourth item', left: 0.143, top: 0.4 },
+    ];
+    const touching: PageText = { ...page(0, [heading, ...specs]), inkMap: mapWithInk([{ from: 0.25, to: 0.2955, left: 0.2, right: 0.27 }]) };
+    const { set } = run([touching]);
+    const one = set.proposals.find((entry) => entry.label === '1');
+    const two = set.proposals.find((entry) => entry.label === '2');
+    expect(one?.rect.bottom).toBeLessThan(0.296);
+    expect(two?.rect.top).toBeLessThanOrEqual(0.296);
+  });
 });
 
 describe('edges that run through the ink of the next line', () => {
@@ -628,5 +645,212 @@ describe('sections that the project already has', () => {
     expect(result.sections.find((entry) => entry.section === 's1')?.proposals.map((entry) => entry.label)).toEqual(['1', '2', '3']);
     expect(result.sections.find((entry) => entry.section === 's1')?.proposals[0]?.context.length).toBe(1);
     expect(result.sections.find((entry) => entry.section === 's1')?.proposals[0]?.id).toBe('xs1-1');
+  });
+});
+
+describe('the labels of a graph under its ink', () => {
+  /** Four graphs, one under the other, each a number that stands alone with the coordinates of the graph; the lowest label of the first one (0.30) is further from the text above it than from the number below. */
+  function graphs(withInk: boolean): PageText {
+    const specs: Spec[] = [heading];
+    for (const [n, top] of [[1, 0.2], [2, 0.325], [3, 0.45], [4, 0.575]] as const) {
+      specs.push({ text: `${n})`, left: 0.143, top });
+      specs.push({ text: '(0,10)', left: 0.169, top: top + 0.02 });
+      specs.push({ text: '(1,0) (5,0)', left: 0.189, top: top + 0.045, right: 0.25 });
+      specs.push({ text: '(3,-8)', left: 0.254, top: top + 0.1, height: 0.0142 });
+    }
+    const base = page(0, specs);
+    // The ink of each graph goes down to the coordinates under it (the first to 0.2985, touching the line at 0.30).
+    const tops = [0.2, 0.325, 0.45, 0.575];
+    return withInk ? { ...base, inkMap: mapWithInk(tops.map((top) => ({ from: top + 0.015, to: top + 0.0985, left: 0.165, right: 0.26 }))) } : base;
+  }
+
+  it('belong to the graph above them when the ink of the graph reaches them, not to the number below', () => {
+    const plain = run([graphs(false)]).set.proposals.find((entry) => entry.label === '1');
+    const inked = run([graphs(true)]).set.proposals.find((entry) => entry.label === '1');
+    // Without the ink the label under the graph goes to the number under it: the frame of the first graph ends above it.
+    expect(plain?.rect.bottom).toBeLessThan(0.3);
+    // With it the label is the graph's, and the frame ends under it (0.3142, a hair of padding).
+    expect(inked?.rect.bottom).toBeGreaterThan(0.3142);
+    expect(inked?.rect.bottom).toBeLessThan(0.325);
+  });
+
+  it('leave the next graph its own coordinates, and every graph all of its own', () => {
+    const inked = run([graphs(true)]).set;
+    for (const [label, top] of [['1', 0.2], ['2', 0.325], ['3', 0.45], ['4', 0.575]] as const) {
+      const found = inked.proposals.find((entry) => entry.label === label);
+      expect(found?.rect.top).toBeLessThanOrEqual(top);
+      expect(found?.rect.bottom).toBeGreaterThan(top + 0.1 + 0.0142);
+      if (label !== '4') expect(found?.rect.bottom).toBeLessThan(top + 0.125);
+    }
+    const second = inked.proposals.find((entry) => entry.label === '2');
+    expect(second?.rect.top).toBeGreaterThan(0.3142);
+  });
+});
+
+describe('rows of items that stand wherever the text before them ends', () => {
+  /** Three rows of four items in four columns (left 0.13, 0.33, 0.52, 0.72); the fourth row has 13 at the first column and 14, 15 further right than any column. */
+  function flow(withFlow: boolean): Spec[] {
+    const lefts = [0.13, 0.33, 0.52, 0.72];
+    const specs: Spec[] = [];
+    for (let k = 0; k < 12; k += 1) specs.push({ text: `${k + 1}) item ${k + 1}`, left: lefts[k % 4] as number, top: 0.2 + Math.floor(k / 4) * 0.035, right: (lefts[k % 4] as number) + 0.09 });
+    specs.push({ text: '13) item 13', left: 0.13, top: 0.31, right: 0.22 });
+    specs.push({ text: withFlow ? '14) a long expression' : '14) item 14', left: withFlow ? 0.39 : 0.33, top: 0.31, right: withFlow ? 0.5 : 0.42 });
+    // (In the grid, 15 stands in its column and its text reaches to 0.69, right up to the left edge of the next column.)
+    specs.push({ text: withFlow ? '15)' : '15) item 15 with a long text', left: withFlow ? 0.65 : 0.52, top: 0.31, right: withFlow ? 0.6725 : 0.69 });
+    // The expression of 15 goes on at the left edge of the last column, right under 12.
+    specs.push({ text: '( a + b) 2 + ( c + d) 2', left: 0.701, top: 0.31, right: 0.86 });
+    specs.push({ text: '16) item 16', left: 0.13, top: 0.35, right: 0.22 });
+    return specs;
+  }
+
+  it('give the text that goes on after the number to that item, not to the item above it in the next column', () => {
+    const { set } = run([page(0, [heading, ...flow(true)])]);
+    const fifteen = set.proposals.find((entry) => entry.label === '15');
+    const twelve = set.proposals.find((entry) => entry.label === '12');
+    expect(fifteen?.rect.right).toBeGreaterThan(0.85);
+    expect(twelve?.rect.bottom).toBeLessThan(0.3);
+  });
+
+  it('leave the text at the left edge of a column to the item above when the row has its items in the columns', () => {
+    // The same text, with 15 in its column and its text reaching up to the fourth column: what stands at the left edge of that column under 12 goes on from 12.
+    const { set } = run([page(0, [heading, ...flow(false)])]);
+    const twelve = set.proposals.find((entry) => entry.label === '12');
+    expect(twelve?.rect.bottom).toBeGreaterThan(0.31);
+  });
+});
+
+describe('the labels of a figure in the right half of the page', () => {
+  /** Item 2 is a figure in the second column at the top; item 3 runs over both columns lower down and has a figure in the right half. */
+  function page2(): Spec[] {
+    return [
+      { text: '1) the first item has a statement', left: 0.143, top: 0.2, right: 0.45 },
+      { text: '2)', left: 0.517, top: 0.2, right: 0.54 },
+      { text: 'A', left: 0.6, top: 0.22, right: 0.62 },
+      { text: 'B', left: 0.7, top: 0.24, right: 0.72 },
+      { text: '3) a statement that runs over both columns of the page, long', left: 0.143, top: 0.6, right: 0.86 },
+      { text: 'C', left: 0.6, top: 0.64, right: 0.62 },
+      { text: 'D', left: 0.7, top: 0.66, right: 0.72 },
+      { text: '4) the last item', left: 0.143, top: 0.8, right: 0.4 },
+    ];
+  }
+
+  it('belong to the item that runs over them, not to the figure of the column far above', () => {
+    const { set } = run([page(0, [heading, ...page2()])]);
+    const two = set.proposals.find((entry) => entry.label === '2');
+    const three = set.proposals.find((entry) => entry.label === '3');
+    // The labels C and D are the third item's: its frame reaches over them, and the figure above ends with its own labels.
+    expect(three?.rect.bottom).toBeGreaterThan(0.675);
+    expect(two?.rect.bottom).toBeLessThan(0.3);
+  });
+
+  it('stay with the figure when they are within a quarter of the page of it, though an item runs over them', () => {
+    const specs = page2().map((spec) => (spec.text === 'C' ? { ...spec, top: 0.45 } : spec.text === 'D' ? { ...spec, top: 0.47 } : spec.text.startsWith('3)') ? { ...spec, top: 0.35 } : spec));
+    const { set } = run([page(0, [heading, ...specs])]);
+    const two = set.proposals.find((entry) => entry.label === '2');
+    expect(two?.rect.bottom).toBeGreaterThan(0.48);
+  });
+
+  it('are not given to an item that starts above the figure', () => {
+    // The first item runs over both columns, from above the figure, and over the labels (at the far right, where no label of the figure stands);
+    // the third is a short line: only the figure is left for them.
+    const specs = page2().map((spec) => (spec.text.startsWith('1)') ? { ...spec, top: 0.15, right: 0.86 } : spec.text.startsWith('3)') ? { ...spec, right: 0.45 } : spec.text === 'C' ? { ...spec, left: 0.8, right: 0.82 } : spec.text === 'D' ? { ...spec, left: 0.82, right: 0.84 } : spec));
+    const { set } = run([page(0, [heading, ...specs])]);
+    const two = set.proposals.find((entry) => entry.label === '2');
+    expect(two?.rect.bottom).toBeGreaterThan(0.67);
+  });
+
+  it('stay with the figure when no item runs over them', () => {
+    // The third item is a short line of the first column: nothing of it is over the labels at the right.
+    const specs = page2().map((spec) => (spec.text.startsWith('3)') ? { ...spec, right: 0.45 } : spec));
+    const { set } = run([page(0, [heading, ...specs])]);
+    const two = set.proposals.find((entry) => entry.label === '2');
+    expect(two?.rect.bottom).toBeGreaterThan(0.67);
+  });
+});
+
+describe('a paragraph under a row of short items that introduces a graph and the exercises under it', () => {
+  function rows(): Spec[] {
+    const lefts = [0.13, 0.33, 0.52, 0.72];
+    const specs: Spec[] = [];
+    for (let k = 0; k < 8; k += 1) specs.push({ text: `${78 + k}) (f + g)(${k})`, left: lefts[k % 4] as number, top: 0.3 + Math.floor(k / 4) * 0.04, right: (lefts[k % 4] as number) + 0.1 });
+    specs.push({ text: 'The chart below shows the weight w of a sunflower as a function of its age d in days.', left: 0.118, top: 0.41, right: 0.88 });
+    specs.push({ text: 'Use it for the questions in Exercises 86 - 87.', left: 0.118, top: 0.4255, right: 0.55 });
+    specs.push({ text: 'y', left: 0.445, top: 0.45, right: 0.452 });
+    specs.push({ text: '8', left: 0.418, top: 0.47, right: 0.425 });
+    specs.push({ text: '5 10 15 20 D', left: 0.458, top: 0.6, right: 0.56 });
+    specs.push({ text: '86) Find and interpret w(0).', left: 0.131, top: 0.65, right: 0.4 });
+    specs.push({ text: '87) How heavy is it at 10?', left: 0.131, top: 0.68, right: 0.4 });
+    return specs;
+  }
+
+  it('is no second line of an item of the row, and nothing under it is a label of a figure of the row (also where no instruction is read)', () => {
+    const { set } = run([page(0, [heading, ...rows()])], { instructions: 'none' });
+    for (const label of ['82', '83', '84', '85']) {
+      const found = set.proposals.find((entry) => entry.label === label);
+      expect(found?.rect.bottom).toBeLessThan(0.405);
+    }
+  });
+
+  it('is the second line of the item above it under a row of three, or when it runs over one column only (the rules for the paragraph are for rows of four and lines over two columns)', () => {
+    const three = rows().filter((spec) => !spec.text.startsWith('85)'));
+    const threeRow = run([page(0, [heading, ...three])], { instructions: 'none' }).set.proposals.find((entry) => entry.label === '82');
+    expect(threeRow?.rect.bottom).toBeGreaterThan(0.41);
+    const narrow = rows().map((spec) => (spec.text.startsWith('The chart below') ? { ...spec, right: 0.4 } : spec));
+    const oneColumn = run([page(0, [heading, ...narrow])], { instructions: 'none' }).set.proposals.find((entry) => entry.label === '82');
+    expect(oneColumn?.rect.bottom).toBeGreaterThan(0.41);
+  });
+
+  it('is the instruction of the exercises it names, though the numbers stand in its second line', () => {
+    const { set } = run([page(0, [heading, ...rows()])]);
+    for (const label of ['86', '87']) {
+      const found = set.proposals.find((entry) => entry.label === label);
+      expect(found?.context).toHaveLength(1);
+      expect(found?.context[0]?.rect.top).toBeLessThan(0.415);
+      expect(found?.context[0]?.rect.bottom).toBeGreaterThan(0.435);
+    }
+  });
+});
+
+describe('the caption of the figure under an instruction', () => {
+  function figureFirst(caption: string): Spec[] {
+    return [
+      { text: '1) item before', left: 0.143, top: 0.2 },
+      { text: 'The full plot of y = g(x) is shown below. In Exercises 3 - 4, use it and the shifting rule to', left: 0.118, top: 0.28, right: 0.88 },
+      { text: 'sketch every shifted copy of it.', left: 0.118, top: 0.2955, right: 0.45 },
+      { text: 'y', left: 0.5, top: 0.33, right: 0.507 },
+      { text: '4', left: 0.484, top: 0.36, right: 0.491 },
+      { text: caption, left: 0.118, top: 0.5, right: 0.4, bold: true },
+      { text: '3) y = f(x) + 1', left: 0.143, top: 0.55, right: 0.3 },
+      { text: '4) y = f(x) + 2', left: 0.143, top: 0.58, right: 0.3 },
+      { text: '5) y = f(x) + 3', left: 0.143, top: 0.61, right: 0.3 },
+    ];
+  }
+
+  it('belongs to the paragraph above it that names the same exercises: one instruction, over the figure', () => {
+    const { set } = run([page(0, [heading, { text: '2) item two', left: 0.143, top: 0.23 }, ...figureFirst('The plot for Ex. 3 - 4')])]);
+    for (const label of ['3', '4']) {
+      const found = set.proposals.find((entry) => entry.label === label);
+      expect(found?.context).toHaveLength(1);
+      // From the paragraph (0.28) to the caption (0.5): the graph between is part of it.
+      expect(found?.context[0]?.rect.top).toBeLessThan(0.285);
+      expect(found?.context[0]?.rect.bottom).toBeGreaterThan(0.51);
+    }
+  });
+
+  it('is an instruction of its own when an item stands between the paragraph and it', () => {
+    const specs = figureFirst('The plot for Ex. 3 - 4').filter((spec) => !spec.text.startsWith('3)'));
+    specs.push({ text: '3) y = f(x) + 1', left: 0.143, top: 0.4, right: 0.3 });
+    const { set } = run([page(0, [heading, { text: '2) item two', left: 0.143, top: 0.23 }, ...specs])]);
+    const three = set.proposals.find((entry) => entry.label === '3');
+    // The paragraph alone is its instruction; the caption under the item is the instruction of 4.
+    expect(three?.context[0]?.rect.bottom).toBeLessThan(0.4);
+    const four = set.proposals.find((entry) => entry.label === '4');
+    expect(four?.context[0]?.rect.top ?? 0).toBeGreaterThan(0.45);
+  });
+
+  it('is an instruction of its own when it names other exercises than the paragraph does', () => {
+    const { set } = run([page(0, [heading, { text: '2) item two', left: 0.143, top: 0.23 }, ...figureFirst('The plot for Ex. 5 - 6')])]);
+    const found = set.proposals.find((entry) => entry.label === '3');
+    expect(found?.context[0]?.rect.top ?? 0).toBeGreaterThan(0.4);
   });
 });

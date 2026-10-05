@@ -8,11 +8,16 @@
 // --reference-chapter-offset), checks every stored region against the ink of the page (does an edge run through printed text?)
 // and writes a Markdown report with the evidence for every difference, a sample of crops of exercises and solution regions, and
 // contact sheets of the same sample (red = frame, orange = continuation, blue = instruction, green = solution) to look at.
-// Nothing is uploaded and the PDF is not copied or changed.
+// Nothing is uploaded and the PDF is not copied or changed. A machine-readable summary (acceptance-summary.json) is written for
+// scripts/audit-books.mjs, which runs this script for every book of a folder and writes the index of them.
+//
+// The licence, the author and the notice are optional and are what the options say and nothing else; what the front matter of a
+// book run without --license-name seems to say is printed as suggestions to be confirmed by a person, and written nowhere. A bundle
+// holds the whole book: keep it private.
 //
 // Options
 //   --out <folder>              where the results go (required): <name>-audited.mcprep.json, <name>-audited.mcbundle,
-//                               acceptance-report.md, acceptance-details.json, crops/, sheets/
+//                               acceptance-report.md, acceptance-details.json, acceptance-summary.json, crops/, sheets/
 //   --name <stem>               the stem of the file names (default: the name of the PDF)
 //   --title <text>              the title of the document (default: the name of the PDF)
 //   --folder <path>             where the document belongs in the library, for example "Books/Algebra"
@@ -21,17 +26,19 @@
 //   --reference-chapter-offset <n>   the chapter numbers of the reference plus n are the numbers the book prints (default 0)
 //   --sample <n>                exercises to put on the contact sheets and write as crops (default 60)
 //   --solution-sample <n>       the same for solution regions (default 30)
-//   --chapter-words, --practice-words, --answer-words, --item-pattern (repeatable), --instructions
+//   --max-items <n>             at most this many exercises per section (the surplus is listed as excluded)
+//   --chapter-words, --practice-words, --answer-words, --stop-words, --item-words, --back-words, --answer-marker (repeatable),
+//   --item-pattern (repeatable), --instructions
 //                               passed on to the commands that read the book (see docs/AUDIT_A_BOOK.md)
 //
 // Run `npm run build` first.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { run } from '../packages/cli/dist/index.js';
+import { groupFindings, run, suggestFrontMatter } from '../packages/cli/dist/index.js';
 import { PdfDocument, renderPage, renderRegion, titleKey } from '../packages/core/dist/index.js';
 
-const MULTIPLE = new Set(['item-pattern']);
+const MULTIPLE = new Set(['item-pattern', 'answer-marker']);
 const args = process.argv.slice(2);
 const positional = [];
 const options = new Map();
@@ -50,7 +57,7 @@ for (let i = 0; i < args.length; i += 1) {
 }
 const [pdfArg, referenceArg] = positional;
 if (!pdfArg || !options.has('out')) {
-  console.error('usage: node scripts/acceptance-book.mjs <book.pdf> [reference.json] --out <folder> [--name <stem>] [--title <text>] [--folder <path>] [--author <text>] [--license-name <text>] [--license-url <url>] [--source-url <url>] [--notice <text>] [--reference-chapter-offset <n>] [--sample <n>] [--solution-sample <n>]');
+  console.error('usage: node scripts/acceptance-book.mjs <book.pdf> [reference.json] --out <folder> [--name <stem>] [--title <text>] [--folder <path>] [--author <text>] [--license-name <text>] [--license-url <url>] [--source-url <url>] [--notice <text>] [--reference-chapter-offset <n>] [--max-items <n>] [--sample <n>] [--solution-sample <n>]');
   process.exit(2);
 }
 const pdfPath = resolve(pdfArg);
@@ -64,13 +71,29 @@ const projectPath = join(outDir, `${stem}-audited.mcprep.json`);
 const bundlePath = join(outDir, `${stem}-audited.mcbundle`);
 
 const readOptions = [];
-for (const name of ['chapter-words', 'practice-words', 'answer-words', 'instructions']) if (options.has(name)) readOptions.push(`--${name}`, options.get(name));
+for (const name of ['chapter-words', 'practice-words', 'answer-words', 'stop-words', 'item-words', 'back-words', 'instructions']) if (options.has(name)) readOptions.push(`--${name}`, options.get(name));
+for (const marker of options.get('answer-marker') ?? []) readOptions.push('--answer-marker', marker);
 for (const pattern of options.get('item-pattern') ?? []) readOptions.push('--item-pattern', pattern);
+const proposeOptions = [...readOptions, ...(options.has('max-items') ? ['--max-items', options.get('max-items')] : [])];
 const metaOptions = [];
 for (const name of ['author', 'series', 'description', 'license-name', 'license-url', 'source-url', 'notice']) if (options.has(name)) metaOptions.push(`--${name}`, options.get(name));
 
+const licenseStated = (options.get('license-name') ?? '').trim() !== '';
+const startedAt = Date.now();
 const work = await mkdtemp(join(tmpdir(), 'mcprep-acceptance-'));
 const timings = [];
+
+/** The lines of the first pages of the PDF, for the suggestions about the licence and the author. */
+async function frontMatter(path, count = 8) {
+  const doc = await PdfDocument.open(path);
+  try {
+    const found = [];
+    for (let index = 0; index < Math.min(count, doc.pageCount); index += 1) found.push({ page: index, lines: (await doc.pageText(index)).lines.map((line) => line.text) });
+    return found;
+  } finally {
+    await doc.close();
+  }
+}
 
 async function mcprep(argv, { project = true, allowFailure = false } = {}) {
   let out = '';
@@ -104,6 +127,13 @@ try {
   await mkdir(join(outDir, 'crops'), { recursive: true });
   await mkdir(join(outDir, 'sheets'), { recursive: true });
 
+  // --- what the front matter seems to say about the licence and the author: shown, never used ---------------------------------
+  const suggestions = suggestFrontMatter(await frontMatter(pdfPath)).filter((entry) => {
+    if (entry.field.startsWith('license')) return !licenseStated;
+    if (entry.field === 'author') return !options.has('author');
+    return !licenseStated;
+  });
+
   // --- the project, what the book says about itself, the sections -----------------------------------------------------------
   await mcprep(['init', pdfPath, '--out', projectPath, '--title', title, ...(options.has('folder') ? ['--folder', options.get('folder')] : []), '--force'], { project: false });
   if (metaOptions.length > 0) await mcprep(['book', 'meta', ...metaOptions]);
@@ -116,16 +146,45 @@ try {
   // --- exercises and solutions, then the same again --------------------------------------------------------------------------
   const detailsFile = join(work, 'details.json');
   const opsFile = join(work, 'ops.json');
-  const propose = await mcprep(['exercises', 'propose', '--solutions', '--details', detailsFile, '--ops', opsFile, '--apply', ...readOptions]);
+  const propose = await mcprep(['exercises', 'propose', '--solutions', '--details', detailsFile, '--ops', opsFile, '--apply', ...proposeOptions]);
   const details = JSON.parse(await readFile(detailsFile, 'utf8'));
   const exerciseSections = details.sectionsDetail;
   const solutionSections = details.solutions?.sections ?? [];
   const proposals = details.proposals;
-  const again = await mcprep(['exercises', 'propose', '--solutions', '--apply', ...readOptions]);
+  const again = await mcprep(['exercises', 'propose', '--solutions', '--apply', ...proposeOptions]);
   const againSolutions = await mcprep(['solutions', 'propose', '--apply', ...readOptions]);
 
   // --- validate, the counts the project holds, export, import-check --------------------------------------------------------
   const validation = await mcprep(['validate'], { allowFailure: true });
+  // The text check: what a person would find by looking at the crops (labels, overlaps, sizes, numbers that are missing), and, with
+  // the canvas library, whether any of the four edges of a region runs through printed ink (the border of a box, a glyph).
+  let canvasLib;
+  try {
+    canvasLib = await import('@napi-rs/canvas');
+  } catch {
+    canvasLib = undefined;
+  }
+  const verifyFile = join(work, 'verify.json');
+  const verifyRun = await mcprep(['exercises', 'verify', ...(canvasLib ? ['--ink'] : []), '--details', verifyFile], { allowFailure: true });
+  let verifyReport;
+  try {
+    verifyReport = JSON.parse(await readFile(verifyFile, 'utf8'));
+  } catch {
+    verifyReport = undefined;
+  }
+  // The exercises that the cap (--max-items) left out still have their answers in the key: that is what was asked for, not a defect, so those
+  // answers are counted apart (the details file keeps every finding).
+  const cappedRefs = new Set(exerciseSections.flatMap((entry) => (entry.excluded ?? []).map((label) => `${entry.section}:${label}`)));
+  const cappedAnswers = (verifyReport?.findings ?? []).filter((finding) => finding.code === 'answer-left-behind' && cappedRefs.has(finding.ref));
+  const verifyByCode = {};
+  for (const finding of verifyReport?.findings ?? []) {
+    if (cappedAnswers.includes(finding)) continue;
+    const key = `${finding.severity} ${finding.code}`;
+    verifyByCode[key] = (verifyByCode[key] ?? 0) + 1;
+  }
+  const verifyCounts = verifyReport
+    ? { errors: verifyReport.summary.errors - cappedAnswers.length, warnings: verifyReport.summary.warnings, infos: verifyReport.summary.infos, byCode: verifyByCode, ...(cappedAnswers.length > 0 ? { answersBeyondTheCap: cappedAnswers.length } : {}) }
+    : undefined;
   const book = await mcprep(['book', 'show']);
   const exported = await mcprep(['export', '--out', bundlePath], { allowFailure: true });
   const check = exported.code === 0 ? await mcprep(['import-check', bundlePath], { project: false, allowFailure: true }) : undefined;
@@ -154,12 +213,6 @@ try {
 
   // --- the ink check: does an edge of a stored region run through printed text? ------------------------------------------------
   const doc = await PdfDocument.open(pdfPath);
-  let canvasLib;
-  try {
-    canvasLib = await import('@napi-rs/canvas');
-  } catch {
-    canvasLib = undefined;
-  }
   const regions = [];
   for (const frame of frames) {
     const ref = `${frame.section}:${frame.label}`;
@@ -377,13 +430,20 @@ try {
   lines.push(`- Solutions: ${count(answers.length, 'answer')} matched; ${count(withoutAnswer, 'exercise')} without an answer, ${count(withoutExercise, 'answer')} without an exercise.`);
   lines.push(`- Applying the same proposals again: ${again.result.applied === false && again.result.counts.unchanged === proposals.length && again.result.counts.added === 0 ? `nothing changed (${again.result.counts.unchanged} exercises unchanged)` : `CHANGED the project: ${JSON.stringify(again.result.counts)}`}; \`solutions propose --apply\`: ${againSolutions.result.applied === false ? 'nothing to add' : `ADDED ${againSolutions.result.counts.added} solutions`}.`);
   lines.push(`- Validation: ${validation.result.ok ? 'ok' : 'ERRORS'}; errors ${validation.result.errors?.length ?? '?'}, warnings ${warnings.length}${warnings.length > 0 ? ` (${Object.entries(warningsByCode).map(([code, count]) => `${code} ${count}`).join(', ')})` : ''}.`);
+  if (verifyCounts) lines.push(`- Text check (exercises verify${canvasLib ? ' --ink' : ''}): errors ${verifyCounts.errors}, warnings ${verifyCounts.warnings}, infos ${verifyCounts.infos}${Object.keys(verifyByCode).length > 0 ? ` (${Object.entries(verifyByCode).sort((a, b) => b[1] - a[1]).map(([code, n]) => `${code} ${n}`).join(', ')})` : ''}${verifyCounts.answersBeyondTheCap ? `; ${verifyCounts.answersBeyondTheCap} answers of the exercises that the cap left out are in the key and are not counted` : ''}; every finding is in verify-details.json.`);
+  else lines.push(`- Text check (exercises verify): it did not run (${verifyRun.envelope.error?.message ?? 'no report'}).`);
   lines.push(`- Bundle: ${exported.code === 0 ? bundlePath : `export failed: ${exported.envelope.error?.message}`}${check ? `; importer check: ${check.code === 0 && check.result.wouldImport ? 'would import' : `WOULD NOT IMPORT${check.envelope.error ? ` (${check.envelope.error.message})` : ''}`}` : ''}.`);
   lines.push(`- Project file: ${projectPath} (the PDF is referenced by its relative path, not copied).`);
+  if (!licenseStated) {
+    lines.push(`- Licence: none stated (optional); the bundle carries none and nothing was taken from the book.`);
+    for (const suggestion of suggestions) lines.push(`  - suggestion (confirm it, nothing was written): ${suggestion.field}${suggestion.field === 'warning' ? '' : ' = '}${suggestion.value} (page ${suggestion.page + 1}: "${suggestion.evidence.slice(0, 140)}")`);
+  }
   lines.push(`- Edges that run through ink (more than 2 % of the width of a region's top or bottom edge is dark): ${canvasLib ? `${inkCuts.length} of ${regions.length} regions (frames ${inkCuts.filter((cut) => cut.kind === 'frame').length}, instructions ${inkCuts.filter((cut) => cut.kind.startsWith('context')).length}, continuations ${inkCuts.filter((cut) => cut.kind.startsWith('continues')).length}, solutions ${inkCuts.filter((cut) => cut.kind.startsWith('solution')).length})` : 'not checked (no canvas)'}.`);
   lines.push(`- Looked at: ${chosen.length} exercises and ${chosenAnswers.length} solution regions as crops (${join(outDir, 'crops')}) and on ${sheets.length} contact sheets (${join(outDir, 'sheets')}).`, '');
   const documentInfo = project.meta?.document ?? project.meta ?? {};
   lines.push('## What the document says about itself', '', '```json', JSON.stringify(documentInfo, null, 2), '```', '');
 
+  let referenceSummary = null;
   if (reference) {
     const refByLabel = new Map(reference.map((entry) => [entry.label, entry]));
     const missing = reference.filter((entry) => !foundByLabel.has(entry.label));
@@ -392,6 +452,18 @@ try {
     const countDiff = reference.filter((entry) => foundByLabel.has(entry.label) && countOf(foundByLabel.get(entry.label)) !== entry.count);
     const equal = reference.filter((entry) => foundByLabel.has(entry.label) && countOf(foundByLabel.get(entry.label)) === entry.count).length;
     const referenceTotal = reference.reduce((sum, entry) => sum + entry.count, 0);
+    referenceSummary = {
+      sections: reference.length,
+      found: sections.length,
+      missing: missing.map((entry) => entry.label),
+      extra: extra.map((entry) => entry.label),
+      equalCounts: equal,
+      countDifferences: countDiff.map((entry) => ({ label: entry.label, title: entry.title, reference: entry.count, found: countOf(foundByLabel.get(entry.label)) })),
+      titleDifferences: titleDiff.length,
+      totalReference: referenceTotal,
+      totalFound: totalExercises,
+      pagesOf: Object.fromEntries(countDiff.map((entry) => [entry.label, found.get(foundByLabel.get(entry.label).id).pages])),
+    };
     lines.push('## Comparison with the reference', '');
     lines.push(`- Sections: ${sections.length} found, ${reference.length} in the reference; missing ${missing.length}, extra ${extra.length}.`);
     lines.push(`- Exercise counts equal in ${equal} of ${reference.length} sections; they differ in ${countDiff.length}. Titles that differ after normalising: ${titleDiff.length}.`);
@@ -476,9 +548,78 @@ try {
   if (lowConfidence.length > 0) lines.push(`- ${lowConfidence.length} exercises with a confidence below 0.8: ${lowConfidence.map((proposal) => `${proposal.section}:${proposal.label}`).join(', ')}.`);
   lines.push('', '## Timings', '', ...timings.map((line) => `- ${line}`), '');
   await writeFile(join(outDir, 'acceptance-report.md'), `${lines.join('\n')}\n`);
+  if (verifyReport) await writeFile(join(outDir, 'verify-details.json'), `${JSON.stringify(verifyReport)}
+`);
   await writeFile(join(outDir, 'acceptance-details.json'), `${JSON.stringify({ sections: entries, exercises: details.sectionsDetail, solutions: details.solutions, inkCuts: inkCuts.map((cut) => ({ ref: cut.ref, kind: cut.kind, page: cut.page, top: cut.top, bottom: cut.bottom })) }, null, 1)}\n`);
+  // What there is to look at, for the index of the books: the findings that the report marks, most important first.
+  const look = [];
+  if (validation.result.ok === false) look.push(`validation reports ${validation.result.errors?.length ?? '?'} errors: ${validation.result.errors?.[0]?.message ?? 'see the report'}`);
+  if (exported.code !== 0) look.push(`the bundle could not be written: ${exported.envelope.error?.message ?? ''}`);
+  else if (check && !(check.code === 0 && check.result.wouldImport)) look.push(`the importer check says the bundle would NOT import: ${check.envelope.error?.message ?? check.result.rejection?.message ?? 'see the report'}`);
+  if (!(again.result.applied === false && again.result.counts.unchanged === proposals.length && again.result.counts.added === 0) || againSolutions.result.applied !== false) look.push('running the proposals a second time changed the project: it should not');
+  if (referenceSummary) {
+    if (referenceSummary.missing.length > 0) look.push(`sections of the reference that were not found: ${referenceSummary.missing.join(', ')}`);
+    if (referenceSummary.extra.length > 0) look.push(`sections found that the reference does not have: ${referenceSummary.extra.join(', ')}`);
+    for (const entry of referenceSummary.countDifferences) {
+      const where = referenceSummary.pagesOf[entry.label];
+      look.push(`${entry.label} ${entry.title}: ${entry.found} exercises found, the reference lists ${entry.reference}${where ? ` (pages ${pages(where[0], where[1])}, crops/beyond-${safe(entry.label)}-*.png)` : ''}`);
+    }
+    if (referenceSummary.titleDifferences > 0) look.push(`${referenceSummary.titleDifferences} titles differ from the reference after normalising (see the report)`);
+  }
+  for (const note of [...derived.result.notes, ...propose.result.notes.filter((note) => !derived.result.notes.includes(note))]) look.push(note);
+  for (const section of exerciseSections) for (const note of section.notes) look.push(`${section.section}: ${note}`);
+  for (const section of exerciseSections) for (const rejected of section.rejected) look.push(`${section.section}: put aside "${rejected.text.slice(0, 50)}" on page ${rejected.page}: ${rejected.reason}`);
+  for (const section of solutionSections) {
+    if (section.withoutAnswer.length > 0) look.push(`${section.section}: no answer in the key for ${section.withoutAnswer.join(', ')}`);
+    // An answer whose exercise was left out by the cap is expected.
+    const capped = new Set(exerciseSections.find((entry) => entry.section === section.section)?.excluded ?? []);
+    const orphans = section.withoutExercise.filter((label) => !capped.has(label));
+    if (orphans.length > 0) look.push(`${section.section}: answers without an exercise: ${orphans.join(', ')}`);
+  }
+  if (lowConfidence.length > 0) look.push(`${lowConfidence.length} exercises with a confidence below 0.8: ${lowConfidence.map((proposal) => `${proposal.section}:${proposal.label}`).join(', ')}`);
+  if (verifyCounts && verifyCounts.errors > 0) look.push(`exercises verify reports ${verifyCounts.errors} error${verifyCounts.errors === 1 ? '' : 's'} (${Object.entries(verifyByCode).filter(([key]) => key.startsWith('error')).sort((a, b) => b[1] - a[1]).map(([key, n]) => `${key.slice(6)} ${n}`).join(', ')}); the first are in the report, all in verify-details.json`);
+  if (canvasLib && inkCuts.length > 0) look.push(`${inkCuts.length} of ${regions.length} regions have an edge that runs through ink (the worst are listed in the report)`);
+  if (warnings.length > 0) look.push(`${warnings.length} validation warning${warnings.length === 1 ? "" : "s"} (${Object.entries(warningsByCode).map(([code, n]) => `${code} ${n}`).join(', ')}); clips-line and includes-header-footer are usually not defects (see docs/AUDIT_A_BOOK.md)`);
+  // A book the tool does not read the way it is written gives nothing to propose: say so first, and do not list it section by section.
+  if (sections.length === 0) look.unshift('No chapters or sections were found: this PDF has no printed table of contents with numbered sections that the tool reads (see "Other books" in docs/AUDIT_A_BOOK.md), or it is not a textbook.');
+  else if (totalExercises === 0) look.unshift('No exercises were found: the book does not print them as numbered practice sets under a heading that the tool reads. The words and the patterns can be set in the sidecar (options: practiceWords, itemPattern, instructions; see "Other books" in docs/AUDIT_A_BOOK.md), or the book needs another reading.');
+  const toLookAt = groupFindings([...new Set(look)]);
+  const summary = {
+    name: stem,
+    title,
+    pages: project.pdf?.pageCount ?? doc.pageCount,
+    chapters: chapters.length,
+    sections: sections.length,
+    exercises: totalExercises,
+    withSolution: totalSolved,
+    withoutAnswer,
+    answersWithoutExercise: withoutExercise,
+    validation: { ok: validation.result.ok === true, errors: validation.result.errors?.length ?? 0, warnings: warnings.length },
+    verify: verifyCounts ?? null,
+    importCheck: check ? { wouldImport: check.code === 0 && check.result.wouldImport === true } : null,
+    idempotent: again.result.applied === false && againSolutions.result.applied === false,
+    license: licenseStated ? { name: options.get('license-name'), ...(options.has('license-url') ? { url: options.get('license-url') } : {}) } : null,
+    licenseStated,
+    author: options.get('author') ?? null,
+    suggestions,
+    reference: referenceSummary ? { ...referenceSummary, pagesOf: undefined } : null,
+    edgesOnInk: inkCuts.length,
+    regions: regions.length,
+    toLookAt: toLookAt.length > 40 ? [...toLookAt.slice(0, 40), `... and ${toLookAt.length - 40} more: see acceptance-report.md`] : toLookAt,
+    files: { project: basename(projectPath), bundle: exported.code === 0 ? basename(bundlePath) : null, report: 'acceptance-report.md', details: 'acceptance-details.json', verify: verifyReport ? 'verify-details.json' : null, sheets: 'sheets', crops: 'crops' },
+    seconds: Math.round((Date.now() - startedAt) / 100) / 10,
+  };
+  await writeFile(join(outDir, 'acceptance-summary.json'), `${JSON.stringify(summary, null, 1)}\n`);
   console.log(`report: ${join(outDir, 'acceptance-report.md')}`);
+  if (!licenseStated) {
+    for (const suggestion of suggestions) console.log(`  suggestion (confirm it; nothing was written): ${suggestion.field}${suggestion.field === 'warning' ? '' : ' = '}${suggestion.value} (page ${suggestion.page + 1}: "${suggestion.evidence.slice(0, 100)}")`);
+  }
   console.log(`${chapters.length} chapters, ${sections.length} sections, ${totalExercises} exercises (${totalSolved} with a solution), ${inkCuts.length} regions with an edge on ink, ${warnings.length} warnings; crops: ${written.length}`);
+} catch (error) {
+  // One line that says what stopped the book, for the index of the books (the log has the rest).
+  const firstLine = (value) => String(value).split('\n')[0];
+  console.error(`${stem}: ${firstLine(error?.message ?? error)}${error?.hint ? ` (${firstLine(error.hint)})` : ''}`);
+  process.exitCode = 1;
 } finally {
   await rm(work, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }

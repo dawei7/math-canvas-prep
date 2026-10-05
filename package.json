@@ -26,7 +26,8 @@
     "desktop": "npm run start --workspace @mcprep/desktop --",
     "dist": "npm run build && npm run dist --workspace @mcprep/desktop",
     "docs:mcp": "node scripts/generate-mcp-docs.mjs",
-    "docs": "npm run docs:cli && npm run docs:mcp"
+    "docs": "npm run docs:cli && npm run docs:mcp",
+    "audit-books": "node scripts/audit-books.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

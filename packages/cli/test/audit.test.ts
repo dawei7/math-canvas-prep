@@ -399,6 +399,23 @@ describe('applying the proposals', () => {
     expect(check.json.result).toMatchObject({ wouldImport: true, features: ['sections', 'authority', 'solution'] });
   });
 
+  it('exports a book without a licence like any other (the licence is optional and nothing is made up), and shows one when the document states it', async () => {
+    const cli = await withSections();
+    await cli(['exercises', 'propose', '--apply']);
+    const out = join(cli.dir, 'unlicensed.mcbundle');
+    const bare = await cli(['export', '--out', out]);
+    expect(bare.code).toBe(0);
+    expect(bare.json.notes ?? []).toEqual([]);
+    expect((await cli(['export', '--out', out], { json: false })).stdout).not.toMatch(/licence/i);
+    // Nothing is made up for it: the manifest carries no licence.
+    const check = await cli(['inspect-bundle', out]);
+    expect(JSON.stringify(check.json.result)).not.toContain('"license"');
+    await cli(['book', 'meta', '--license-name', 'CC BY 3.0', '--license-url', 'https://creativecommons.org/licenses/by/3.0/']);
+    const stated = await cli(['export', '--out', out]);
+    expect(stated.json.notes ?? []).toEqual([]);
+    expect((await cli(['export', '--out', out], { json: false })).stdout).toContain('licence: CC BY 3.0');
+  });
+
   it('says that deriving the sections again replaces the stored outline, and the exercises stay in their sections', async () => {
     const cli = await withSections();
     await cli(['exercises', 'propose', '--apply']);

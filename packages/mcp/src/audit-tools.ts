@@ -14,17 +14,25 @@ Proposals for a whole book. Instead of framing every printed exercise by hand: o
 
 const words = {
   chapter_words: z.string().optional().describe('Words that open a chapter heading ("Chapter 3"), comma separated, replacing the defaults.'),
-  practice_words: z.string().optional().describe('Words that name a practice set in a heading ("3.2 Practice - Title"), comma separated, replacing the defaults (practice, exercises, problems, ...).'),
-  answer_words: z.string().optional().describe('Words that open the answer key and the header of a section in it ("Answers - Title"), comma separated, replacing the defaults.'),
+  practice_words: z.string().optional().describe('Words and phrases that name a practice set in a heading ("3.2 Practice - Title", "3.2.4 Exercises", or the phrase alone on its line: "Exercises", "Review Questions"), comma separated, replacing the defaults (practice, exercises, problems, review questions, review, ...). A word earlier in the list wins over a later one.'),
+  answer_words: z.string().optional().describe('Words that open the answer key and the header of a section in it ("Answers - Title"), and that name the answers printed right after a section ("3.2.5 Answers"), comma separated, replacing the defaults.'),
+  stop_words: z.string().optional().describe('Phrases that end the exercises of a section when a heading says them alone on its line ("Warm-up Answers"), comma separated, replacing the default; the answer words and the next section end them too.'),
+  item_words: z.string().optional().describe('The words that name one exercise printed on its own, comma separated, replacing the defaults (aufgabe, übung, exercise, problem, task, question, ...): a line that starts with a number of two or three levels and one of these words and a colon or a full stop ("1.2.3 Aufgabe: ..."), or with one of these words and the number ("Aufgabe 1.2 (Title). ..."), is an exercise of its own, ending at a link word at the right margin (an answer word such as "Lösung"), above the next such line or heading, or at the last ink of its page.'),
+  back_words: z.string().optional().describe('The words of the link that leads back from an answer to its place, alone at the right margin ("zurück", "back"), comma separated, replacing the defaults: an answer that starts with a line like "Lösung 1.2.3" ends at it.'),
+  answer_markers: z.array(z.string()).optional().describe('Regular expressions whose group 1 is a section label, for the lines of an answer key that mark where the answers of a section start (default "^Section\\s+(\\d+\\.\\d+)", as in "Section 1.1 (p. 5)"); a line with the label alone and a large heading that starts with a label are markers anyway.'),
 };
 const itemPatterns = z
   .array(z.string())
   .optional()
   .describe('How the number of an exercise or answer starts a line, as regular expressions: group 1 is the label as printed, group 2 the text after it. Replaces the defaults ("5)", "5.", "(5)", "5a)"). Example: "^([A-Z]\\.\\d+)\\s+(.*)$" for labels like A.3.');
-const wordFlags = (args: { chapter_words?: string | undefined; practice_words?: string | undefined; answer_words?: string | undefined }): string[] => [
+const wordFlags = (args: { chapter_words?: string | undefined; practice_words?: string | undefined; answer_words?: string | undefined; stop_words?: string | undefined; item_words?: string | undefined; back_words?: string | undefined; answer_markers?: string[] | undefined }): string[] => [
   ...(args.chapter_words ? ['--chapter-words', args.chapter_words] : []),
   ...(args.practice_words ? ['--practice-words', args.practice_words] : []),
   ...(args.answer_words ? ['--answer-words', args.answer_words] : []),
+  ...(args.stop_words ? ['--stop-words', args.stop_words] : []),
+  ...(args.item_words ? ['--item-words', args.item_words] : []),
+  ...(args.back_words ? ['--back-words', args.back_words] : []),
+  ...(args.answer_markers ?? []).flatMap((marker) => ['--answer-marker', marker]),
 ];
 const patternFlags = (patterns: readonly string[] | undefined): string[] => (patterns ?? []).flatMap((pattern) => ['--item-pattern', pattern]);
 
