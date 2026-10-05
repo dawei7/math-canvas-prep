@@ -180,6 +180,7 @@ Wrote ./workbook.mcbundle (11676 bytes).
   10 frames, 6 outline entries, 4 pages
   10 authoritative exercises, 10 with a hidden solution (features: sections, authority, solution)
   The importer check passed: the app will accept it.
+  Audit gate: not run (`mcprep audit gate`).
 Copy it to the tablet and open it in the Math Canvas library.
 ```
 

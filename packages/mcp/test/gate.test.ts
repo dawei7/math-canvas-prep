@@ -59,8 +59,12 @@ describe('the tools that finish an audit', () => {
     expect(named('audit_gate')?.description).toContain('runs by default');
     expect(properties['sheets_seen']?.type).toBe('string');
     expect(properties['visual']?.type).toBe('string');
+    expect(properties['survey']?.type).toBe('string');
     expect(properties['final']?.type).toBe('boolean');
+    for (const name of ['audit_ack', 'audit_review']) expect((named(name)?.inputSchema.properties as Record<string, { type?: string }>)['survey']?.type, name).toBe('string');
+    expect(named('audit_gate')?.description).toContain('survey-missing');
     expect(client.getInstructions()).toContain('audit_gate');
+    expect(client.getInstructions()).toContain('survey record');
   });
 
   it('book_compare compares with a reference and says what differs, as a result and not a failure', async () => {
@@ -111,5 +115,37 @@ describe('the tools that finish an audit', () => {
     expect(data(sheets)['rendered']).toEqual([1, 2]);
     expect((await call('get_schema', { name: 'gate' })).isError).toBeUndefined();
     expect((await call('get_schema', { name: 'sheets' })).isError).toBeUndefined();
+  });
+
+  it('audit_gate takes the survey record: the certificate says whether it covers every page, and a finding of it is a result that can never be acknowledged', async () => {
+    // The synthetic workbook: 0-2 front matter, 3-4 text, 5-6 exercises, 7-8 text, 9-11 exercises, 12-13 text, 14 exercises, 15 text, 16-17 exercises, 18-20 answers.
+    const record = [
+      { from: 0, to: 2, kind: 'front' },
+      { from: 3, to: 4, kind: 'text' },
+      { from: 5, to: 6, kind: 'exercises' },
+      { from: 7, to: 8, kind: 'text' },
+      { from: 9, to: 11, kind: 'exercises' },
+      { from: 12, to: 13, kind: 'text' },
+      { from: 14, to: 14, kind: 'exercises' },
+      { from: 15, to: 15, kind: 'text' },
+      { from: 16, to: 17, kind: 'exercises' },
+      { from: 18, to: 20, kind: 'answers' },
+    ];
+    await writeFile(join(dir, 'survey.json'), JSON.stringify(record));
+    const done = await call('audit_gate', { survey: 'survey.json' });
+    expect(done.isError).toBeUndefined();
+    expect(data(done)).toMatchObject({ passed: true, checks: { survey: { pages: 21, entries: 10, missing: 0, uncovered: 0, unmarked: 0, exhaustive: true } } });
+    expect(data(await call('audit_gate', { status: true }))).toMatchObject({ status: 'passed', surveyed: true });
+    await writeFile(join(dir, 'survey.json'), JSON.stringify(record.slice(1)));
+    const wrong = await call('audit_gate', { survey: 'survey.json' });
+    expect(wrong.isError).toBeUndefined();
+    expect(data(wrong)['passed']).toBe(false);
+    expect((data(wrong)['open'] as { code: string; acknowledgeable: boolean }[]).map((finding) => `${finding.code} ${String(finding.acknowledgeable)}`)).toEqual(['survey-missing false']);
+    const refused = await call('audit_ack', { code: 'survey-missing', ref: 'survey', page: 0, quote: 'Synthetic Algebra', reason: 'The book prints no page 0 to speak of, which can be seen there.', survey: 'survey.json' });
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.content)).toContain('can never be acknowledged');
+    const schema = await call('get_schema', { name: 'survey' });
+    expect(schema.isError).toBeUndefined();
+    expect(data(schema)).toMatchObject({ name: 'survey', schema: { type: 'array' } });
   });
 });

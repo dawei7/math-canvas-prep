@@ -34,6 +34,49 @@ export interface VisualEntry {
   defect?: string;
 }
 
+export interface SurveyEntry {
+  from: number;
+  to: number;
+  kind: 'exercises' | 'answers' | 'both' | 'text' | 'blank' | 'front' | 'back';
+  note?: string;
+}
+
+/**
+ * The survey record of the synthetic workbook as a careful person would write it from the overview pictures: what each page holds, in ranges. It is
+ * written from the truth of the builder (which page has an exercise printed on it, which an answer), never from the project, so that a project that was
+ * damaged shows as a disagreement. The cover, the notice and the contents are front matter, a chapter opener and a lesson are text, the practice sets
+ * hold exercises and the key at the back holds answers; the workbook has no back matter and no blank page.
+ */
+export async function surveyRecord(_dir?: string): Promise<SurveyEntry[]> {
+  const book = buildSyntheticBook();
+  const truth = book.truth;
+  const exercises = new Set<number>(truth.items.flatMap((item) => item.anchors.map((anchor) => anchor.page)));
+  const answers = new Set<number>(truth.answers.flatMap((answer) => answer.anchors.map((anchor) => anchor.page)));
+  const firstOpener = Math.min(...truth.chapters.map((chapter) => chapter.openerPage));
+  const lastAnswer = Math.max(...answers);
+  const kindOf = (page: number): SurveyEntry['kind'] => {
+    if (exercises.has(page)) return answers.has(page) ? 'both' : 'exercises';
+    if (answers.has(page)) return 'answers';
+    if (page < firstOpener) return 'front';
+    return page > lastAnswer ? 'back' : 'text';
+  };
+  const entries: SurveyEntry[] = [];
+  for (let page = 0; page < book.pageCount; page += 1) {
+    const kind = kindOf(page);
+    const last = entries[entries.length - 1];
+    if (last !== undefined && last.kind === kind && last.to === page - 1) last.to = page;
+    else entries.push({ from: page, to: page, kind });
+  }
+  return entries;
+}
+
+/** Writes the survey record of the workbook as `file` in `dir` (a list of ranges) and returns it. */
+export async function writeSurveyRecord(dir: string, file = 'survey.json'): Promise<SurveyEntry[]> {
+  const entries = await surveyRecord(dir);
+  await writeFile(join(dir, file), JSON.stringify(entries));
+  return entries;
+}
+
 /**
  * The visual record of the synthetic workbook as a careful person would write it: for every exercise the first three words printed after
  * its number (the book's own truth says what is printed, not the text layer), whether it has an instruction, the number its answer starts

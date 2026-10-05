@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dawei7/math-canvas-prep/schemas/survey.schema.json",
+  "title": "The survey record of an audit: what every page of the book holds (mcprep audit gate --survey FILE or FOLDER)",
+  "description": "A JSON list of RANGES of pages, written by whoever looked at every page of the book (an object { \"survey\": [...] } is accepted too). Pages are zero-based and the range is inclusive: { \"from\": 0, \"to\": 17, \"kind\": \"front\" } says that pages 0 to 17 are front matter. Every page of the book has exactly one entry. --survey may name a FOLDER instead of a file: every .json file in it (sheets.json is skipped) is such a list, and the lists are merged in the order of the file names, numbers compared as numbers (overview-2 before overview-10), so that one small file can be written for each overview picture. The gate checks the record against the project and needs no knowledge of the layout: an entry that is not in the format is open as survey-range, a page without an entry as survey-missing (one finding names the first ranges), a page in two entries as survey-overlap, a page marked exercises or both that no exercise region touches (an exercise's own region or one of its continuations; an instruction does not count) or a page marked answers or both that no solution region touches as survey-uncovered, and a page that an exercise region touches but the record marks as text, blank, front, back or answers (or that a solution region touches but the record marks as text, blank, front, back or exercises) as survey-unmarked. None of these can be acknowledged: repair the project or the record. Plain JSON, camelCase.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["from", "to", "kind"],
+    "properties": {
+      "from": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "The first page of the range (zero-based, 0 is the first page of the PDF). Not after `to`; inside the book."
+      },
+      "to": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "The last page of the range (inclusive; the same as `from` for one page). Inside the book."
+      },
+      "kind": {
+        "enum": ["exercises", "answers", "both", "text", "blank", "front", "back"],
+        "description": "What the pages hold. exercises: at least one exercise or part of one (a set at the end of a section, or exercises inline in the text). answers: answers or worked solutions of exercises, and no exercise. both: exercises and answers. text: exposition, worked examples, figures, no exercise of the book. blank: empty, a divider, a picture only. front: title, copyright, preface, contents. back: index, bibliography, glossary, appendices that are neither exercises nor answers."
+      },
+      "note": {
+        "type": "string",
+        "maxLength": 120,
+        "description": "Optional: a few words for the next reader (at most 120 characters)."
+      }
+    },
+    "additionalProperties": false
+  }
+}

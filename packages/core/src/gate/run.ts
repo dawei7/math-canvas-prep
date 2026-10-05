@@ -26,6 +26,7 @@ import {
   verifyFindings,
 } from './gate.js';
 import { GATE_FORMAT, GATE_VERSION, type Acknowledgement, type AuditNotes, type GateFinding, type GateReport, type GateStatus } from './types.js';
+import { checkSurvey } from './survey.js';
 import { checkVisual, findSheetsManifest } from './visual.js';
 
 /** Running the gate on a project: the checks, the notes, the certificate. */
@@ -43,6 +44,8 @@ export interface GateRunOptions {
   sheetsSeen?: string;
   /** The visual record: one entry per exercise, written by whoever looked at it (see `checkVisual`). */
   visual?: string;
+  /** The survey record: ranges of pages and what they hold, written by whoever looked at every page (a file, or a folder of .json files; see `checkSurvey`). */
+  survey?: string;
   now?: Date;
 }
 
@@ -197,6 +200,7 @@ export async function collectFindings(session: ProjectSession, options: GateRunO
     bundle: null,
     sheets: null,
     visual: null,
+    survey: null,
   };
   if (options.reference !== undefined) {
     const summary = buildBookSummary({ title: session.project.meta.title, info: session.project.meta, pageCount: session.project.pdf.pageCount, frames: session.project.frames, outline: session.project.outline?.entries });
@@ -227,6 +231,11 @@ export async function collectFindings(session: ProjectSession, options: GateRunO
     findings.push(...visual.findings);
     checks.visual = visual.summary;
   }
+  if (options.survey !== undefined && options.sheets !== false) {
+    const survey = await checkSurvey(session, options.survey);
+    findings.push(...survey.findings);
+    checks.survey = survey.summary;
+  }
   // The sheets are the exhaustive pass only when the record of what was seen covers every exercise, one entry for each.
   if (checks.sheets !== null) checks.sheets.exhaustive = checks.sheets.exhaustive && checks.visual?.exhaustive === true;
   return { findings, checks, verify, validation };
@@ -250,7 +259,7 @@ export async function runGate(session: ProjectSession, options: GateRunOptions =
     counts: { sections: book.sections, exercises: book.authoritative, solutions: book.solutions, errors: book.errors, warnings: book.warnings, infos: book.infos, open: judged.open.length, acknowledged: judged.acknowledged.length },
     unconfirmed,
     ink: collected.checks.verify.ink,
-    perfect: judged.open.length === 0 && unconfirmed === 0 && collected.checks.visual?.exhaustive === true && collected.checks.verify.ink,
+    perfect: judged.open.length === 0 && unconfirmed === 0 && collected.checks.visual?.exhaustive === true && collected.checks.survey?.exhaustive === true && collected.checks.verify.ink,
     checks: collected.checks,
     itemPatterns: patterns.map((pattern) => asciiPattern(pattern.source)),
     open: judged.open,
@@ -288,7 +297,9 @@ export async function gateStatus(session: ProjectSession): Promise<GateStatus> {
   const unconfirmed = [...listed.values()].filter((entry) => !confirmedNow(entry)).length;
   // A certificate of an older gate has no `ink`: the check ran when its verify part says so.
   const ink = certificate.ink ?? certificate.checks?.verify?.ink === true;
-  const base = { certificate: certificate.project.hash, current, createdAt: certificate.createdAt, open: certificate.open.length, unconfirmed, exhaustive: certificate.checks?.visual?.exhaustive === true, ink, perfect: certificate.perfect === true && unconfirmed === 0 && ink };
+  // A certificate of an older gate has no survey: it did not ask for one, and the book is not perfect without it.
+  const surveyed = certificate.checks?.survey?.exhaustive === true;
+  const base = { certificate: certificate.project.hash, current, createdAt: certificate.createdAt, open: certificate.open.length, unconfirmed, exhaustive: certificate.checks?.visual?.exhaustive === true, surveyed, ink, perfect: certificate.perfect === true && unconfirmed === 0 && ink && surveyed };
   if (certificate.project.hash !== current) return { status: 'stale', ...base };
   return { status: certificate.passed ? 'passed' : 'failed', ...base };
 }

@@ -10,7 +10,7 @@
     "version": { "const": 1 },
     "createdAt": { "type": "string", "description": "When the gate ran (ISO 8601)." },
     "passed": { "type": "boolean", "description": "True only when `open` is empty." },
-    "perfect": { "type": "boolean", "description": "True only when nothing is open, the visual record covers every exercise, no acknowledgement is unconfirmed and the pixel check of the edges ran: the book is finished." },
+    "perfect": { "type": "boolean", "description": "True only when nothing is open, the visual record covers every exercise, the survey record has one valid entry for every page and fits the project, no acknowledgement is unconfirmed and the pixel check of the edges ran: the book is finished." },
     "unconfirmed": { "type": "integer", "minimum": 0, "description": "Acknowledgements that apply and that no second reviewer has confirmed (`audit confirm`)." },
     "ink": { "type": "boolean", "description": "Whether the pixel check of the edges of the regions (`edge-on-ink`) ran. It is part of the gate and runs by default; `--no-ink` skips it for a quick loop, and the book is not perfect until the gate has run without it." },
     "project": {
@@ -41,7 +41,7 @@
     },
     "checks": {
       "type": "object",
-      "required": ["validate", "verify", "reference", "bundle", "sheets", "visual"],
+      "required": ["validate", "verify", "reference", "bundle", "sheets", "visual", "survey"],
       "properties": {
         "validate": { "type": "object", "required": ["errors", "warnings"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 } }, "additionalProperties": false },
         "verify": { "type": "object", "required": ["errors", "warnings", "infos", "ink", "interlocked"], "properties": { "errors": { "type": "integer", "minimum": 0 }, "warnings": { "type": "integer", "minimum": 0 }, "infos": { "type": "integer", "minimum": 0 }, "ink": { "type": "boolean", "description": "Whether the pixel check of the edges ran." }, "interlocked": { "type": "integer", "minimum": 0, "description": "How many edges are `edge-interlocked` (information): only tips of ink go across them and no rectangle can do better. The certificate lists them." } }, "additionalProperties": false },
@@ -73,6 +73,20 @@
             "defects": { "type": "integer", "minimum": 0, "description": "Entries with ok false (visual-defect)." },
             "missingSheets": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "The sheets that hold exercises without an entry, when the list of the sheets (sheets.json) was found next to the file of the sheets that were looked at, next to the visual record, or in the folder sheets of the project." },
             "exhaustive": { "type": "boolean", "description": "Every exercise has an entry." }
+          },
+          "additionalProperties": false
+        },
+        "survey": {
+          "type": ["object", "null"],
+          "required": ["file", "pages", "entries", "missing", "uncovered", "unmarked", "exhaustive"],
+          "properties": {
+            "file": { "type": "string", "description": "The file, or the folder of .json files, of the survey record (--survey)." },
+            "pages": { "type": "integer", "minimum": 1, "description": "The pages of the book." },
+            "entries": { "type": "integer", "minimum": 0, "description": "The ranges that were read, in all the files." },
+            "missing": { "type": "integer", "minimum": 0, "description": "Pages without an entry (survey-missing)." },
+            "uncovered": { "type": "integer", "minimum": 0, "description": "Pages that the record marks as exercises or both (answers or both) that no exercise region (no solution region) touches (survey-uncovered)." },
+            "unmarked": { "type": "integer", "minimum": 0, "description": "Pages that an exercise region (a solution region) touches and that the record marks as something that holds none (survey-unmarked)." },
+            "exhaustive": { "type": "boolean", "description": "Every page has exactly one valid entry and no survey finding is open: the pages were looked at, one by one, and the record fits the project." }
           },
           "additionalProperties": false
         }
@@ -116,7 +130,7 @@
       "type": "object",
       "required": ["source", "code", "severity", "ref", "page", "message", "evidence", "acknowledgeable"],
       "properties": {
-        "source": { "enum": ["validate", "verify", "reference", "bundle", "sheets", "visual"] },
+        "source": { "enum": ["validate", "verify", "reference", "bundle", "sheets", "visual", "survey"] },
         "code": { "type": "string" },
         "severity": { "enum": ["error", "warning"] },
         "ref": { "type": "string" },

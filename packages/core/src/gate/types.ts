@@ -12,12 +12,12 @@ export const NOTES_FORMAT = 'math-canvas-audit-notes';
 export const NOTES_VERSION = 1;
 
 /** Where a finding of the gate comes from. */
-export type GateSource = 'validate' | 'verify' | 'reference' | 'bundle' | 'sheets' | 'visual';
+export type GateSource = 'validate' | 'verify' | 'reference' | 'bundle' | 'sheets' | 'visual' | 'survey';
 
 /** What a finding is, whatever check made it. */
 export interface GateFinding {
   source: GateSource;
-  /** The code of the finding (the codes of `exercises verify`; `reference-count`, `reference-missing`, `reference-extra`, `reference-title`; `bundle-rejected`, `bundle-stale`; `sheets-...`). */
+  /** The code of the finding (the codes of `exercises verify`; `reference-count`, `reference-missing`, `reference-extra`, `reference-title`; `bundle-rejected`, `bundle-stale`; `sheets-...`; `visual-...`; `survey-...`). */
   code: string;
   severity: 'error' | 'warning';
   /** `SECTION:LABEL`, a section id, or what the finding is about. */
@@ -79,7 +79,7 @@ export interface GateReport {
   unconfirmed: number;
   /** Whether the pixel check of the edges of the regions (`edge-on-ink`) ran. It is part of the gate and runs by default; `--no-ink` skips it for a quick loop. */
   ink: boolean;
-  /** Nothing is open, the visual record covers every exercise, no acknowledgement is unconfirmed and the pixel check ran: the book is finished. */
+  /** Nothing is open, the visual record covers every exercise, the survey record has one valid entry for every page and fits the project, no acknowledgement is unconfirmed and the pixel check ran: the book is finished. */
   perfect: boolean;
   checks: {
     validate: { errors: number; warnings: number };
@@ -89,6 +89,12 @@ export interface GateReport {
     sheets: { file: string; sheets: number; seen: number; missing: number[]; exhaustive: boolean; current: boolean } | null;
     /** `file` is the file or the folder of the visual record, `files` how many files were read, `missingSheets` the sheets that hold exercises without an entry (when the list of the sheets was found). */
     visual: { file: string; entries: number; files: number; exercises: number; missing: number; mismatches: number; defects: number; missingSheets: number[]; exhaustive: boolean } | null;
+    /**
+     * The survey record (`--survey`): `file` is the file or the folder, `pages` the pages of the book, `entries` the ranges that were read, `missing`
+     * the pages without an entry, `uncovered` the pages the record marks as exercises or answers that no region touches, `unmarked` the pages a region
+     * touches that the record marks as something else. `exhaustive`: every page has exactly one valid entry and no survey finding is open.
+     */
+    survey: { file: string; pages: number; entries: number; missing: number; uncovered: number; unmarked: number; exhaustive: boolean } | null;
   };
   itemPatterns: string[];
   /** Neither repaired nor acknowledged. */
@@ -120,6 +126,8 @@ export interface GateStatus {
   unconfirmed?: number;
   /** The visual record covered every exercise when the gate ran. */
   exhaustive?: boolean;
+  /** The survey record had one valid entry for every page and fitted the project when the gate ran. */
+  surveyed?: boolean;
   /** The certificate says the book is perfect (and is current). */
   perfect?: boolean;
   /** The pixel check of the edges ran when the gate ran. */

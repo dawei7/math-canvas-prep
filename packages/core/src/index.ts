@@ -19,6 +19,7 @@ export * from './gate/gate.js';
 export * from './gate/run.js';
 export * from './gate/ack.js';
 export * from './gate/visual.js';
+export * from './gate/survey.js';
 export * from './gate/review.js';
 export * from './sheets/sheets.js';
 export { measureInk, type InkMeasure, type InkRegion } from './verify/ink-measure.js';

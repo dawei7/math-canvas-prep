@@ -717,6 +717,12 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    Write what the cell **shows**, not what you expect: the gate compares every entry with the text layer and the project, and an entry that
    does not fit is open (`visual-mismatch`, `visual-defect`, `visual-missing`, which names the sheets that have no entry yet) and cannot be
    acknowledged. If you cannot look at images, say so and do not write entries: a book without a record is not `perfect`.
+   The **survey record** is the same proof for every page: a JSON list of ranges `{from, to, kind}` (zero-based, inclusive; `kind` is
+   `exercises`, `answers`, `both`, `text`, `blank`, `front` or `back`) in which **every page** of the book has exactly one entry, given to the
+   gate with `--survey FILE|FOLDER` (`mcprep schema survey`). The gate checks it against the frames: pages without an entry, a page in two
+   entries, an entry that is not in the format, a page marked as exercises (answers) that no region touches, a page that a region touches
+   and is marked as holding none (`survey-missing`, `survey-overlap`, `survey-range`, `survey-uncovered`, `survey-unmarked`) cannot be
+   acknowledged, and a book without a survey record is not `perfect`.
 5. `audit_gate` (`audit gate --reference ... --visual FILE`): read `open`. Repair what is open and run it again. The pixel check of the
    edges of every region (`edge-on-ink`) is part of the gate and runs by default; `--no-ink` (`ink=false`) skips it for a quick loop, and a
    book is not perfect until the gate has run without it. An `edge-on-ink` finding says what to change: "Move it to y=0.5123 (4 pixels, 2
@@ -731,13 +737,13 @@ looking and passes only when nothing is **open**. The whole of it is in docs/AUD
    cuts a line, an exercise or an answer that was missed, an instruction missing, an answer on the wrong exercise. These codes are
    refused (`label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`, `section-unknown`, `section-page`, `span-gap`,
    `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`, `solution-section-mismatch`,
-   `region-holds-item`): the message says how to repair each. A refusal says everything that is wrong at once, what to give instead and one call that would do; read it, correct that call (the quote and the reason are yours), and run it.
+   `region-holds-item`, and the `survey-*` findings of the survey record): the message says how to repair each. A refusal says everything that is wrong at once, what to give instead and one call that would do; read it, correct that call (the quote and the reason are yours), and run it.
 7. A **different** reviewer runs `audit_review` (`audit review --out DIR`: a picture of what each note is about, its reason and quote, and
    an index) and then `audit_confirm` (`audit confirm --by NAME --ref R --code C`, or `--all`) with a name that is not the author's.
    Until then the gate says `unconfirmed: N`, `export` says "N acknowledgements are not yet confirmed by a second reviewer" and the book
    is not `perfect`.
 8. `audit_gate` with `final` (`--final`): exit code 0 only when the book is **perfect** (nothing open, the visual record covers every
-   exercise, no acknowledgement unconfirmed, the pixel check ran: "run the gate without --no-ink"). Report the counts, the certificate and
+   exercise, the survey record covers every page, no acknowledgement unconfirmed, the pixel check ran: "run the gate without --no-ink"). Report the counts, the certificate and
    every acknowledgement with its reason: the gate lists them, nothing is left out.
 
 A book is finished when `audit_gate` with `final` says `perfect: true`, the certificate is current and `export` and `import-check` were

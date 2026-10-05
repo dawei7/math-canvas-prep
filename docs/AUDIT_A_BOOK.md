@@ -368,13 +368,13 @@ error and warning must be repaired or acknowledged; information needs nothing) a
 loop, MCP `ink: false`); with `--reference FILE` the comparison of `book compare` (a count that differs, a section on one side only, a title: each is a finding
 `reference-count`, `reference-missing`, `reference-extra`, `reference-title`); the bundle exported last, when there is one (it must pass
 the importer's checks and have the frames of the project: `bundle-rejected`, `bundle-stale`); with `--sheets-seen FILE` the contact
-sheets (below); and with `--visual FILE` (or a folder of files) the visual record (below). It reports `open`, `acknowledged` (each with its reason) and exits with
+sheets (below); with `--visual FILE` (or a folder of files) the visual record (below); and with `--survey FILE` (or a folder of files) the survey record of the pages (below). It reports `open`, `acknowledged` (each with its reason) and exits with
 code 4 unless `open` is empty. Give it the same `--item-pattern` as the audit (or put them in the notes file, as `itemPatterns`): the
 certificate lists them.
 
 **Perfect.** The report says `passed` (nothing is open), `unconfirmed` (how many acknowledgements no second reviewer confirmed), `ink`
-(whether the pixel check ran) and `perfect`: nothing is open, the visual record has an entry for every exercise, nothing is unconfirmed
-and the pixel check ran. `--final` makes the exit code 4 unless the book is perfect (a gate that ran with `--no-ink` says "run the gate
+(whether the pixel check ran) and `perfect`: nothing is open, the visual record has an entry for every exercise, the survey record has
+one valid entry for every page and fits the project, nothing is unconfirmed and the pixel check ran. `--final` makes the exit code 4 unless the book is perfect (a gate that ran with `--no-ink` says "run the gate
 without --no-ink"). A book is finished when `audit gate --final` exits with 0, the certificate is current, and `export` and `import-check`
 were done after it. `audit ack` and `audit review` run the same checks (a finding of the pixel check is only there when the pixel check
 runs), `export` and `audit gate --status` say when the certificate is for a gate that skipped it.
@@ -422,13 +422,56 @@ two files). A file of the folder that is no list of entries is an error that nam
 - Write what the cell shows, not what the project says: a cell without a blue box is `"instruction": false`, and the gate (and
   `context-inconsistent`) then say what is missing.
 
+**The survey record** (`audit gate --survey FILE|FOLDER`, `mcprep schema survey`) is the proof that **every page of the book was looked
+at**, and what each page holds. The visual record covers the exercises that were framed; an exercise set that nobody framed has no cell
+on any sheet, so only a record of every page can show it. Whoever looks at the pages (in overview pictures, several pages to a picture)
+writes **ranges of pages**, zero-based and inclusive, each with what its pages hold:
+
+```json
+[{ "from": 0, "to": 17, "kind": "front", "note": "title, contents, preface" },
+ { "from": 18, "to": 27, "kind": "text" },
+ { "from": 28, "to": 31, "kind": "exercises" },
+ { "from": 600, "to": 636, "kind": "answers" }]
+```
+
+| `kind` | the pages hold |
+| --- | --- |
+| `exercises` | at least one exercise or part of one: a set at the end of a section, or exercises inline in the text |
+| `answers` | answers or worked solutions of exercises, and no exercise |
+| `both` | exercises and answers |
+| `text` | exposition, worked examples, figures: no exercise of the book |
+| `blank` | nothing: empty, a divider, a picture only |
+| `front` | title, copyright, preface, contents |
+| `back` | index, bibliography, glossary, appendices that are neither exercises nor answers |
+
+`note` is optional, at most 120 characters. `--survey` takes **a folder** as well: every `.json` file in it is such a list, merged in the
+order of the file names (numbers compared as numbers; a `sheets.json` that lies in the folder is skipped), so one small file can be written
+for each overview picture; an object `{"survey": [...]}` is accepted as well. The gate checks the record against the project. It needs no
+knowledge of the layout, no heading word and no text of the pages: only which pages the frames lie on. An **exercise region** is the own
+region of an exercise of the book or one of its continuations (an instruction, `context`, does not count); a **solution region** is a region
+of an answer. All findings are errors that can **not be acknowledged**: repair the record, or the project.
+
+| code | what it means | what to do |
+| --- | --- | --- |
+| `survey-range` | An entry is not in the format: `from` or `to` is missing or not a whole number, `from` is after `to`, the range lies outside `0..last page` of the book, `kind` is missing or none of the seven, or the note is not text or has more than 120 characters. One finding for each entry, named `entry 4` (`entry 4 of overview-2.json` in a folder). | Correct the entry. |
+| `survey-missing` | Pages have no valid entry. **One finding**, not one for each page: it counts the pages and names the first ranges (`0-4, 9, 20-33, ...`). | Look at those pages and write an entry for each range that holds the same kind of thing. |
+| `survey-overlap` | A page is in two entries. One finding for each stretch of pages that two (or more) entries share; it names the entries. | Shorten one of them: every page has exactly one entry. |
+| `survey-uncovered` | The record marks pages as `exercises` or `both` and **no exercise region** touches them, or as `answers` or `both` and **no solution region** touches them. One finding for each stretch of pages of one entry. | Frame what the pages hold (`mcprep exercises add`, `mcprep solution add`), or correct the record if they hold none. |
+| `survey-unmarked` | An exercise region touches pages that the record marks as `text`, `blank`, `front`, `back` or `answers`, or a solution region touches pages that it marks as `text`, `blank`, `front`, `back` or `exercises`. One finding for each stretch of pages of one entry; it names an exercise (an answer) that lies there. | Look at the pages: change the kind of the entry to what they hold, or move or delete the frame (the solution region) that does not belong there. |
+
+`checks.survey` of the certificate is `{ file, pages, entries, missing, uncovered, unmarked, exhaustive }` (the numbers of pages without an
+entry, uncovered and unmarked; `exhaustive`: every page has exactly one valid entry and no survey finding is open). **A book is not
+`perfect` without it**: `--final` exits with 4, and `audit gate --status` and `export` say that the survey record does not cover every page
+(a certificate written by a gate without `--survey` has none). `audit ack` and `audit review` accept `--survey` so that the three commands
+can be given the same options; a finding of the record can never be acknowledged, so it changes nothing there.
+
 **An acknowledgement** says that a finding is what **the book itself prints**: a number printed twice, an answer missing from the
 key, a practice set with more exercises than the reference lists, a remark printed between two exercises. It is **never** for a defect
 of ours: the findings `label-not-first`, `solution-label-missing`, `overlap`, `duplicate-region`, `section-unknown`, `section-page`,
 `span-gap`, `continuation-order`, `context-range`, `context-missing`, `context-inconsistent`, `context-not-nearest`,
-`solution-section-mismatch` and `region-holds-item` can **not be acknowledged at all**: `audit ack` refuses them with the command that
-repairs each, and the gate takes no note for them from the file either (it lists the note under `refusedAcknowledgements`; the finding
-stays open). `mcprep audit ack --code C --ref R --page N --quote "..." --reason "..." [--count N] [--by NAME]` appends one to
+`solution-section-mismatch` and `region-holds-item` (and the five findings of the survey record above) can **not be acknowledged at
+all**: `audit ack` refuses them with the command that repairs each, and the gate takes no note for them from the file either (it lists the
+note under `refusedAcknowledgements`; the finding stays open). `mcprep audit ack --code C --ref R --page N --quote "..." --reason "..." [--count N] [--by NAME]` appends one to
 `<project>.audit-notes.json` after checking everything that can be checked. Every refusal says what is wrong and what to give instead, **everything that is wrong at once** (a numbered list, then one call that would do, with what is right kept in it), so that one more call is enough:
 
 - `--code` must be the code of a finding that exists now for `--ref` (an exercise as `SECTION:LABEL`, a section as its id, exactly as the
@@ -455,7 +498,8 @@ exercise its instruction (`context`), continuation and solution regions as `page
 (an instruction across a page break is two regions), or `exercises add ... --context P:l,t,r,b`.
 
 **The certificate** `<project>.audit-gate.json` (`mcprep schema gate`) holds the SHA-256 of the frames and of the outline, the counts, the
-open and the acknowledged findings, `unconfirmed`, `ink` (true when the pixel check of the edges ran), `perfect`, the checks that ran,
+open and the acknowledged findings, `unconfirmed`, `ink` (true when the pixel check of the edges ran), `perfect`, the checks that ran
+(`checks.visual` and `checks.survey` say whether the visual record and the survey record cover everything),
 `passed` and `interlocked` (the edges that only tips of ink go across and that no rectangle can do better about: information that needs
 nothing, listed with its crossing pixels so that nothing is silent; `checks.verify.interlocked` counts them). Any later change to a frame
 or to the outline changes the hash and makes the certificate **stale**: `mcprep audit gate --status` says whether it is current and passed (exit code

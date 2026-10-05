@@ -62,7 +62,9 @@ export const bundlePathOf = (projectPath: string, pdfPath: string): string => jo
 /**
  * Findings that are defects of the audit, never what the book prints: `audit ack` refuses them, the gate takes no note for them, and
  * each has the command that repairs it. (A region that cuts its label, an answer on the wrong exercise, an instruction missing from an
- * exercise are all things the book does not print: repair them.)
+ * exercise are all things the book does not print: repair them.) The `survey-*` findings of the survey record are here too: the record is the
+ * proof that every page was looked at, so a page without an entry, an entry that disagrees with the project or one that is not in the format is
+ * repaired in the record or in the project, never excused.
  */
 export const NON_ACKNOWLEDGEABLE: Readonly<Record<string, string>> = {
   'label-not-first': 'Frame the exercise on its own text: look at it (`mcprep crop REF`), then `mcprep frames update REF --rect l,t,r,b --snap`, or `mcprep exercises label REF NUMBER` when its label is wrong.',
@@ -79,6 +81,11 @@ export const NON_ACKNOWLEDGEABLE: Readonly<Record<string, string>> = {
   'context-not-nearest': 'The nearest instruction above the exercise is its own: `mcprep context remove REF --all`, then `mcprep context add REF --page P --rect l,t,r,b --snap` with that instruction.',
   'solution-section-mismatch': 'Its answer is under the marker of another section: `mcprep solution remove REF`, then `mcprep solution add REF --page P --rect l,t,r,b --snap` with the answer printed in its own section.',
   'region-holds-item': 'The region reaches into the next exercise: `mcprep frames update REF --rect l,t,r,b --snap` so that it ends before it.',
+  'survey-missing': 'Write an entry for every page of the survey record: one { "from": 0, "to": 17, "kind": "front" } for each range of pages that holds the same kind of thing (`mcprep schema survey` prints the format; --survey takes a file or a folder of .json files).',
+  'survey-overlap': 'Give every page exactly one entry of the survey record: shorten one of the entries the finding names so that their ranges no longer share a page (`mcprep schema survey`).',
+  'survey-range': 'Correct the entry of the survey record: "from" and "to" are whole, zero-based page numbers inside the book with from not after to, and "kind" is one of exercises, answers, both, text, blank, front, back (`mcprep schema survey`).',
+  'survey-uncovered': 'Look at the page (`mcprep render PAGE`, `mcprep lines PAGE`): frame its exercises (`mcprep exercises add`) or its answers (`mcprep solution add`), or correct the survey record if the page holds none.',
+  'survey-unmarked': 'Look at the page (`mcprep render PAGE --frames --solutions`): the record and the project disagree. Change the kind of its entry to what the page holds (exercises, answers or both), or delete the frame or the solution region that does not belong there (`mcprep frames delete`, `mcprep solution remove`).',
 };
 
 /** The codes an acknowledgement may name: the codes of the verify check (but the defects of the audit) and of the comparison with the reference. */

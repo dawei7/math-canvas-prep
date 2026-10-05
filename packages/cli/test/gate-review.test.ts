@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Frame, Project } from '@mcprep/core';
 import { NON_ACKNOWLEDGEABLE, PdfDocument, newProject } from '@mcprep/core';
 import { buildPdf } from '@mcprep/core/testing';
-import { auditedBook, visualRecord, type VisualEntry } from './audited.js';
+import { auditedBook, visualRecord, writeSurveyRecord, type VisualEntry } from './audited.js';
 import { isPng, workspace, type Cli, type Result } from './helpers.js';
 
 /**
@@ -72,7 +72,8 @@ describe('the defects of the audit cannot be acknowledged', () => {
       expect(said(done), code).toContain('Repair it');
       expect(said(done), code).toContain('mcprep');
     }
-    expect(Object.keys(NON_ACKNOWLEDGEABLE)).toHaveLength(14);
+    // The 14 defects of the audit and the 5 findings of the survey record.
+    expect(Object.keys(NON_ACKNOWLEDGEABLE)).toHaveLength(19);
     // A note written into the file by hand covers nothing: the gate lists it as refused and the finding stays open.
     const { path, project, by } = await projectOf(cli);
     delete by('1.2:5').context;
@@ -179,7 +180,8 @@ describe('the pixel check of the edges is part of the gate', () => {
   it('runs by default and is recorded in the certificate; --no-ink skips it for a quick loop, and the book is not perfect until it has run', async () => {
     const cli = await auditedBook();
     await writeFile(join(cli.dir, 'visual.json'), JSON.stringify(await visualRecord(cli.dir)));
-    const full = await cli(['audit', 'gate', '--visual', 'visual.json', '--final']);
+    await writeSurveyRecord(cli.dir);
+    const full = await cli(['audit', 'gate', '--visual', 'visual.json', '--survey', 'survey.json', '--final']);
     expect(full.code).toBe(0);
     expect(gateOf(full)).toMatchObject({ passed: true, perfect: true, ink: true });
     expect(gateOf(full).checks.verify.ink).toBe(true);
@@ -206,7 +208,7 @@ describe('the pixel check of the edges is part of the gate', () => {
     expect(both.code).toBe(2);
     expect(said(both)).toContain('--ink and --no-ink together');
     // And the full gate again is perfect.
-    expect(gateOf(await cli(['audit', 'gate', '--visual', 'visual.json', '--final']))).toMatchObject({ perfect: true, ink: true });
+    expect(gateOf(await cli(['audit', 'gate', '--visual', 'visual.json', '--survey', 'survey.json', '--final']))).toMatchObject({ perfect: true, ink: true });
     expect((await cli(['export', '--out', 'book.mcbundle'], { json: false })).stdout).not.toContain('pixel check');
   });
 
@@ -387,19 +389,20 @@ describe('a second reviewer', () => {
     ];
     await writeFile(join(cli.dir, 'reference.json'), JSON.stringify({ sections: wrong }));
     await writeFile(join(cli.dir, 'visual.json'), JSON.stringify(await visualRecord(cli.dir)));
+    await writeSurveyRecord(cli.dir);
     expect((await cli(['audit', 'ack', '--code', 'reference-count', '--ref', '0.1', '--count', '1', '--page', '5', '--quote', QUOTE, '--reason', 'The book prints 70 exercises in 0.1 and the reference lists 68.', '--reference', 'reference.json', '--by', 'writer'])).code).toBe(0);
-    const gate = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json']);
+    const gate = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json', '--survey', 'survey.json']);
     expect(gate.code).toBe(0);
     expect(gateOf(gate)).toMatchObject({ passed: true, unconfirmed: 1, perfect: false });
-    const text = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json'], { json: false });
+    const text = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json', '--survey', 'survey.json'], { json: false });
     expect(text.stdout).toContain('1 acknowledgement is not yet confirmed by a second reviewer');
-    const final = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json', '--final']);
+    const final = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json', '--survey', 'survey.json', '--final']);
     expect(final.code).toBe(4);
     const exported = await cli(['export', '--out', 'book.mcbundle'], { json: false });
     expect(exported.stdout).toContain('1 acknowledgement is not yet confirmed by a second reviewer');
     expect((await cli(['audit', 'gate', '--status'], { json: false })).stdout).toContain('1 acknowledgement is not yet confirmed by a second reviewer');
     expect((await cli(['audit', 'confirm', '--by', 'reviewer', '--all'])).code).toBe(0);
-    const perfect = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json', '--final']);
+    const perfect = await cli(['audit', 'gate', '--reference', 'reference.json', '--visual', 'visual.json', '--survey', 'survey.json', '--final']);
     expect(perfect.code).toBe(0);
     expect(gateOf(perfect)).toMatchObject({ passed: true, unconfirmed: 0, perfect: true });
     expect((await cli(['export', '--out', 'book.mcbundle'], { json: false })).stdout).not.toContain('not yet confirmed');
@@ -448,7 +451,8 @@ describe('the visual record: proof that every exercise was looked at', () => {
   it('passes for a record of what is printed, covers every exercise and makes the sheets exhaustive; perfect with nothing to confirm', async () => {
     const { cli, entries } = await recorded();
     await write(cli, entries);
-    const done = await cli(['audit', 'gate', '--visual', 'visual.json', '--final']);
+    await writeSurveyRecord(cli.dir);
+    const done = await cli(['audit', 'gate', '--visual', 'visual.json', '--survey', 'survey.json', '--final']);
     expect(done.code).toBe(0);
     const gate = gateOf(done);
     expect(gate).toMatchObject({ passed: true, perfect: true, unconfirmed: 0 });
@@ -546,9 +550,10 @@ describe('the visual record: proof that every exercise was looked at', () => {
   it('takes a folder of files, one for each sheet, merged in the order of their names; a ref in two files is a mismatch; a file still works', async () => {
     const { cli, entries } = await recorded();
     const manifest = await filePerSheet(cli, entries, 'visual');
+    await writeSurveyRecord(cli.dir);
     // More than nine sheets: sheet-2 comes before sheet-10 because the numbers in the names are compared as numbers.
     expect(manifest.sheets.length).toBeGreaterThan(9);
-    const done = await cli(['audit', 'gate', '--visual', 'visual', '--final']);
+    const done = await cli(['audit', 'gate', '--visual', 'visual', '--survey', 'survey.json', '--final']);
     expect(done.code).toBe(0);
     expect(gateOf(done)).toMatchObject({ passed: true, perfect: true });
     expect(gateOf(done).checks.visual).toMatchObject({ entries: 112, files: manifest.sheets.length, exercises: 112, missing: 0, mismatches: 0, missingSheets: [], exhaustive: true });
