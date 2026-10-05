@@ -52,6 +52,21 @@ function zoneOf(run: Run, exercise: Exercise): Zone | undefined {
 }
 
 /** True when a line that tells what to do is printed between two places (positions as `pos`), in the column of the rect, and is in no region of an exercise. */
+const COUNT_WORDS: Record<string, number> = { both: 2, beiden: 2, beide: 2, two: 2, zwei: 2, three: 3, drei: 3, four: 4, vier: 4, five: 5, 'fünf': 5, six: 6, sechs: 6 };
+const COUNT_BEFORE = /\b(both|beiden|beide|two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\s+(?:folgenden|nächsten|following|next)\b/iu;
+const COUNT_AFTER = /\b(?:folgenden|nächsten|following|next)\s+(two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\b/iu;
+
+/** How many exercises an instruction says it is for ("die beiden folgenden Aufgaben", "the next three exercises"), from the text of its regions. */
+export function statedCount(run: Run, regions: readonly { page: number; rect: Rect }[]): number | undefined {
+  const text = regions
+    .flatMap((region) => run.index.page(region.page).pieces.filter((piece) => piece.rect.top >= region.rect.top - 0.004 && piece.rect.bottom <= region.rect.bottom + 0.004 && piece.rect.left >= region.rect.left - 0.01 && piece.rect.right <= region.rect.right + 0.01).map((piece) => piece.text))
+    .join(' ');
+  const match = COUNT_BEFORE.exec(text) ?? COUNT_AFTER.exec(text);
+  if (!match) return undefined;
+  const word = (match[1] as string).toLowerCase();
+  return /^\d$/.test(word) ? Number(word) : COUNT_WORDS[word];
+}
+
 function instructionBetween(run: Run, from: number, to: number, page: number, rect: Rect): boolean {
   for (let at = Math.max(0, Math.floor(from)); at <= Math.floor(to) && at <= page; at += 1) {
     if (at >= run.project.pdf.pageCount) break;
@@ -253,8 +268,12 @@ export function checkContexts(run: Run): Draft[] {
       }
 
       // (c) It has none, the exercise before it has an instruction that a group shares, and nothing is printed between them: it belongs to that group.
+      // Unless the instruction says how many exercises it is for ("die beiden folgenden Aufgaben", "the next three exercises") and the group has
+      // exactly that many: then the group ends with the exercise before.
       const group = before !== undefined ? keyOf(before) : '';
-      if (practice && before !== undefined && own === '' && group !== '' && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect)) {
+      const counted = group !== '' && before !== undefined ? statedCount(run, before.frame.context ?? []) : undefined;
+      const complete = counted !== undefined && counted === (members.get(group) ?? 0);
+      if (practice && before !== undefined && own === '' && group !== '' && !complete && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect)) {
         drafts.push(
           draft(
             'context-inconsistent',
