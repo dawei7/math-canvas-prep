@@ -47,6 +47,11 @@ export interface RegionText {
   marginPiece: { text: string; rect: Rect } | undefined;
   /** Everything in the region: the first row at the margin, then the rest from top to bottom. */
   text: string;
+  /**
+   * Lines that come in from the left and end inside the region, on its first row: a text layer that joined the items of a row
+   * into one line ("4 . If two resistors 5 . A ladder is 6 .") ends with the number of the item whose region this is.
+   */
+  entering: { text: string; rect: Rect }[];
   /** How many text lines of the page (as `mcprep lines` lists them) have a piece in the region. */
   lines: number;
 }
@@ -159,7 +164,14 @@ export class PageLines {
       const overlap = Math.min(piece.rect.right, region.right) - Math.max(piece.rect.left, region.left);
       return (centre < region.left || centre > region.right) && width > 0 && overlap / width >= STRADDLE;
     }).map((piece) => piece.text);
-    if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' '), lines: 0 };
+    const topmost = inside.length > 0 ? (inside[0] as Piece).rect : undefined;
+    const entering = this.within(this.lines, region, (piece) => {
+      const centre = (piece.rect.left + piece.rect.right) / 2;
+      return centre < region.left && piece.rect.right > region.left && piece.rect.right <= region.right;
+    })
+      .filter((piece) => (topmost === undefined ? piece.rect.top <= region.top + 2 * (piece.rect.bottom - piece.rect.top) : sameRow(piece.rect, topmost) || piece.rect.top <= topmost.top))
+      .map((piece) => ({ text: piece.text, rect: piece.rect }));
+    if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' '), lines: 0, entering };
     const leftmost = Math.min(...inside.map((piece) => piece.rect.left));
     const first = inside.find((piece) => piece.rect.left <= leftmost + MARGIN) as Piece;
     const band = first.rect;
@@ -181,6 +193,7 @@ export class PageLines {
       marginPiece: { text: first.text, rect: first.rect },
       text: [margin, ...rest].join(' '),
       lines: new Set(inside.map((piece) => piece.line)).size,
+      entering,
     };
   }
 

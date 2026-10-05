@@ -165,9 +165,16 @@ const DASH = '(?:-|to|through|thru)';
 const RANGE = new RegExp(`\\b(?:${WORD}\\s+|for\\s+(?:${WORD}\\s+)?)${NUM}\\s*${DASH}\\s*${NUM}\\b`, 'gi');
 const LIST = new RegExp(`\\b${WORD}\\s+${NUM}((?:\\s*(?:,|and|&)\\s*\\d{1,4}[a-z]?)+)`, 'gi');
 
+/** Numbers named as an exception, not as the exercises an instruction is for: "(not applicable to Exercises 249 and 250)", "except Problems 3-4". */
+const EXCEPTION = new RegExp(
+  `(?:not\\s+(?:applicable|used)\\s+(?:to|in|for|with)|except(?:\\s+for)?|other\\s+than|excluding)\\s+${WORD}\\s+\\d{1,4}[a-z]?(?:\\s*(?:-|,|&|and|or|to|through|thru)\\s*\\d{1,4}[a-z]?)*`,
+  'gi',
+);
+
 /** The ranges of numbers a line of instruction names, or undefined when it names none. */
-export function namedNumbers(text: string): NamedNumbers | undefined {
+export function namedNumbers(line: string): NamedNumbers | undefined {
   const ranges: { from: number; to: number }[] = [];
+  const text = line.replace(EXCEPTION, ' ');
   for (const match of text.matchAll(RANGE)) {
     const from = Number(match[1]);
     const to = Number(match[2]);

@@ -314,6 +314,9 @@ describe('instructions: the context of an exercise', () => {
       ['Problems 2 and 3. Evaluate each expression.', ['a:1', 'a:4']],
       ['In Exercises 1 to 3, evaluate each.', ['a:4']],
       ['Evaluate each expression.', []],
+      // Numbers named as an exception are not the ones the instruction is for.
+      ['Assume the rule (not applicable to Exercises 3 and 4). Evaluate each.', []],
+      ['Evaluate each, except Problems 2-3.', []],
     ];
     for (const [words, expected] of cases) {
       const { book, frames } = small();

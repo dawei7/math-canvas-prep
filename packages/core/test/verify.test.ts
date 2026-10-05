@@ -197,6 +197,31 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(report.findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref)).toEqual(['s:7']);
   });
 
+  it('reads the label at the end of a joined row of three items, when the label lies inside the region', () => {
+    // The text layer joined the first row of three items into one line that ends with the third label; the third item's text is a line of its own.
+    const page: PageText = {
+      page: 0,
+      size: { width: 595, height: 842, rotation: 0 },
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: '4 . If two resistors are joined 5 . A ladder leans against a 6 .', rect: { left: 0.1, top: 0.2, right: 0.6, bottom: 0.215 }, fontSize: 8, column: 0, chars: 64 },
+        { text: 'A 25-ft ladder is leaning', rect: { left: 0.61, top: 0.2, right: 0.79, bottom: 0.215 }, fontSize: 8, column: 0, chars: 25 },
+      ],
+    };
+    const make = (label: string, left: number): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [{ id: 'c', kind: 'exercise', page: 0, rect: { left, top: 0.195, right: 0.8, bottom: 0.22 }, authority: 'book', label, section: 's' }],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    const refs = (project: Project): string[] => verifyProject(project, lookup).findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref);
+    expect(refs(make('6', 0.58))).toEqual([]);
+    // Another number, or a region that starts right of the printed number, does not hold it.
+    expect(refs(make('7', 0.58))).toEqual(['s:7']);
+    expect(refs(make('6', 0.605))).toEqual(['s:6']);
+  });
+
   it('trusts the pieces of a joined line over the line: a region on the wrong column does not hold its label through the whole line', () => {
     const left = { left: 0.1, top: 0.2, right: 0.3, bottom: 0.22 };
     const right = { left: 0.55, top: 0.2, right: 0.75, bottom: 0.22 };

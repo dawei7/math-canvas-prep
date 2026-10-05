@@ -29,6 +29,22 @@ function cutsNumber(text: RegionText, region: Rect, label: string): boolean {
   return region.left > piece.rect.left + 0.5 * numberWidth;
 }
 
+/** How far the estimated place of a number may lie left of the region's edge (the place is estimated from the share of the characters). */
+const TAIL_SLACK = 0.015;
+
+/**
+ * A line that comes into the region from the left ends with the label as an item ("... is leaning against a 6 .", "shown:142 ."),
+ * and the label, placed by its share of the characters, lies inside the region: the text layer joined the row of items into one line.
+ */
+function endsWithLabel(line: { text: string; rect: Rect }, region: Rect, label: string): boolean {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = new RegExp(`(?:^|[^\\d.])(\\(?${escaped}\\s?[.)])\\s*$`).exec(line.text);
+  if (!match) return false;
+  const tail = line.text.length - (match.index + match[0].indexOf(match[1] as string));
+  const start = line.rect.right - ((line.rect.right - line.rect.left) * tail) / line.text.length;
+  return start >= region.left - TAIL_SLACK;
+}
+
 /** An exercise's own region: the first row at its left margin starts with its label. */
 export function checkExerciseText(exercises: readonly Exercise[], index: PageIndex, patterns: readonly RegExp[] | undefined): Draft[] {
   const drafts: Draft[] = [];
@@ -54,7 +70,10 @@ export function checkExerciseText(exercises: readonly Exercise[], index: PageInd
     }
     // A text layer that joined two exercises of a row into one line cannot be cut at the column: a line that runs into the
     // region holds the label when the label starts one of its items.
-    const ok = (text.margin !== undefined && rowStartsWithLabel(text.margin, label, patterns)) || text.straddling.some((line) => rowHasItem(line, label, patterns));
+    const ok =
+      (text.margin !== undefined && rowStartsWithLabel(text.margin, label, patterns)) ||
+      text.straddling.some((line) => rowHasItem(line, label, patterns)) ||
+      text.entering.some((line) => endsWithLabel(line, frame.rect, label));
     const cut = ok && cutsNumber(text, frame.rect, label);
     if (ok && !cut) continue;
     drafts.push(
