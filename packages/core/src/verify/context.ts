@@ -133,6 +133,19 @@ function instructionBetween(run: Run, from: number, to: number, page: number, re
   return false;
 }
 
+/** True when a line of text in the regions tells what to do (an instruction, as the lines of a page are classified). */
+function holdsInstruction(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
+  return regions.some((region) => {
+    if (region.page < 0 || region.page >= run.project.pdf.pageCount) return false;
+    const kinds = run.kinds(region.page);
+    return run.index.page(region.page).pieces.some((piece) => {
+      const centre = (piece.rect.left + piece.rect.right) / 2;
+      const middle = (piece.rect.top + piece.rect.bottom) / 2;
+      return kinds.kind(piece) === 'instruction' && centre >= region.rect.left && centre <= region.rect.right && middle >= region.rect.top && middle <= region.rect.bottom;
+    });
+  });
+}
+
 export function checkContexts(run: Run): Draft[] {
   const drafts: Draft[] = [];
   const pageCount = run.project.pdf.pageCount;
@@ -206,6 +219,8 @@ export function checkContexts(run: Run): Draft[] {
     const to = pos(frame.page, frame.rect.top);
     // The instructions are printed above the exercise; one attached from below is wrong, and then the nearest one above is looked for.
     const printedAbove = contexts.filter((region) => pos(region.page, region.rect.top) < to);
+    // A figure or a table printed below the exercises it serves ("see Figure 1.2.3") is attached from below and holds no instruction to compare.
+    if (printedAbove.length === 0 && !holdsInstruction(run, contexts)) continue;
     const from = printedAbove.length > 0 ? Math.max(...printedAbove.map((region) => pos(region.page, region.rect.bottom))) : Math.max(0, frame.page - 1);
     if (to <= from) continue;
     let nearest: { piece: Piece; page: number; at: number } | undefined;
@@ -294,16 +309,20 @@ export function checkContexts(run: Run): Draft[] {
         const owners = entry.owners.filter((owner) => owner !== exercise);
         // A heading between the instruction and the exercise: where the instruction holds is said by its words, not by where it is printed.
         const acrossHeading = headingBetween(run, pos(entry.page, entry.rect.bottom), top, frame.rect);
+        // An instruction printed above this exercise that the exercise after it does not have either starts further down: it is not the instruction of
+        // the first exercise of its group (that exercise and the next one have it), and where it starts is read in the exercises.
+        const skipsNext = own === '' && after !== undefined && !owners.includes(after);
+        const groupEnd = acrossHeading || skipsNext;
         drafts.push(
           draft(
-            acrossHeading ? 'context-group-end' : 'context-inconsistent',
+            groupEnd ? 'context-group-end' : 'context-inconsistent',
             'warning',
             exercise.ref,
             frame.page,
             `${exercise.ref} ${own === '' ? 'has no instruction' : 'does not have the instruction'} printed ${acrossHeading ? 'above it, across a heading' : 'right above it'} (page ${entry.page}), which is the instruction of ${owners
               .slice(0, 3)
               .map((owner) => owner.ref)
-              .join(', ')}${owners.length > 3 ? ` and ${owners.length - 3} more` : ''}.`,
+              .join(', ')}${owners.length > 3 ? ` and ${owners.length - 3} more` : ''}${skipsNext && !acrossHeading ? `, not of ${(after as Exercise).ref}, the exercise after it` : ''}.`,
             `the instruction on page ${entry.page} is the one of ${(owners[0] as Exercise).ref}`,
             exercise.where,
           ),

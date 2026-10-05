@@ -813,6 +813,40 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
   });
 
+  it('does not compare a figure printed below the exercises it serves with the instructions above them', async () => {
+    const book = new Workbook(1);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+    book.text(0, 72, 700, 'Figure 1.2.3: A triangle with its three sides.', 11);
+    const figure = around(0, 72, 700, { width: 300 });
+    book.exercise('a', '1', 0, 72, 100, { extra: { context: [figure] } });
+    book.exercise('a', '2', 0, 72, 140, { extra: { context: [figure] } });
+    expect(codes(await check(book))).not.toContain('context-not-nearest');
+  });
+
+  it('is context-group-end for an exercise that an instruction printed above it skips, context-inconsistent when its group starts there', async () => {
+    const make = (owners: number[]): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+      book.text(0, 72, 180, 'Use the following notation.', 11, BOLD);
+      const first = around(0, 72, 60, { width: 300 });
+      const second = around(0, 72, 180, { width: 300 });
+      book.exercise('a', '1', 0, 72, 100, { extra: { context: [first] } });
+      book.exercise('a', '2', 0, 72, 140, { extra: { context: [first] } });
+      for (let n = 3; n <= 6; n += 1) book.exercise('a', String(n), 0, 72, 200 + 40 * (n - 3), owners.includes(n) ? { extra: { context: [second] } } : {});
+      return book;
+    };
+    // Printed above 3, the notation is for 5 and 6 only: where it starts is read in the exercises.
+    const skipped = await check(make([5, 6]));
+    expect(refs(skipped, 'context-group-end')).toEqual(['a:3']);
+    expect(codes(skipped)).not.toContain('context-inconsistent');
+    // 4, 5 and 6 have it and 3 has not: the first exercise of the group lost its instruction.
+    const dropped = await check(make([4, 5, 6]));
+    expect(refs(dropped, 'context-inconsistent')).toEqual(['a:3']);
+    expect(codes(dropped)).not.toContain('context-group-end');
+  });
+
   it('does not give an instruction to an exercise outside the numbers it names, though it is printed right above it', async () => {
     const book = new Workbook(2);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
@@ -842,8 +876,8 @@ describe('context-inconsistent: an exercise between two that share an instructio
       return book;
     };
     expect(codes(await check(make(7)))).not.toContain('context-inconsistent');
-    // The same line in the size of the text is an instruction printed right above exercise 4.
-    expect(refs(await check(make(11)), 'context-inconsistent')).toEqual(['a:4']);
+    // The same line in the size of the text is an instruction printed right above exercise 4 that exercise 5 does not have either: it starts further down, and that is read in the exercises (acknowledgeable).
+    expect(refs(await check(make(11)), 'context-group-end')).toEqual(['a:4']);
   });
 
   it('does not take a numbered heading in bold for an instruction', async () => {

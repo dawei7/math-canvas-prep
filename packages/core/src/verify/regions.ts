@@ -152,11 +152,21 @@ export class PageLines {
       return lines.some((line) => line.headerFooter === true && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && Math.abs(line.rect.bottom - piece.rect.bottom) <= SAME_PLACE);
     };
     for (const piece of this.lines) {
-      if (piece.headerFooter || !hasWords(piece.text) || startsLikeNumber(piece.text)) continue;
+      if (piece.headerFooter || !hasWords(piece.text)) continue;
       if (piece.rect.bottom > HEAD_BAND && piece.rect.top < 1 - HEAD_BAND) continue;
+      // An exercise named by a keyword is never a head. A line that starts like a number is an item, unless it ends with a page number as well
+      // ("8. Path Connectedness 59": the number of the chapter first, the number of the page last).
+      if (KEYWORD_ITEM.test(piece.text)) continue;
+      if (startsLikeNumber(piece.text) && !/\s\d{1,4}$/.test(piece.text)) continue;
       const before = [repeats(piece, -1), repeats(piece, -2)];
       const after = [repeats(piece, 1), repeats(piece, 2)];
       if ((before[0] && before[1]) || (before[0] && after[0]) || (after[0] && after[1])) {
+        piece.headerFooter = true;
+        continue;
+      }
+      // The same line (digits blurred) at the same place on the page next to this one, standing apart from the text: a head on two pages that
+      // are not three in a row (the pages of a problem set between citation pages).
+      if ((before[0] || after[0]) && piece.text.length >= 8 && !this.inBlock(piece)) {
         piece.headerFooter = true;
         continue;
       }

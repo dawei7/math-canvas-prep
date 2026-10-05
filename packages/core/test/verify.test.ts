@@ -279,6 +279,27 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(new PageIndex((number) => list[number]).page(1).pieces.find((piece) => piece.text.startsWith('(b)'))?.headerFooter).toBe(false);
   });
 
+  it('takes for a running head a line with the chapter number first and the page number last, and a line that the next page repeats', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const head = (index: number, text: string | undefined, body?: { top: number }): PageText => ({
+      page: index,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        ...(text === undefined ? [] : [{ text, rect: { left: 0.1, right: 0.5, top: 0.094, bottom: 0.106 }, fontSize: 10, column: 0, chars: text.length }]),
+        { text: 'Problem 3: Show that the sequence converges.', rect: { left: 0.1, right: 0.8, top: body?.top ?? 0.3, bottom: (body?.top ?? 0.3) + 0.012 }, fontSize: 10, column: 0, chars: 44 },
+      ],
+    });
+    const flagged = (pages: PageText[]): boolean | undefined => new PageIndex((number) => pages[number]).page(1).pieces[0]?.headerFooter;
+    // "8. Path Connectedness 59": three pages in a row, it is a head; without the page number it is an item.
+    expect(flagged([0, 1, 2].map((index) => head(index, `8. Path Connectedness ${59 + index}`)))).toBe(true);
+    expect(flagged([0, 1, 2].map((index) => head(index, '8. Path Connectedness')))).toBe(false);
+    // On two pages next to each other only (citation pages around them have no head): a head, unless text follows it closely.
+    expect(flagged([head(0, undefined), head(1, 'MATH 18.102 Problem Set 3'), head(2, 'MATH 18.102 Problem Set 4'), head(3, undefined)])).toBe(true);
+    expect(flagged([head(0, undefined), head(1, 'MATH 18.102 Problem Set 3', { top: 0.112 }), head(2, 'MATH 18.102 Problem Set 4', { top: 0.112 }), head(3, undefined)])).toBe(false);
+  });
+
   it('does not take for a running head the first line of three pages that each start with an exercise named by a keyword', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const pages = (text: (index: number) => string): PageText[] =>
