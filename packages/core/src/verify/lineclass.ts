@@ -167,7 +167,7 @@ const LIST = new RegExp(`\\b${WORD}\\s+${NUM}((?:\\s*(?:,|and|&)\\s*\\d{1,4}[a-z
 
 /** Numbers named as an exception, not as the exercises an instruction is for: "(not applicable to Exercises 249 and 250)", "except Problems 3-4". */
 const EXCEPTION = new RegExp(
-  `(?:not\\s+(?:applicable|used)\\s+(?:to|in|for|with)|except(?:\\s+for)?|other\\s+than|excluding)\\s+${WORD}\\s+\\d{1,4}[a-z]?(?:\\s*(?:-|,|&|and|or|to|through|thru)\\s*\\d{1,4}[a-z]?)*`,
+  `(?:not\\s+(?:applicable|used)\\s+(?:to|in|for|with)|except(?:\\s+for)?|other\\s+than|excluding|refer(?:ring)?(?:\\s+back)?\\s+to|back\\s+to|see|from|based\\s+on|(?:use|using)\\s+(?:your\\s+|the\\s+)?(?:answers?|results?)\\s+(?:to|from|of)|answers?\\s+(?:to|from))\\s+${WORD}\\s+\\d{1,4}[a-z]?(?:\\s*(?:-|,|&|and|or|to|through|thru)\\s*\\d{1,4}[a-z]?)*`,
   'gi',
 );
 

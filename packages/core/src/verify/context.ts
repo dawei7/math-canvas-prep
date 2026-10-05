@@ -279,7 +279,16 @@ export function checkContexts(run: Run): Draft[] {
       const above = [...printed.entries()].filter(([, entry]) => entry.at >= from && entry.at < top - 1e-6 && relevant(entry.rect) && !isFootnote(run, entry.page, entry.rect));
 
       // (a) An instruction printed right above this exercise, which other exercises have and this one does not.
-      const lacking = above.filter(([id]) => !ownKeys.has(id));
+      // An instruction that names numbers ("In Exercises 9 - 15") is not the instruction of an exercise outside them, though it is printed right above it.
+      const ownNumber = labelNumber(frame.label as string);
+      const outside = (regions: readonly { page: number; rect: Rect }[]): boolean => {
+        if (ownNumber === undefined) return false;
+        return regions.some((region) => {
+          const named = namedBy(run, region.page, region.rect);
+          return named !== undefined && !namesNumber(named.named, ownNumber);
+        });
+      };
+      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]));
       if (lacking.length > 0) {
         const [, entry] = lacking[lacking.length - 1] as (typeof lacking)[number];
         const owners = entry.owners.filter((owner) => owner !== exercise);
@@ -306,7 +315,7 @@ export function checkContexts(run: Run): Draft[] {
       const shared = before !== undefined ? keyOf(before) : '';
       // (b) and (c) read a practice set, where the exercises of a group follow one another: in a lesson with exercises inline they do not.
       const practice = !run.inline.has(zone);
-      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id)))) {
+      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? [])) {
         drafts.push(
           draft(
             'context-inconsistent',
@@ -330,7 +339,7 @@ export function checkContexts(run: Run): Draft[] {
       // A heading printed between them ("Aufgaben zum Abgeben") ends the group as well. An instruction that does not say how many exercises it is
       // for ("In den folgenden Aufgaben geht es um Primzahlen") ends where its subject ends: that is read in the exercises, and
       // the finding can be acknowledged with the page, for a second reviewer to confirm.
-      if (practice && before !== undefined && own === '' && group !== '' && !complete && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
+      if (practice && before !== undefined && own === '' && group !== '' && !complete && !outside(before.frame.context ?? []) && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
         drafts.push(
           draft(
             counted === undefined ? 'context-group-end' : 'context-inconsistent',

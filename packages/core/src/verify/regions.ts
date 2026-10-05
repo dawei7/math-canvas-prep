@@ -32,6 +32,8 @@ const SAME_ROW = 0.5;
 export const MARGIN = 0.012;
 /** A line whose centre is outside a region but that covers this much of its width runs into it (two exercises joined into one line). */
 const STRADDLE = 0.4;
+/** A line that comes in from the left counts when it starts in the top share of the region's height. */
+const ENTERING_SHARE = 0.7;
 /** Lines closer than this many line heights are one block of text (a paragraph); a running head stands further from the text under it. */
 const BLOCK_GAP = 1.7;
 /** A piece that starts this far left of a region's edge comes in from the left (a line joined across columns); a cut number is narrower. */
@@ -213,7 +215,9 @@ export class PageLines {
       // A line from the left: its centre is left of the region, or it starts well left of it (joined across the columns).
       return (centre < region.left || piece.rect.left < region.left - FROM_OUTSIDE) && piece.rect.right > region.left;
     })
-      .filter((piece) => (topmost === undefined ? piece.rect.top <= region.top + 2 * (piece.rect.bottom - piece.rect.top) : sameRow(piece.rect, topmost) || piece.rect.top <= topmost.top))
+      // The label of an item that stands beside a display (a system of equations, a matrix) is set at the height of its middle row: any line
+      // that comes in from the left in the upper part of the region may end with it.
+      .filter((piece) => piece.rect.top <= region.top + ENTERING_SHARE * (region.bottom - region.top))
       .map((piece) => ({ text: piece.text, rect: piece.rect }));
     if (inside.length === 0) return { pieces: [], straddling, margin: undefined, marginPiece: undefined, text: straddling.join(' '), lines: 0, entering };
     const leftmost = Math.min(...inside.map((piece) => piece.rect.left));
@@ -225,7 +229,7 @@ export class PageLines {
     const row = inside
       .filter((piece) => {
         if (piece === first) return true;
-        if (piece.rect.left <= first.rect.left) return false;
+        // A piece to the left of the anchor in the same band is part of the row (a number beside a numerator that was found first).
         const overlap = Math.min(band.bottom, piece.rect.bottom) - Math.max(band.top, piece.rect.top);
         const smaller = Math.min(band.bottom - band.top, piece.rect.bottom - piece.rect.top);
         return smaller > 0 && overlap / smaller >= SAME_ROW;
@@ -243,7 +247,7 @@ export class PageLines {
       pieces: inside.map((piece) => piece.text),
       straddling,
       margin,
-      marginPiece: { text: first.text, rect: first.rect },
+      marginPiece: { text: (row[0] as Piece).text, rect: (row[0] as Piece).rect },
       topRow,
       topPiece: { text: topPiece.text, rect: topPiece.rect },
       text: [margin, ...rest].join(' '),

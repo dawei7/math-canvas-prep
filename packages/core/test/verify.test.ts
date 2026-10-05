@@ -290,6 +290,40 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged(pages((index) => `Fourier series, part ${index + 3}`))).toBe(true);
   });
 
+  it('reads a number that stands beside a numerator, and a number set at the height of the middle row of a display', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const rowOf = (top: number, bottom: number) => ({ top, bottom });
+    const page: PageText = {
+      page: 0,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        // "9." with a numerator "10" that starts a little to its right and a little higher, and an exponent line above both.
+        { text: '2 1', rect: { left: 0.76, right: 0.81, ...rowOf(0.3225, 0.3391) }, fontSize: 11, column: 0, chars: 3 },
+        { text: '10', rect: { left: 0.6712, right: 0.685, ...rowOf(0.3302, 0.3391) }, fontSize: 11, column: 0, chars: 2 },
+        { text: '9. f(x) = x - x - 1', rect: { left: 0.6601, right: 0.8615, ...rowOf(0.3318, 0.3456) }, fontSize: 11, column: 0, chars: 19 },
+        // A system of equations with its number "13." at the end of the line of the left neighbour, in the middle row of the display.
+        { text: 'x + y = 1 x - y = 2 13.', rect: { left: 0.2, right: 0.4, ...rowOf(0.5662, 0.58) }, fontSize: 11, column: 0, chars: 23 },
+        { text: '3x + 4z = 0', rect: { left: 0.5, right: 0.61, ...rowOf(0.5538, 0.5676) }, fontSize: 11, column: 0, chars: 11 },
+        { text: '2x - y + 3z = 1', rect: { left: 0.5, right: 0.65, ...rowOf(0.5786, 0.5924) }, fontSize: 11, column: 0, chars: 15 },
+      ],
+    };
+    const make = (label: string, rect: Rect): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [{ id: 'c', kind: 'exercise', page: 0, rect, authority: 'book', label, section: 's' }],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    const refs = (project: Project): string[] => verifyProject(project, lookup).findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref);
+    const numerator = { left: 0.6521, top: 0.3163, right: 0.8915, bottom: 0.3592 };
+    expect(refs(make('9', numerator))).toEqual([]);
+    expect(refs(make('8', numerator))).toEqual(['s:8']);
+    const display = { left: 0.38, top: 0.5, right: 0.7, bottom: 0.62 };
+    expect(refs(make('13', display))).toEqual([]);
+    expect(refs(make('14', display))).toEqual(['s:14']);
+  });
+
   it('reads the label in the topmost row when an equation number stands in the left margin lower down, or the first line is indented', () => {
     const page: PageText = {
       page: 0,

@@ -457,6 +457,8 @@ export function checkCoverage(run: Run): Draft[] {
           if (piece === own) continue;
           const item = kinds.item(piece);
           if (item === undefined || item.part || item.label === exercise.label || !labels.has(item.label)) continue;
+          // A number and a closing mark with nothing after them ("2)" at the end of a formula) is no exercise.
+          if (piece.text.replace(item.label, '').replace(/[()\s.:]/g, '') === '') continue;
           drafts.push(
             draft(
               'region-holds-item',

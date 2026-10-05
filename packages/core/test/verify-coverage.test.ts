@@ -357,6 +357,10 @@ describe('instructions: the context of an exercise', () => {
       ['Problems 2 and 3. Evaluate each expression.', ['a:1', 'a:4']],
       ['In Exercises 1 to 3, evaluate each.', ['a:4']],
       ['Evaluate each expression.', []],
+      // Numbers an instruction points back to are not the ones it is for.
+      ['Refer back to problems 1-3 for help.', []],
+      ['From questions 1-3, we can conclude the following.', []],
+      ['Use your answers to questions 2 and 3 to answer.', []],
       // Numbers named as an exception are not the ones the instruction is for.
       ['Assume the rule (not applicable to Exercises 3 and 4). Evaluate each.', []],
       ['Evaluate each, except Problems 2-3.', []],
@@ -807,6 +811,23 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(counted('Die drei folgenden Aufgaben verwenden diese Bezeichnung.')), 'context-inconsistent')).toEqual(['a:3']);
     // No count: the subject of the instruction says where it ends.
     expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
+  });
+
+  it('does not give an instruction to an exercise outside the numbers it names, though it is printed right above it', async () => {
+    const book = new Workbook(2);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, 'In Exercises 1 - 2, evaluate each expression.', 11, BOLD);
+    book.text(0, 72, 180, 'In Exercises 5 - 6, solve each equation.', 11, BOLD);
+    const first = around(0, 72, 60, { width: 300 });
+    const second = around(0, 72, 180, { width: 300 });
+    book.exercise('a', '1', 0, 72, 100, { extra: { context: [first] } });
+    book.exercise('a', '2', 0, 72, 140, { extra: { context: [first] } });
+    // 3 and 4 have no instruction in the book; the instruction printed right above them is for 5 and 6.
+    book.exercise('a', '3', 0, 72, 200);
+    book.exercise('a', '4', 0, 72, 240);
+    book.exercise('a', '5', 0, 72, 280, { extra: { context: [second] } });
+    book.exercise('a', '6', 0, 72, 320, { extra: { context: [second] } });
+    expect(codes(await check(book))).not.toContain('context-inconsistent');
   });
 
   it('does not take a footnote given to an earlier exercise for the instruction of the next one', async () => {
