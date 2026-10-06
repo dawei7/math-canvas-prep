@@ -336,6 +336,9 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged([page(0, '1', 0.77), page(1, '2', 0.77), page(2, '3', 0.77)])).toBe(true);
     // Not at the same place on the page next to it: a number in the text.
     expect(flagged([page(0, '1', 0.5), page(1, '2', 0.77), page(2, '3', 0.6)])).toBe(false);
+    // A text layer that prints a space as ">" gives "1>": still a page number.
+    const marked = (list: PageText[]): boolean | undefined => new PageIndex((n) => list[n]).page(1).pieces.find((piece) => /^\d+>$/.test(piece.text))?.headerFooter;
+    expect(marked([page(0, '1>', 0.77), page(1, '2>', 0.77), page(2, '3>', 0.77)])).toBe(true);
   });
 
   it('does not take for a running head the first line of three pages that each start with an exercise named by a keyword', () => {

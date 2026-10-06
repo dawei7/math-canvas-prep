@@ -156,7 +156,8 @@ export class PageLines {
     };
     // A page number that stands anywhere on the page (not in the bands of the heads, where the reader flags it): a line of digits only that the
     // page next to this one has at the same place (a figure label or an axis number does not come back at the same place on the next page).
-    const digits = /^\d{1,4}$/;
+    // (A text layer that prints a space as ">" gives "1>": the digits may be followed by such marks.)
+    const digits = /^\d{1,4}[>\s]*$/;
     for (const piece of this.lines) {
       if (piece.headerFooter || !digits.test(piece.text)) continue;
       for (const offset of [-1, 1]) {
