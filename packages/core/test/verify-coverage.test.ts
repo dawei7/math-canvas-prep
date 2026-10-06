@@ -830,20 +830,24 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(found).not.toContain('context-inconsistent');
   });
 
-  it('takes the small lines of a figure that is printed inside a span for no skipped text', async () => {
-    const make = (size: number): Workbook => {
+  it('takes the lines of a figure that is printed inside a span for no skipped text: its small labels and its caption', async () => {
+    const make = (words: string, size: number, second?: string): Workbook => {
       const book = new Workbook(1);
       book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
       const first = book.exercise('a', '1', 0, 72, 100, { words: 'Let Z be a random variable and let' });
-      book.text(0, 72, 200, 'Figure 1.1. Expectation of the maximum of Gaussian variables.', size);
+      book.text(0, 72, 200, words, size);
+      if (second !== undefined) book.text(0, 72, 214, second, size);
       book.text(0, 72, 300, 'then show that the expectation is finite for all n.');
       first.continues = [around(0, 72, 300, { width: 300 })];
       book.exercise('a', '2', 0, 72, 400);
       book.exercise('a', '3', 0, 72, 440);
       return book;
     };
-    expect(refs(await check(make(7)), 'span-gap')).toEqual([]);
-    expect(refs(await check(make(11)), 'span-gap')).toEqual(['a:1']);
+    // The small label of a figure, and a caption (the line that starts it and the line under it) at the size of the text: no skipped text.
+    expect(refs(await check(make('the maximum of n Gaussian samples', 7)), 'span-gap')).toEqual([]);
+    expect(refs(await check(make('Figure 1.1. Expectation of the maximum of Gaussian variables', 11, 'as a function of n, from 1,000 replications.')), 'span-gap')).toEqual([]);
+    // A sentence of the text in that place is part of the exercise that the span skips.
+    expect(refs(await check(make('the expectation of the maximum is bounded by the sum', 11)), 'span-gap')).toEqual(['a:1']);
   });
 
   it('does not compare a figure printed below the exercises it serves with the instructions above them', async () => {

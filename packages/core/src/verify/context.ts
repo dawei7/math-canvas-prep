@@ -133,7 +133,7 @@ function instructionBetween(run: Run, from: number, to: number, page: number, re
   return false;
 }
 
-const FIGURE_CAPTION = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d/i;
+const FIGURE_CAPTION = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)*[.:]/i;
 
 /** True when the regions show a figure or a table and no instruction: no text at all, or a caption ("Figure 4.4: ..."), and no line that tells what to do. */
 function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {

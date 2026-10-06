@@ -25,6 +25,25 @@ interface Uncovered {
 
 const height = (piece: Piece): number => Math.max(1e-6, piece.rect.bottom - piece.rect.top);
 
+/** A caption: "Figure 1.1. Expectation of the ...", "Table 4.4: ...". */
+const CAPTION_START = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)*[.:]/i;
+
+/** The lines of the captions of a page: a line that starts like a caption and the lines right under it, at the leading of a paragraph. */
+function captionLines(pieces: readonly Piece[]): Set<Piece> {
+  const found = new Set<Piece>();
+  let last: Piece | undefined;
+  for (const piece of pieces) {
+    if (CAPTION_START.test(piece.text)) {
+      found.add(piece);
+      last = piece;
+    } else if (last !== undefined && piece.rect.top >= last.rect.top && piece.rect.top - last.rect.bottom <= VERIFY_LIMITS.blockGap * height(last) && Math.abs(piece.rect.left - last.rect.left) < 0.08) {
+      found.add(piece);
+      last = piece;
+    } else last = undefined;
+  }
+  return found;
+}
+
 const escapeWord = (word: string): string => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A footnote stands below this share of the page and is set at most this share of the body size. */
@@ -245,6 +264,7 @@ export function checkCoverage(run: Run): Draft[] {
     const regions = run.covering(page);
     const band = bands.get(page);
     for (const gap of gapsByPage.get(page) ?? []) gap.prepare?.(page, lines.pieces, (piece) => coveredShare(piece.rect, regions) >= VERIFY_LIMITS.coveredShare);
+    const captions = captionLines(lines.pieces);
     for (const piece of lines.pieces) {
       const kind = kinds.kind(piece);
       if (kind === 'heading') answerBlock = ANSWER_HEADING.test(piece.text);
@@ -271,7 +291,7 @@ export function checkCoverage(run: Run): Draft[] {
       // on across the page break: it is judged as text left behind, not as a gap in the span.
       // The same for a line set smaller than the text anywhere between the regions (the labels and the caption of a figure that is printed in the span).
       const small = lines.bodySize > 0 && piece.fontSize > 0 && piece.fontSize <= FOOTNOTE_SIZE * lines.bodySize;
-      const footnote = small && (piece.rect.top >= FOOTNOTE_FROM || /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d/i.test(piece.text) || gapsByPage.has(page));
+      const footnote = (small && (piece.rect.top >= FOOTNOTE_FROM || gapsByPage.has(page))) || captions.has(piece);
       const gap = footnote ? undefined : (gapsByPage.get(page) ?? []).find((candidate) => candidate.has(page, piece));
       if (gap) {
         const list = byGap.get(gap);
