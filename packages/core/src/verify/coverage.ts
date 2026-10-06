@@ -25,6 +25,10 @@ interface Uncovered {
 
 const height = (piece: Piece): number => Math.max(1e-6, piece.rect.bottom - piece.rect.top);
 
+/** The labels of a plot are short lines, and a figure is at most this share of the page tall. */
+const FIGURE_LABEL_LENGTH = 14;
+const FIGURE_HEIGHT = 0.45;
+
 /** A caption: "Figure 1.1. Expectation of the ...", "Table 4.4: ...". */
 const CAPTION_START = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)*[.:]/i;
 
@@ -32,10 +36,18 @@ const CAPTION_START = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)
 function captionLines(pieces: readonly Piece[]): Set<Piece> {
   const found = new Set<Piece>();
   let last: Piece | undefined;
-  for (const piece of pieces) {
+  for (let at = 0; at < pieces.length; at += 1) {
+    const piece = pieces[at] as Piece;
     if (CAPTION_START.test(piece.text)) {
       found.add(piece);
       last = piece;
+      // The labels of the figure stand right above its caption: short lines ("0.35", "n = 4", "10"), up to the first line of running text.
+      for (let up = at - 1; up >= 0; up -= 1) {
+        const above = pieces[up] as Piece;
+        if (above.headerFooter) continue;
+        if (above.text.length > FIGURE_LABEL_LENGTH || piece.rect.top - above.rect.bottom > FIGURE_HEIGHT) break;
+        found.add(above);
+      }
     } else if (last !== undefined && piece.rect.top >= last.rect.top && piece.rect.top - last.rect.bottom <= VERIFY_LIMITS.blockGap * height(last) && Math.abs(piece.rect.left - last.rect.left) < 0.08) {
       found.add(piece);
       last = piece;

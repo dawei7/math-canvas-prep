@@ -846,6 +846,12 @@ describe('context-inconsistent: an exercise between two that share an instructio
     // The small label of a figure, and a caption (the line that starts it and the line under it) at the size of the text: no skipped text.
     expect(refs(await check(make('the maximum of n Gaussian samples', 7)), 'span-gap')).toEqual([]);
     expect(refs(await check(make('Figure 1.1. Expectation of the maximum of Gaussian variables', 11, 'as a function of n, from 1,000 replications.')), 'span-gap')).toEqual([]);
+    // The labels of the plot above its caption ("0.35", "n = 4", "10") belong to the figure as well.
+    const plot = make('Figure 7.8: Convolution of n exponential densities.', 11);
+    plot.text(0, 100, 150, '0.35 n = 2', 11);
+    plot.text(0, 100, 165, 'n = 4', 11);
+    plot.text(0, 100, 180, '10', 11);
+    expect(refs(await check(plot), 'span-gap')).toEqual([]);
     // A sentence of the text in that place is part of the exercise that the span skips.
     expect(refs(await check(make('the expectation of the maximum is bounded by the sum', 11)), 'span-gap')).toEqual(['a:1']);
   });
