@@ -331,6 +331,29 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged(list(0.066))).toBe(false);
   });
 
+  it('takes a numbered head that only the right-hand pages print (the left-hand pages print the title of the book) for a head, but not an item that comes back as an item', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const page = (index: number, head: string, body = 0.3): PageText => ({
+      page: index,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: head, rect: { left: 0.1, right: 0.6, top: 0.05, bottom: 0.062 }, fontSize: 10, column: 0, chars: head.length },
+        { text: 'The first line of the text of this page goes on and on here.', rect: { left: 0.1, right: 0.9, top: body, bottom: body + 0.012 }, fontSize: 10, column: 0, chars: 60 },
+      ],
+    });
+    // Pages 1, 3 and 5 print "7. The wave equation"; pages 2 and 4 print the title of the book.
+    const list = (head: string, body = 0.3): PageText[] => [1, 2, 3, 4, 5].map((index) => page(index, index % 2 === 1 ? head : 'A Course in Synthetic Analysis', body));
+    const flagged = (pages: PageText[]): boolean | undefined => new PageIndex((n) => pages[n - 1]).page(3).pieces[0]?.headerFooter;
+    expect(flagged(list('7. The wave equation'))).toBe(true);
+    // A line of a paragraph right under it is text.
+    expect(flagged(list('7. The wave equation', 0.066))).toBe(false);
+    // Items numbered one after the other with the same words do not have the same number two pages away, and a keyword item is never a head.
+    expect(flagged([1, 2, 3, 4, 5].map((index) => page(index, index % 2 === 1 ? `${index}. The wave equation` : 'A Course in Synthetic Analysis')))).toBe(false);
+    expect(flagged(list('Problem 7: The wave equation'))).toBe(false);
+  });
+
   it('takes the head of a chapter that starts with its number for a head when it stands alone on the row of the page number', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const page = (body: number): PageText => ({

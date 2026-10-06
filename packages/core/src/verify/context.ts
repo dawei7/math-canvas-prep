@@ -1,7 +1,7 @@
 import type { Rect } from '../model/types.js';
 import { draft, type Draft, type Exercise } from './common.js';
 import { excerpt } from './labels.js';
-import { aloneOnRow, labelNumber, namedNumbers, namesNumber, type NamedNumbers } from './lineclass.js';
+import { aloneOnRow, isCaption, labelNumber, namedNumbers, namesNumber, type NamedNumbers } from './lineclass.js';
 import type { Piece } from './regions.js';
 import { chainOf, coveredShare, pagesOfRange, pos, type Covering, type Run, type Zone } from './run.js';
 import { VERIFY_LIMITS } from './types.js';
@@ -133,8 +133,6 @@ function instructionBetween(run: Run, from: number, to: number, page: number, re
   return false;
 }
 
-const FIGURE_CAPTION = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)*[.:]/i;
-
 /** True when the regions show a figure or a table and no instruction: no text at all, or a caption ("Figure 4.4: ..."), and no line that tells what to do. */
 function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
   if (regions.length === 0 || holdsInstruction(run, regions)) return false;
@@ -147,7 +145,7 @@ function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]
       const middle = (piece.rect.top + piece.rect.bottom) / 2;
       if (piece.headerFooter || centre < region.rect.left || centre > region.rect.right || middle < region.rect.top || middle > region.rect.bottom) continue;
       lines += 1;
-      if (FIGURE_CAPTION.test(piece.text)) caption = true;
+      if (isCaption(piece.text)) caption = true;
     }
   }
   return lines === 0 || caption;

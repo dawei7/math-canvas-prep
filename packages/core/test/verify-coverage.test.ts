@@ -854,6 +854,22 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(plot), 'span-gap')).toEqual([]);
     // A sentence of the text in that place is part of the exercise that the span skips.
     expect(refs(await check(make('the expectation of the maximum is bounded by the sum', 11)), 'span-gap')).toEqual(['a:1']);
+    // A caption that sets its number apart with a space only ("Figure 9.6 Illustration ...", "Table A.1 Characteristic ..."), the appendix number has a letter.
+    expect(refs(await check(make('Figure 9.6 Illustration of the maximum of Gaussian variables', 11, 'as a function of n, from 1,000 replications.')), 'span-gap')).toEqual([]);
+    expect(refs(await check(make('Table A.1 Quantiles of the standard distribution of the Gaussian variables', 11)), 'span-gap')).toEqual([]);
+    // A sentence that merely starts with the word is no caption.
+    expect(refs(await check(make('Table of the values shows the maximum is bounded by the sum', 11)), 'span-gap')).toEqual(['a:1']);
+  });
+
+  it('takes a table with a caption that has no colon for a figure, not for an instruction: no context-not-nearest', async () => {
+    const book = new Workbook(1);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+    book.text(0, 72, 700, 'Table A.1 Quantiles of the standard distribution of the Gaussian variables', 11);
+    const table = around(0, 72, 700, { width: 300 });
+    book.exercise('a', '1', 0, 72, 100, { extra: { context: [table] } });
+    book.exercise('a', '2', 0, 72, 140, { extra: { context: [table] } });
+    expect(codes(await check(book))).not.toContain('context-not-nearest');
   });
 
   it('does not compare a figure printed below the exercises it serves with the instructions above them', async () => {

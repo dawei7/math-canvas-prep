@@ -142,11 +142,11 @@ export class PageLines {
       if (page?.hasText === true) near.set(offset, page.lines);
     }
     if (near.size < 2) return;
-    const repeats = (piece: Piece, offset: number): boolean => {
+    const repeats = (piece: Piece, offset: number, exact = false): boolean => {
       const lines = near.get(offset);
       if (!lines) return false;
-      const text = blur(piece.text);
-      return lines.some((line) => Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && blur(line.text) === text);
+      const text = exact ? foldText(piece.text) : blur(piece.text);
+      return lines.some((line) => Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && (exact ? foldText(line.text) : blur(line.text)) === text);
     };
     // Whether the neighbour page has a running head or a page number (a line the reader flagged) on the row of this piece; undefined when it was not read.
     const headRow = (piece: Piece, offset: number): boolean | undefined => {
@@ -176,7 +176,13 @@ export class PageLines {
       // An exercise named by a keyword is never a head. A line that starts like a number is an item, unless it ends with a page number as well
       // ("8. Path Connectedness 59": the number of the chapter first, the number of the page last).
       if (KEYWORD_ITEM.test(piece.text)) continue;
-      if (startsLikeNumber(piece.text) && !/\s\d{1,4}$/.test(piece.text)) continue;
+      if (startsLikeNumber(piece.text) && !/\s\d{1,4}$/.test(piece.text)) {
+        // The head of a chapter ("7. The wave equation") that only the pages on one side of the book print (the other pages print the title of the
+        // book) comes back two pages away, at the same place, with the same number and the same words, standing apart from the text. The items of a
+        // set that are numbered one after the other do not: their numbers differ.
+        if ((repeats(piece, -2, true) || repeats(piece, 2, true)) && piece.text.length >= 8 && !this.inBlock(piece)) piece.headerFooter = true;
+        continue;
+      }
       const before = [repeats(piece, -1), repeats(piece, -2)];
       const after = [repeats(piece, 1), repeats(piece, 2)];
       if ((before[0] && before[1]) || (before[0] && after[0]) || (after[0] && after[1])) {

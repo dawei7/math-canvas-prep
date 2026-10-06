@@ -3,7 +3,7 @@ import { LIMITS } from '../rules/constants.js';
 import type { Rect } from '../model/types.js';
 import { draft, type Draft, type Exercise, type Where } from './common.js';
 import { excerpt } from './labels.js';
-import type { ItemStart, PieceKind } from './lineclass.js';
+import { isCaption, type ItemStart, type PieceKind } from './lineclass.js';
 import type { Piece } from './regions.js';
 import { chainOf, coveredShare, pagesOfRange, pos, zoneLead, type Covering, type Run, type Zone } from './run.js';
 import { sectionAtKey } from './key.js';
@@ -29,16 +29,14 @@ const height = (piece: Piece): number => Math.max(1e-6, piece.rect.bottom - piec
 const FIGURE_LABEL_LENGTH = 14;
 const FIGURE_HEIGHT = 0.45;
 
-/** A caption: "Figure 1.1. Expectation of the ...", "Table 4.4: ...". */
-const CAPTION_START = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)*[.:]/i;
-
 /** The lines of the captions of a page: a line that starts like a caption and the lines right under it, at the leading of a paragraph. */
 function captionLines(pieces: readonly Piece[]): Set<Piece> {
   const found = new Set<Piece>();
   let last: Piece | undefined;
   for (let at = 0; at < pieces.length; at += 1) {
     const piece = pieces[at] as Piece;
-    if (CAPTION_START.test(piece.text)) {
+    // A caption: "Figure 1.1. Expectation of the ...", "Table 4.4: ...", "Table A.1 Quantiles of the standard distribution ...".
+    if (isCaption(piece.text)) {
       found.add(piece);
       last = piece;
       // The labels of the figure stand right above its caption: short lines ("0.35", "n = 4", "10"), up to the first line of running text.
