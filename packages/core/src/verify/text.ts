@@ -1,6 +1,7 @@
 import type { Rect } from '../model/types.js';
 import { draft, measure, type Draft, type Exercise } from './common.js';
 import { excerpt, labelSpan, rowHasItem, rowStartsWithLabel } from './labels.js';
+import { startsLikeItem } from './lineclass.js';
 import type { PageIndex, PageLines, RegionText } from './regions.js';
 import { VERIFY_LIMITS } from './types.js';
 
@@ -89,9 +90,13 @@ export function checkExerciseText(exercises: readonly Exercise[], index: PageInd
     // The topmost row starts with the label where the margin row does not: an equation number in the left margin lower down, or a first line that
     // is indented as a paragraph. A number above the label (a numerator, a figure label) is not the first row, and the margin rule stays as it was.
     const topOk = !marginOk && text.topRow !== undefined && rowStartsWithLabel(text.topRow, label, patterns);
+    // An exercise that the book prints with no number is labelled "unnumbered": its region has no number to start with, and it must not start
+    // like an item of another number either.
+    const unnumbered = /^unnumbered$/i.test(label) && text.margin !== undefined && startsLikeItem(text.margin, patterns) === undefined;
     const ok =
       marginOk ||
       topOk ||
+      unnumbered ||
       text.straddling.some((line) => rowHasItem(line, label, patterns)) ||
       text.entering.some((line) => holdsLabel(line, frame.rect, label, charWidth(page))) ||
       (text.ownStart !== undefined && rowStartsWithLabel(text.ownStart, label, patterns));

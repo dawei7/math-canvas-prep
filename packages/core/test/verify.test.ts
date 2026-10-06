@@ -126,6 +126,17 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(find(report, 'label-not-first', 'a:9')?.evidence).toBe('5. Evaluate the expression.');
   });
 
+  it('accepts the label "unnumbered" for an exercise that the book prints without a number, unless the region starts like another item', async () => {
+    const make = (marker: string): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 's', page: 0 }]);
+      book.exercise('s', 'unnumbered', 0, 72, 100, { marker, words: 'Show that the loss decreases with every step.' });
+      return book;
+    };
+    expect(find(await check(make('')), 'label-not-first', 's:unnumbered')).toBeUndefined();
+    expect(find(await check(make('4.')), 'label-not-first', 's:unnumbered')).toBeDefined();
+  });
+
   it('accepts what a book prints around a number: parentheses, a closing mark or none, a label glued to the text', async () => {
     const book = new Workbook(2);
     book.outline = sectionEntries([{ id: 's', page: 0 }]);
