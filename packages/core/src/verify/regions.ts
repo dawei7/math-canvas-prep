@@ -162,7 +162,9 @@ export class PageLines {
       if (piece.headerFooter || !digits.test(piece.text)) continue;
       for (const offset of [-1, 1, -2, 2]) {
         const lines = near.get(offset);
-        if (lines?.some((line) => digits.test(line.text.trim()) && Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE)) {
+        // A page number rises by one a page: the number on the page `offset` away is this one plus `offset` (an answer in a key that happens to stand at the
+        // same place on two pages is not).
+        if (lines?.some((line) => digits.test(line.text.trim()) && Number.parseInt(line.text, 10) - Number.parseInt(piece.text, 10) === offset && Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE)) {
           piece.headerFooter = true;
           break;
         }
