@@ -154,6 +154,19 @@ export class PageLines {
       if (!lines) return undefined;
       return lines.some((line) => line.headerFooter === true && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE && Math.abs(line.rect.bottom - piece.rect.bottom) <= SAME_PLACE);
     };
+    // A page number that stands anywhere on the page (not in the bands of the heads, where the reader flags it): a line of digits only that the
+    // page next to this one has at the same place (a figure label or an axis number does not come back at the same place on the next page).
+    const digits = /^\d{1,4}$/;
+    for (const piece of this.lines) {
+      if (piece.headerFooter || !digits.test(piece.text)) continue;
+      for (const offset of [-1, 1]) {
+        const lines = near.get(offset);
+        if (lines?.some((line) => digits.test(line.text.trim()) && Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE)) {
+          piece.headerFooter = true;
+          break;
+        }
+      }
+    }
     for (const piece of this.lines) {
       if (piece.headerFooter || !hasWords(piece.text)) continue;
       if (piece.rect.bottom > HEAD_BAND && piece.rect.top < 1 - HEAD_BAND) continue;

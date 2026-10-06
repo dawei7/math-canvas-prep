@@ -319,6 +319,25 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged(0.112)).toBe(false);
   });
 
+  it('takes a number alone on its row for a page number when the page next to it has one at the same place, wherever on the page', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const page = (index: number, number: string, top: number): PageText => ({
+      page: index,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: 'The proof goes on with the second case of the claim.', rect: { left: 0.1, right: 0.9, top: 0.3, bottom: 0.312 }, fontSize: 10, column: 0, chars: 50 },
+        { text: number, rect: { left: 0.49, right: 0.51, top, bottom: top + 0.01 }, fontSize: 10, column: 0, chars: number.length },
+      ],
+    });
+    const flagged = (pages: PageText[]): boolean | undefined => new PageIndex((n) => pages[n]).page(1).pieces.find((piece) => /^\d+$/.test(piece.text))?.headerFooter;
+    // "1", "2", "3" at 77 % of the page height on three pages in a row: page numbers.
+    expect(flagged([page(0, '1', 0.77), page(1, '2', 0.77), page(2, '3', 0.77)])).toBe(true);
+    // Not at the same place on the page next to it: a number in the text.
+    expect(flagged([page(0, '1', 0.5), page(1, '2', 0.77), page(2, '3', 0.6)])).toBe(false);
+  });
+
   it('does not take for a running head the first line of three pages that each start with an exercise named by a keyword', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const pages = (text: (index: number) => string): PageText[] =>
