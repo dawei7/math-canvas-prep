@@ -311,6 +311,26 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged([head(0, undefined), head(1, 'MATH 18.102 Problem Set 3', { top: 0.112 }), head(2, 'MATH 18.102 Problem Set 4', { top: 0.112 }), head(3, undefined)])).toBe(false);
   });
 
+  it('takes the heads of the right-hand and the left-hand pages for heads: the same head comes back two pages away', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const page = (index: number, head: string, body = 0.3): PageText => ({
+      page: index,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: head, rect: { left: 0.1, right: 0.6, top: 0.05, bottom: 0.062 }, fontSize: 10, column: 0, chars: head.length },
+        { text: 'The first line of the text of this page goes on and on here.', rect: { left: 0.1, right: 0.9, top: body, bottom: body + 0.012 }, fontSize: 10, column: 0, chars: 60 },
+      ],
+    });
+    // Left-hand pages: "Deep neural networks"; right-hand pages: "Notes 7x": a head repeats every second page.
+    const list = (body = 0.3): PageText[] => [0, 1, 2, 3, 4].map((index) => page(index, index % 2 === 0 ? 'Deep neural networks' : `Notes ${70 + index}`, body));
+    const flagged = (pages: PageText[]): boolean | undefined => new PageIndex((n) => pages[n]).page(2).pieces[0]?.headerFooter;
+    expect(flagged(list())).toBe(true);
+    // A line of a paragraph right under it is body text.
+    expect(flagged(list(0.066))).toBe(false);
+  });
+
   it('takes the head of a chapter that starts with its number for a head when it stands alone on the row of the page number', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const page = (body: number): PageText => ({

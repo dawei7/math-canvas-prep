@@ -269,7 +269,9 @@ export function checkCoverage(run: Run): Draft[] {
       const entry: Uncovered = { piece, page, kind, item: item?.dotted === true && !inBand ? undefined : item };
       // A footnote at the foot of a page (set smaller than the text, in the lower part of the page) is no part of an exercise that goes
       // on across the page break: it is judged as text left behind, not as a gap in the span.
-      const footnote = piece.rect.top >= FOOTNOTE_FROM && lines.bodySize > 0 && piece.fontSize > 0 && piece.fontSize <= FOOTNOTE_SIZE * lines.bodySize;
+      // The same for a line set smaller than the text anywhere between the regions (the labels and the caption of a figure that is printed in the span).
+      const small = lines.bodySize > 0 && piece.fontSize > 0 && piece.fontSize <= FOOTNOTE_SIZE * lines.bodySize;
+      const footnote = small && (piece.rect.top >= FOOTNOTE_FROM || /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d/i.test(piece.text) || gapsByPage.has(page));
       const gap = footnote ? undefined : (gapsByPage.get(page) ?? []).find((candidate) => candidate.has(page, piece));
       if (gap) {
         const list = byGap.get(gap);

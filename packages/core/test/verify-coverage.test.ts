@@ -813,6 +813,39 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
   });
 
+  it('does not take the figures that exercises cite for instructions: neither the nearest one above, nor the instruction of a group', async () => {
+    const book = new Workbook(1);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, 'Figure 2.1: A plot of the data.', 11);
+    book.text(0, 72, 90, 'Figure 2.2: Another plot of the data.', 11);
+    book.text(0, 72, 120, 'Evaluate each expression.', 11, BOLD);
+    const one = around(0, 72, 60, { width: 300 });
+    const two = around(0, 72, 90, { width: 300 });
+    // Exercises 1 and 3 cite Figure 2.1, exercise 2 cites Figure 2.2: no instruction is nearer or shared.
+    book.exercise('a', '1', 0, 72, 160, { extra: { context: [one] } });
+    book.exercise('a', '2', 0, 72, 200, { extra: { context: [two] } });
+    book.exercise('a', '3', 0, 72, 240, { extra: { context: [one] } });
+    const found = codes(await check(book));
+    expect(found).not.toContain('context-not-nearest');
+    expect(found).not.toContain('context-inconsistent');
+  });
+
+  it('takes the small lines of a figure that is printed inside a span for no skipped text', async () => {
+    const make = (size: number): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      const first = book.exercise('a', '1', 0, 72, 100, { words: 'Let Z be a random variable and let' });
+      book.text(0, 72, 200, 'Figure 1.1. Expectation of the maximum of Gaussian variables.', size);
+      book.text(0, 72, 300, 'then show that the expectation is finite for all n.');
+      first.continues = [around(0, 72, 300, { width: 300 })];
+      book.exercise('a', '2', 0, 72, 400);
+      book.exercise('a', '3', 0, 72, 440);
+      return book;
+    };
+    expect(refs(await check(make(7)), 'span-gap')).toEqual([]);
+    expect(refs(await check(make(11)), 'span-gap')).toEqual(['a:1']);
+  });
+
   it('does not compare a figure printed below the exercises it serves with the instructions above them', async () => {
     const book = new Workbook(1);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);

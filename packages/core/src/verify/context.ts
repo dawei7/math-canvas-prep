@@ -133,6 +133,26 @@ function instructionBetween(run: Run, from: number, to: number, page: number, re
   return false;
 }
 
+const FIGURE_CAPTION = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d/i;
+
+/** True when the regions show a figure or a table and no instruction: no text at all, or a caption ("Figure 4.4: ..."), and no line that tells what to do. */
+function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
+  if (regions.length === 0 || holdsInstruction(run, regions)) return false;
+  let lines = 0;
+  let caption = false;
+  for (const region of regions) {
+    if (region.page < 0 || region.page >= run.project.pdf.pageCount) continue;
+    for (const piece of run.index.page(region.page).pieces) {
+      const centre = (piece.rect.left + piece.rect.right) / 2;
+      const middle = (piece.rect.top + piece.rect.bottom) / 2;
+      if (piece.headerFooter || centre < region.rect.left || centre > region.rect.right || middle < region.rect.top || middle > region.rect.bottom) continue;
+      lines += 1;
+      if (FIGURE_CAPTION.test(piece.text)) caption = true;
+    }
+  }
+  return lines === 0 || caption;
+}
+
 /** True when a line of text in the regions tells what to do (an instruction, as the lines of a page are classified). */
 function holdsInstruction(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
   return regions.some((region) => {
@@ -219,8 +239,9 @@ export function checkContexts(run: Run): Draft[] {
     const to = pos(frame.page, frame.rect.top);
     // The instructions are printed above the exercise; one attached from below is wrong, and then the nearest one above is looked for.
     const printedAbove = contexts.filter((region) => pos(region.page, region.rect.top) < to);
-    // A figure or a table printed below the exercises it serves ("see Figure 1.2.3") is attached from below and holds no instruction to compare.
-    if (printedAbove.length === 0 && !holdsInstruction(run, contexts)) continue;
+    // A figure or a table printed below the exercises it serves ("see Figure 1.2.3") is attached from below and holds no instruction to compare; a
+    // figure of the chapter text that an exercise cites, printed pages before it, is not an instruction that a later line could replace.
+    if (!holdsInstruction(run, contexts) && (printedAbove.length === 0 || isFigureOnly(run, contexts))) continue;
     const from = printedAbove.length > 0 ? Math.max(...printedAbove.map((region) => pos(region.page, region.rect.bottom))) : Math.max(0, frame.page - 1);
     if (to <= from) continue;
     let nearest: { piece: Piece; page: number; at: number } | undefined;
@@ -303,7 +324,8 @@ export function checkContexts(run: Run): Draft[] {
           return named !== undefined && !namesNumber(named.named, ownNumber);
         });
       };
-      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]));
+      // A figure or a table that an exercise cites is its own, not the instruction of a group: it is neither lacking nor shared.
+      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]) && !isFigureOnly(run, [entry]));
       if (lacking.length > 0) {
         const [, entry] = lacking[lacking.length - 1] as (typeof lacking)[number];
         const owners = entry.owners.filter((owner) => owner !== exercise);
@@ -334,7 +356,7 @@ export function checkContexts(run: Run): Draft[] {
       const shared = before !== undefined ? keyOf(before) : '';
       // (b) and (c) read a practice set, where the exercises of a group follow one another: in a lesson with exercises inline they do not.
       const practice = !run.inline.has(zone);
-      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? [])) {
+      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? []) && !isFigureOnly(run, before.frame.context ?? [])) {
         drafts.push(
           draft(
             'context-inconsistent',
@@ -358,7 +380,7 @@ export function checkContexts(run: Run): Draft[] {
       // A heading printed between them ("Aufgaben zum Abgeben") ends the group as well. An instruction that does not say how many exercises it is
       // for ("In den folgenden Aufgaben geht es um Primzahlen") ends where its subject ends: that is read in the exercises, and
       // the finding can be acknowledged with the page, for a second reviewer to confirm.
-      if (practice && before !== undefined && own === '' && group !== '' && !complete && !outside(before.frame.context ?? []) && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
+      if (practice && before !== undefined && own === '' && group !== '' && !complete && !outside(before.frame.context ?? []) && !isFigureOnly(run, before.frame.context ?? []) && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
         drafts.push(
           draft(
             counted === undefined ? 'context-group-end' : 'context-inconsistent',

@@ -160,7 +160,7 @@ export class PageLines {
     const digits = /^\d{1,4}[>\s]*$/;
     for (const piece of this.lines) {
       if (piece.headerFooter || !digits.test(piece.text)) continue;
-      for (const offset of [-1, 1]) {
+      for (const offset of [-1, 1, -2, 2]) {
         const lines = near.get(offset);
         if (lines?.some((line) => digits.test(line.text.trim()) && Math.abs(line.rect.left - piece.rect.left) <= SAME_PLACE && Math.abs(line.rect.top - piece.rect.top) <= SAME_PLACE)) {
           piece.headerFooter = true;
@@ -183,7 +183,8 @@ export class PageLines {
       }
       // The same line (digits blurred) at the same place on the page next to this one, standing apart from the text: a head on two pages that
       // are not three in a row (the pages of a problem set between citation pages).
-      if ((before[0] || after[0]) && piece.text.length >= 8 && !this.inBlock(piece)) {
+      // (Heads of the right-hand and of the left-hand pages differ: the same head comes back two pages away.)
+      if ((before[0] || after[0] || before[1] || after[1]) && piece.text.length >= 8 && !this.inBlock(piece)) {
         piece.headerFooter = true;
         continue;
       }
