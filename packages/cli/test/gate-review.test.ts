@@ -76,7 +76,8 @@ describe('the defects of the audit cannot be acknowledged', () => {
     expect(Object.keys(NON_ACKNOWLEDGEABLE)).toHaveLength(18);
     // A note written into the file by hand covers nothing: the gate lists it as refused and the finding stays open.
     const { path, project, by } = await projectOf(cli);
-    delete by('1.2:5').context;
+    // Another instruction than the one of the group (an exercise with none between two that share one is read in the exercise, acknowledgeable).
+    by('1.2:5').context = structuredClone(by('0.1:5').context);
     await writeFile(path, JSON.stringify(project));
     await writeFile(
       join(cli.dir, 'book.audit-notes.json'),
@@ -140,7 +141,7 @@ describe('the seven defects of the cold-start test', () => {
       'numbered-text-left-behind 0.2:7',
       'label-not-first 1.1:13',
       'solution-label-missing 0.1:11',
-      'context-inconsistent 1.2:5',
+      'context-group-end 1.2:5',
       'answer-left-behind 0.1:45',
     ]) expect(open, expected).toContain(expected);
   });
@@ -172,7 +173,7 @@ describe('the seven defects of the cold-start test', () => {
     for (const region of (middle.exercises.find((entry) => entry.reference === '1.2:4') as (typeof middle.exercises)[number]).regions.context) {
       expect((await cli(['context', 'add', '1.2:5', '--page', String(region.page), '--rect', `${region.rect.left},${region.rect.top},${region.rect.right},${region.rect.bottom}`])).code).toBe(0);
     }
-    expect(named(gateOf(await cli(['audit', 'gate'])))).not.toContain('context-inconsistent 1.2:5');
+    expect(named(gateOf(await cli(['audit', 'gate'])))).not.toContain('context-group-end 1.2:5');
   });
 });
 
@@ -513,7 +514,7 @@ describe('the visual record: proof that every exercise was looked at', () => {
     await write(cli, honest);
     const open = named(gateOf(await cli(['audit', 'gate', '--visual', 'visual.json'])));
     expect(open).toContain('visual-defect 1.2:5');
-    expect(open).toContain('context-inconsistent 1.2:5');
+    expect(open).toContain('context-group-end 1.2:5');
     expect(open.filter((entry) => entry.startsWith('visual-mismatch'))).toEqual([]);
   });
 

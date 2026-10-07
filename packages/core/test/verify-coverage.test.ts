@@ -724,7 +724,11 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(codes(await check(book))).not.toContain('context-inconsistent');
     const dropped = frames[2] as Frame;
     delete dropped.context;
-    expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:3']);
+    // No instruction in the middle of a group whose instruction does not say how many exercises it is for: read in the exercise (acknowledgeable).
+    expect(refs(await check(book), 'context-inconsistent')).toEqual([]);
+    const hole = all(await check(book), 'context-group-end');
+    expect(hole.map((finding) => finding.ref)).toEqual(['a:3']);
+    expect(hole[0]?.message).toContain('share one that does not say how many exercises it is for');
     dropped.context = [around(2, 72, 45, { width: 200 })];
     expect(refs(await check(book), 'context-inconsistent')).toEqual(['a:3']);
     // An instruction of its own, printed between the exercise before and this one, is a group of one: the book's.
@@ -811,6 +815,25 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(counted('Die drei folgenden Aufgaben verwenden diese Bezeichnung.')), 'context-inconsistent')).toEqual(['a:3']);
     // No count: the subject of the instruction says where it ends.
     expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
+  });
+
+  /** Exercises 1 to 4 on one page; 1, 3 and 4 under the instruction printed above them, 2 with none. */
+  function holed(instruction: string): Workbook {
+    const book = new Workbook(2);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, instruction, 11);
+    const region = around(0, 72, 60, { width: 400 });
+    for (let n = 1; n <= 4; n += 1) book.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1), n === 2 ? {} : { extra: { context: [region] } });
+    return book;
+  }
+
+  it('reads an exercise without instruction between two that share one in the exercise when the instruction does not count, and fails it when it does', async () => {
+    const open = await check(holed('In the exercises that follow, X denotes a predictor matrix.'));
+    expect(refs(open, 'context-group-end')).toEqual(['a:2']);
+    expect(refs(open, 'context-inconsistent')).toEqual([]);
+    // An instruction that says how many exercises it is for, and the group has more: the exercise belongs to it.
+    expect(refs(await check(holed('The next four exercises use this notation.')), 'context-inconsistent')).toEqual(['a:2']);
+    expect(refs(await check(holed('The next four exercises use this notation.')), 'context-group-end')).toEqual([]);
   });
 
   it('does not take the figures that exercises cite for instructions: neither the nearest one above, nor the instruction of a group', async () => {

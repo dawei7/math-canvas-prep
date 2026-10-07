@@ -355,13 +355,17 @@ export function checkContexts(run: Run): Draft[] {
       // (b) and (c) read a practice set, where the exercises of a group follow one another: in a lesson with exercises inline they do not.
       const practice = !run.inline.has(zone);
       if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? []) && !isFigureOnly(run, before.frame.context ?? [])) {
+        // An exercise with no instruction in the middle of a group whose instruction does not say how many exercises it is for ("In the exercises that
+        // follow, X denotes ...") may be one that does not use it: that is read in the exercise, and the finding can be acknowledged with the page,
+        // for a second reviewer to confirm. Another instruction of its own, or an instruction that counts its exercises, is an error.
+        const hole = own === '' && statedCount(run, before.frame.context ?? []) === undefined;
         drafts.push(
           draft(
-            'context-inconsistent',
+            hole ? 'context-group-end' : 'context-inconsistent',
             'warning',
             exercise.ref,
             frame.page,
-            `${exercise.ref} ${own === '' ? 'has no instruction' : 'has another instruction'}, though the exercises before and after it (${before.ref} and ${after.ref}) share one.`,
+            `${exercise.ref} ${own === '' ? 'has no instruction' : 'has another instruction'}, though the exercises before and after it (${before.ref} and ${after.ref}) share one${hole ? ' that does not say how many exercises it is for' : ''}.`,
             `${before.ref} and ${after.ref} have the same instruction`,
             exercise.where,
           ),
