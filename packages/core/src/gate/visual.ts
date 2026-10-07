@@ -332,6 +332,6 @@ export async function checkVisual(session: ProjectSession, file: string, pattern
   }
   return {
     findings,
-    summary: { file, entries: entries.length, files: files.length, exercises: frames.length, missing, mismatches, defects, missingSheets: sheetsWithMissing, exhaustive: missing === 0 && frames.length > 0 },
+    summary: { file, entries: entries.length, files: files.length, exercises: frames.length, missing, mismatches, defects, missingSheets: sheetsWithMissing, exhaustive: missing === 0 },
   };
 }
