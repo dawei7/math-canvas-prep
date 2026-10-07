@@ -884,6 +884,30 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(make('Table of the values shows the maximum is bounded by the sum', 11)), 'span-gap')).toEqual(['a:1']);
   });
 
+  it('takes a caption with a stray glyph of the figure in front of it for a caption, and a displayed equation that one exercise cites for a figure of its own', async () => {
+    const make = (kind: 'stray' | 'equation' | 'sentence'): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+      if (kind === 'stray') book.text(0, 72, 700, 'tFig. 8.4.1 Structure of the Inception block.', 11);
+      else if (kind === 'equation') {
+        book.text(0, 72, 78, 'alpha(q) = exp(a(q)) over the sum of the exponentials', 11);
+        book.text(0, 480, 79, '(11.1.3)', 11);
+      } else book.text(0, 72, 78, 'Evaluate each expression of the sum in the exponentials.', 11, BOLD);
+      const region = kind === 'stray' ? around(0, 72, 700, { width: 300 }) : around(0, 72, 78, { width: 460 });
+      book.exercise('a', '1', 0, 72, 100);
+      book.exercise('a', '2', 0, 72, 140, { extra: { context: [region] } });
+      book.exercise('a', '3', 0, 72, 180);
+      return book;
+    };
+    const stray = await check(make('stray'));
+    expect(codes(stray)).not.toContain('context-not-nearest');
+    expect(codes(stray)).not.toContain('context-inconsistent');
+    expect(codes(await check(make('equation')))).not.toContain('context-inconsistent');
+    // The same shape with a sentence that tells what to do is an instruction printed above the set that exercise 1 lacks.
+    expect(refs(await check(make('sentence')), 'context-inconsistent')).toEqual(['a:1']);
+  });
+
   it('takes a table with a caption that has no colon for a figure, not for an instruction: no context-not-nearest', async () => {
     const book = new Workbook(1);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);

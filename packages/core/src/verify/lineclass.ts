@@ -90,13 +90,22 @@ export function headingNames(entries: readonly { title: string; label?: string |
 
 const CAPTION_DELIMITED = /^(?:figure|fig\.?|table|abbildung|tabelle)\s*\d+(?:\.\d+)*[.:]/i;
 const CAPTION_SPACED = /^(?:Figure|Fig\.?|Table|Abbildung|Tabelle|FIGURE|TABLE|ABBILDUNG|TABELLE)\s*(?:[A-Z]\.)?\d+(?:\.\d+)*\s+[A-Z]/;
+// A glyph of the figure above that the text layer glues in front of its caption ("tFig. 8.4.1 Structure of the block.").
+const CAPTION_STRAY = /^[a-z](?:Figure|Fig\.?|Table|Abbildung|Tabelle)\s*(?:[A-Z]\.)?\d+(?:\.\d+)*(?:[.:]|\s+[A-Z])/;
 
 /**
  * True when a line starts like the caption of a figure or a table: "Figure 4.4: ...", "Table 4.4. ...", and the captions that set the number
- * apart with a space only ("Figure 9.6 Illustration of ...", "Table A.1 Quantiles of the standard distribution ...", the number of an appendix has a letter).
+ * apart with a space only ("Figure 9.6 Illustration of ...", "Table A.1 Quantiles of the standard distribution ...", the number of an appendix has a letter),
+ * with a stray glyph of the figure in front of the word.
  */
 export function isCaption(text: string): boolean {
-  return CAPTION_DELIMITED.test(text) || CAPTION_SPACED.test(text);
+  return CAPTION_DELIMITED.test(text) || CAPTION_SPACED.test(text) || CAPTION_STRAY.test(text);
+}
+
+/** The number of a displayed equation, set alone at the right end of its line: "(11.1.3)", "(A.2)". */
+const EQUATION_TAG = /^\((?:[A-Z]\.)?\d+(?:\.\d+)*\)$/;
+export function isEquationTag(text: string): boolean {
+  return EQUATION_TAG.test(text.trim());
 }
 
 /** True when no other piece of the page stands in the row of this one: a heading, a title, a marker is set alone on its row. */

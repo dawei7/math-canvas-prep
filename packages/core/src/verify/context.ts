@@ -1,7 +1,7 @@
 import type { Rect } from '../model/types.js';
 import { draft, type Draft, type Exercise } from './common.js';
 import { excerpt } from './labels.js';
-import { aloneOnRow, isCaption, labelNumber, namedNumbers, namesNumber, type NamedNumbers } from './lineclass.js';
+import { aloneOnRow, isCaption, isEquationTag, labelNumber, namedNumbers, namesNumber, type NamedNumbers } from './lineclass.js';
 import type { Piece } from './regions.js';
 import { chainOf, coveredShare, pagesOfRange, pos, type Covering, type Run, type Zone } from './run.js';
 import { VERIFY_LIMITS } from './types.js';
@@ -145,7 +145,8 @@ function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]
       const middle = (piece.rect.top + piece.rect.bottom) / 2;
       if (piece.headerFooter || centre < region.rect.left || centre > region.rect.right || middle < region.rect.top || middle > region.rect.bottom) continue;
       lines += 1;
-      if (isCaption(piece.text)) caption = true;
+      // A displayed equation that an exercise cites by its number ("(11.1.3)") is a figure of its own as well: the number stands alone at its right end.
+      if (isCaption(piece.text) || isEquationTag(piece.text)) caption = true;
     }
   }
   return lines === 0 || caption;
