@@ -6,6 +6,7 @@ import { McPrepError } from '../rules/issues.js';
 import { isAuthoritative } from '../model/authority.js';
 import { draft, prepare, type Draft, type Prepared } from './common.js';
 import { checkContexts } from './context.js';
+import { checkFurniture } from './furniture.js';
 import { checkContinuations } from './continuation.js';
 import { checkCoverage } from './coverage.js';
 import { checkContextOverlaps, checkRegionSizes, checkSharedPlaces, ownRegionsByPage } from './geometry.js';
@@ -149,6 +150,7 @@ export function verifyProject(project: Project, pages: PageSource, options: Veri
     ...checkContinuations(state.exercises),
     ...checkCoverage(run),
     ...checkContexts(run),
+    ...checkFurniture(run),
     ...checkKeys(run),
     ...(options.ink !== undefined ? checkInk(state.exercises, options.ink, index) : []),
     ...(chosenSections(project, options) === undefined ? checkStrays(project, state) : []),

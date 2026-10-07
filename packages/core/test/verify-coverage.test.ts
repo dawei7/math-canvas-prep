@@ -934,6 +934,28 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(codes(await check(book))).not.toContain('context-not-nearest');
   });
 
+  it('finds a running head inside the continuation or the answer of an exercise, and not a continuation that starts below it', async () => {
+    const make = (continuationTop: number): Workbook => {
+      const book = new Workbook(3);
+      book.outline = sectionEntries([
+        { id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' },
+        { id: 'key', page: 2, top: 0.02, title: 'Answers' },
+      ]);
+      for (let page = 0; page < 3; page += 1) book.text(page, 72, 30, 'SYNTHETIC WORKBOOK RUNNING HEAD 12', 9);
+      const first = book.exercise('a', '1', 0, 72, 700, { words: 'Let Z be a random variable and let' });
+      book.text(1, 72, continuationTop, 'then show that the expectation is finite for all n.');
+      first.continues = [around(1, 72, continuationTop, { width: 300 })];
+      book.exercise('a', '2', 1, 72, 300);
+      book.exercise('a', '3', 1, 72, 340);
+      return book;
+    };
+    // The region of the continuation reaches up over the running head (y 30), or starts at its own first line, below it.
+    const over = make(40);
+    ((over.frames[0] as Frame).continues as Region[])[0] = { page: 1, rect: { left: 0.1, top: 0.02, right: 0.6, bottom: 0.07 } };
+    expect(refs(await check(over), 'furniture-in-region')).toEqual(['a:1']);
+    expect(refs(await check(make(100)), 'furniture-in-region')).toEqual([]);
+  });
+
   it('takes a table with a caption that has no colon for a figure, not for an instruction: no context-not-nearest', async () => {
     const book = new Workbook(1);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);

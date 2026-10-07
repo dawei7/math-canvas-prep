@@ -15,6 +15,8 @@ export interface Piece {
   text: string;
   rect: Rect;
   headerFooter: boolean;
+  /** Why the piece is furniture: the reader flagged it, or its shape says so (capitals with a page number); the repeat rules judge by neighbours and can take text for a head. */
+  furnitureBy?: 'reader' | 'shape';
   /** The text line of the page this piece belongs to (the pieces of a joined line share it). */
   line: number;
   /** The font size and the weight of the line the piece belongs to (the text layer gives them for whole lines). */
@@ -129,7 +131,7 @@ export class PageLines {
       for (const piece of pieces) {
         const text = foldText(piece.text);
         if (text.length === 0) continue;
-        this.lines.push({ text, rect: piece.rect, headerFooter: line.headerFooter === true, line: at, fontSize: line.fontSize, bold: line.bold === true, column: line.column });
+        this.lines.push({ text, rect: piece.rect, headerFooter: line.headerFooter === true, ...(line.headerFooter === true ? { furnitureBy: 'reader' as const } : {}), line: at, fontSize: line.fontSize, bold: line.bold === true, column: line.column });
         this.tallest = Math.max(this.tallest, piece.rect.bottom - piece.rect.top);
       }
     });
@@ -148,6 +150,7 @@ export class PageLines {
       if (piece.headerFooter || piece.rect.bottom > HEAD_BAND || !hasWords(piece.text) || KEYWORD_ITEM.test(piece.text)) continue;
       if (isPrintedHead(piece.text)) {
         piece.headerFooter = true;
+        piece.furnitureBy = 'shape';
         continue;
       }
       // A line that starts like a number is an item, unless it stands alone: the head of a chapter ("8. Path Connectedness") on the row of the
@@ -162,7 +165,9 @@ export class PageLines {
       const number = this.lines.find((other) => other !== piece && !other.headerFooter && PAGE_DIGITS.test(other.text.trim()) && sameRow(other.rect, piece.rect) && (other.rect.left >= 1 - ROW_EDGE || other.rect.right <= ROW_EDGE));
       if (number === undefined) continue;
       piece.headerFooter = true;
+      piece.furnitureBy = 'shape';
       number.headerFooter = true;
+      number.furnitureBy = 'shape';
     }
     const text = this.lines.filter((piece) => !piece.headerFooter);
     if (text.length > 0 && text.every((piece) => piece.rect.top >= 1 - HEAD_BAND && !startsLikeNumber(piece.text))) for (const piece of text) piece.headerFooter = true;

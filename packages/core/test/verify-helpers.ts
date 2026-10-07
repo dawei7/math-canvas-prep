@@ -105,6 +105,7 @@ export const COVERAGE_CODES = [
   'inline-section',
   'context-inconsistent',
   'context-group-end',
+  'furniture-in-region',
   'label-in-word',
   'stray-frame',
   'numbered-run-uncovered',
