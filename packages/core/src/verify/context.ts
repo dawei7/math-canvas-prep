@@ -115,6 +115,14 @@ function isFootnote(run: Run, page: number, rect: Rect): boolean {
   return pieces.length > 0 && pieces.every((piece) => piece.fontSize > 0 && piece.fontSize <= FOOTNOTE_SIZE * body);
 }
 
+/**
+ * True when the region lies on the text of an exercise (the region or a continuation of any exercise): the statement of an earlier exercise that is
+ * attached as the setup of a later one ("same setup as 4.28") is the text of that exercise, not an instruction printed above the later one.
+ */
+function isExerciseText(run: Run, page: number, rect: Rect): boolean {
+  return coveredShare(rect, run.covering(page).filter((region) => region.kind === 'exercise' || region.kind === 'continues')) >= VERIFY_LIMITS.coveredShare;
+}
+
 /** True when a line that tells what to do is printed between two places (positions as `pos`), in the column of the rect, and is in no region of an exercise. */
 function instructionBetween(run: Run, from: number, to: number, page: number, rect: Rect): boolean {
   for (let at = Math.max(0, Math.floor(from)); at <= Math.floor(to) && at <= page; at += 1) {
@@ -235,6 +243,9 @@ export function checkContexts(run: Run): Draft[] {
     const zone = zoneOf(run, exercise);
     if (zone === undefined) continue;
     const frame = exercise.frame;
+    // A footnote given to the exercise whose mark it explains, or the statement of an earlier exercise that is the setup of this one, is no
+    // instruction that a later line could replace.
+    if (contexts.every((region) => isFootnote(run, region.page, region.rect) || isExerciseText(run, region.page, region.rect))) continue;
     const to = pos(frame.page, frame.rect.top);
     // The instructions are printed above the exercise; one attached from below is wrong, and then the nearest one above is looked for.
     const printedAbove = contexts.filter((region) => pos(region.page, region.rect.top) < to);
@@ -324,7 +335,7 @@ export function checkContexts(run: Run): Draft[] {
         });
       };
       // A figure or a table that an exercise cites is its own, not the instruction of a group: it is neither lacking nor shared.
-      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]) && !isFigureOnly(run, [entry]));
+      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]) && !isFigureOnly(run, [entry]) && !isExerciseText(run, entry.page, entry.rect));
       if (lacking.length > 0) {
         const [, entry] = lacking[lacking.length - 1] as (typeof lacking)[number];
         const owners = entry.owners.filter((owner) => owner !== exercise);

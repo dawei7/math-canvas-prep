@@ -354,6 +354,43 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged(list('Problem 7: The wave equation'))).toBe(false);
   });
 
+  it('takes a head set in capitals with the page number at one end for a head on a page that no neighbour repeats (a clip of a printed page), not an exercise', () => {
+    const size = { width: 595, height: 842, rotation: 0 };
+    const page = (head: string): PageText => ({
+      page: 1,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: head, rect: { left: 0.1, right: 0.6, top: 0.05, bottom: 0.062 }, fontSize: 10, column: 0, chars: head.length },
+        { text: 'The first line of the text of this page goes on and on here.', rect: { left: 0.1, right: 0.9, top: 0.066, bottom: 0.078 }, fontSize: 10, column: 0, chars: 60 },
+      ],
+    });
+    const flagged = (head: string): boolean | undefined => new PageIndex((n) => (n === 1 ? page(head) : undefined)).page(1).pieces[0]?.headerFooter;
+    expect(flagged('144 CHAPTER 3. FINITE-STATE MARKOV CHAINS')).toBe(true);
+    expect(flagged('3.8. EXERCISES 143')).toBe(true);
+    expect(flagged('101 2.7. EXERCISES')).toBe(true);
+    // Not in capitals, no page number, or a label with its point: text or an exercise.
+    expect(flagged('Show that the sum of the first 12')).toBe(false);
+    expect(flagged('3. FIND THE LIMIT OF EACH SEQUENCE BELOW')).toBe(false);
+    expect(flagged('12 apples were sold on Monday and some more')).toBe(false);
+  });
+
+  it('takes a head in capitals with the bare number of the page at the edge of its row for a head wherever the row stands (a clip is cut from a printed page)', () => {
+    const size = { width: 612, height: 125, rotation: 0 };
+    const row = (text: string, left: number, right: number): PageText['lines'][number] => ({ text, rect: { left, right, top: 0.4, bottom: 0.48 }, fontSize: 11, column: 0, chars: text.length });
+    const page = (lines: PageText['lines']): PageText => ({ page: 1, size, columns: 1, hasText: true, lines });
+    const body = { text: 'd) Find the density of the interarrival time for the process.', rect: { left: 0.14, right: 0.85, top: 0.69, bottom: 0.82 }, fontSize: 11, column: 0, chars: 60 };
+    const flagged = (lines: PageText['lines']): (boolean | undefined)[] => new PageIndex((n) => (n === 1 ? page(lines) : undefined)).page(1).pieces.map((piece) => piece.headerFooter);
+    expect(flagged([row('2.7. EXERCISES', 0.14, 0.28), row('101', 0.82, 0.85), body])).toEqual([true, true, false]);
+    expect(flagged([row('101', 0.14, 0.17), row('CHAPTER 3. FINITE-STATE MARKOV CHAINS', 0.3, 0.85), body])).toEqual([true, true, false]);
+    // The same words without the number of a page, or with a number in the middle of the row, are a heading or text.
+    expect(flagged([row('2.7. EXERCISES', 0.14, 0.28), body])).toEqual([false, false]);
+    expect(flagged([row('2.7. EXERCISES', 0.14, 0.28), row('101', 0.5, 0.53), body])).toEqual([false, false, false]);
+    // Not in capitals: text with a number beside it.
+    expect(flagged([row('Show that the sum of the series', 0.14, 0.6), row('101', 0.82, 0.85), body])).toEqual([false, false, false]);
+  });
+
   it('takes the head of a chapter that starts with its number for a head when it stands alone on the row of the page number', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const page = (body: number): PageText => ({

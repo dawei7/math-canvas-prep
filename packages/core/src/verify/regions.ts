@@ -80,6 +80,31 @@ const hasWords = (text: string): boolean => /\p{L}{3}/u.test(text);
 const KEYWORD_ITEM = /^(?:exercise|problem|question|task|aufgabe|übung|uebung)\s+\d[\d.]*[a-z]?\s*[.:)]/iu;
 /** A line that starts like an item ("3. x = 2", "(3)", "5a)", "Exercise 4.3.4:") is an answer or an exercise, never a head. */
 const startsLikeNumber = (text: string): boolean => /^\(?\d{1,4}[a-z]?\s*[.)](?!\d)/.test(text) || KEYWORD_ITEM.test(text);
+/**
+ * A running head as the pages of a printed book have it: set in capitals, with the number of the page at one end ("144 CHAPTER 3. FINITE-STATE MARKOV
+ * CHAINS", "3.8. EXERCISES 143"). A page that stands alone (a clip of a book pasted between other pages) has no neighbour that repeats it; the shape
+ * says it. An exercise is not set like that: its label has a point or a bracket after the number, and its text is not in capitals.
+ */
+const PAGE_NUMBER_AT_END = /^\d{1,4}\s+\S|\S\s+\d{1,4}$/;
+const MIN_HEAD_LETTERS = 6;
+const HEAD_CAPITALS = 0.8;
+const PAGE_DIGITS = /^\d{1,4}$/;
+/** The number of a page stands within this share of the page width from its edge. */
+const ROW_EDGE = 0.25;
+const LONG_WORD = /\p{L}{5}/u;
+/** A line in capitals (at least 80 % of its letters, at least one word of five letters or more): the words of a head. */
+function isCapitalsHead(text: string): boolean {
+  const letters = [...text].filter((char) => /\p{L}/u.test(char));
+  if (letters.length < MIN_HEAD_LETTERS || !LONG_WORD.test(text)) return false;
+  return letters.filter((char) => /\p{Lu}/u.test(char)).length / letters.length >= HEAD_CAPITALS;
+}
+function isPrintedHead(text: string): boolean {
+  const trimmed = text.trim();
+  const letters = [...trimmed].filter((char) => /\p{L}/u.test(char));
+  if (letters.length < MIN_HEAD_LETTERS || !PAGE_NUMBER_AT_END.test(trimmed)) return false;
+  return letters.filter((char) => /\p{Lu}/u.test(char)).length / letters.length >= HEAD_CAPITALS;
+}
+
 const blur = (text: string): string => foldText(text).replace(/\d+/g, '#');
 /** Two boxes are in one row when they share this much of the height of the smaller. */
 function sameRow(a: Rect, b: Rect): boolean {
@@ -121,10 +146,23 @@ export class PageLines {
     const anchors = this.lines.filter((piece) => piece.headerFooter && piece.rect.bottom <= HEAD_BAND);
     for (const piece of this.lines) {
       if (piece.headerFooter || piece.rect.bottom > HEAD_BAND || !hasWords(piece.text) || KEYWORD_ITEM.test(piece.text)) continue;
+      if (isPrintedHead(piece.text)) {
+        piece.headerFooter = true;
+        continue;
+      }
       // A line that starts like a number is an item, unless it stands alone: the head of a chapter ("8. Path Connectedness") on the row of the
       // page number has no line of text right under it, an item has the rest of its text there.
       if (startsLikeNumber(piece.text) && this.inBlock(piece)) continue;
       if (anchors.some((anchor) => sameRow(anchor.rect, piece.rect))) piece.headerFooter = true;
+    }
+    // A head in capitals with the bare number of the page at the edge of its row ("2.7. EXERCISES" ... "101"), wherever the row stands: the page of a
+    // clip is cut from a printed page, and its head can stand anywhere on it.
+    for (const piece of this.lines) {
+      if (piece.headerFooter || KEYWORD_ITEM.test(piece.text) || !isCapitalsHead(piece.text)) continue;
+      const number = this.lines.find((other) => other !== piece && !other.headerFooter && PAGE_DIGITS.test(other.text.trim()) && sameRow(other.rect, piece.rect) && (other.rect.left >= 1 - ROW_EDGE || other.rect.right <= ROW_EDGE));
+      if (number === undefined) continue;
+      piece.headerFooter = true;
+      number.headerFooter = true;
     }
     const text = this.lines.filter((piece) => !piece.headerFooter);
     if (text.length > 0 && text.every((piece) => piece.rect.top >= 1 - HEAD_BAND && !startsLikeNumber(piece.text))) for (const piece of text) piece.headerFooter = true;

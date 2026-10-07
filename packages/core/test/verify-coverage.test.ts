@@ -908,6 +908,32 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(make('sentence')), 'context-inconsistent')).toEqual(['a:1']);
   });
 
+  it('does not take a footnote, or the statement of an earlier exercise attached as a setup, for an instruction that a later line replaces', async () => {
+    const make = (size: number): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+      book.text(0, 72, 720, 'Evaluate the integral numerically to six digits.', size);
+      const note = around(0, 72, 720, { width: 300 });
+      book.exercise('a', '1', 0, 72, 100, { extra: { context: [note] } });
+      book.exercise('a', '2', 0, 72, 140);
+      return book;
+    };
+    // At the foot of the page, set smaller than the text: the footnote of the mark in exercise 1. In the size of the text it is a line printed there.
+    expect(codes(await check(make(7)))).not.toContain('context-not-nearest');
+    expect(refs(await check(make(11)), 'context-not-nearest')).toEqual(['a:1']);
+    // The statement of exercise 1, attached to exercise 3 as its setup (its region reaches a little above the frame of 1): no instruction printed above 1.
+    const book = new Workbook(1);
+    book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+    book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+    const first = book.exercise('a', '1', 0, 72, 100);
+    book.exercise('a', '2', 0, 72, 140);
+    const third = book.exercise('a', '3', 0, 72, 180);
+    third.context = [{ page: 0, rect: { ...first.rect, top: first.rect.top - 0.01 } }];
+    expect(codes(await check(book))).not.toContain('context-inconsistent');
+    expect(codes(await check(book))).not.toContain('context-not-nearest');
+  });
+
   it('takes a table with a caption that has no colon for a figure, not for an instruction: no context-not-nearest', async () => {
     const book = new Workbook(1);
     book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
