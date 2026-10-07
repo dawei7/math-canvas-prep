@@ -128,6 +128,31 @@ describe('audit ack tells everything that is wrong at once', () => {
   });
 });
 
+describe('a note for a section counts what no note of an exercise in it covers', () => {
+  it('takes the finding of the exercise out of the count of the section, the way the gate gives each finding to the first note that matches it', async () => {
+    const cli = await auditedBook();
+    const { path, project, by } = await projectOf(cli);
+    // Two frames that are gone leave a numbered line behind each, in the same section.
+    const first = by('0.1:12');
+    const second = by('0.1:14');
+    project.frames = project.frames.filter((frame) => frame !== first && frame !== second);
+    await writeFile(path, JSON.stringify(project));
+    const before = gateOf(await cli(['audit', 'gate']));
+    const left = before.open.filter((finding) => finding.code === 'numbered-text-left-behind').map((finding) => finding.ref);
+    expect(left).toEqual(['0.1:12', '0.1:14']);
+    expect((await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1:12', '--page', '5', '--quote', QUOTE, '--reason', REASON])).code).toBe(0);
+    // The section has two findings of that code in all, and one is covered by the note above: the note of the section is for one, not for two.
+    const two = await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--page', '5', '--quote', QUOTE, '--reason', REASON, '--count', '2']);
+    expect(two.code).toBe(2);
+    expect(said(two)).toContain('Give --count 1');
+    const section = await cli(['audit', 'ack', '--code', 'numbered-text-left-behind', '--ref', '0.1', '--page', '5', '--quote', QUOTE, '--reason', REASON, '--count', '1']);
+    expect(section.code, said(section)).toBe(0);
+    const after = gateOf(await cli(['audit', 'gate']));
+    expect(after.open.filter((finding) => finding.code === 'numbered-text-left-behind')).toEqual([]);
+    expect(after.refusedAcknowledgements).toEqual([]);
+  });
+});
+
 describe('the seven defects of the cold-start test', () => {
   it('are all found, with the pixel check, and each by a finding that names its exercise', async () => {
     const cli = await auditedBook();

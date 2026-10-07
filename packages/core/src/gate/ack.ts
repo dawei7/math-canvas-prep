@@ -2,7 +2,7 @@ import { writeFileAtomic } from '../fs/atomic.js';
 import { McPrepError } from '../rules/issues.js';
 import type { ProjectSession } from '../session.js';
 import { foldText } from '../verify/labels.js';
-import { ACKNOWLEDGEMENT_FIELDS, acknowledgementIssues, acknowledgementProblem, identityOf, notesPath, reasonRepeats, type AcknowledgementIssue } from './gate.js';
+import { ACKNOWLEDGEMENT_FIELDS, acknowledgementIssues, acknowledgementProblem, identityOf, judge, notesPath, reasonRepeats, type AcknowledgementIssue } from './gate.js';
 import { collectFindings, patternsOf, readNotes, type GateRunOptions } from './run.js';
 import { NOTES_FORMAT, NOTES_VERSION, type Acknowledgement, type AuditNotes, type GateFinding } from './types.js';
 
@@ -76,11 +76,15 @@ export async function addAcknowledgement(session: ProjectSession, options: Ackno
   const notes = await readNotes(session);
   const collected = await collectFindings(session, { ...options, itemPatterns: patternsOf(notes, options.itemPatterns), sheets: false, bundle: false });
   const sameCode = collected.findings.filter((finding) => finding.code === entry.code);
-  const candidates = sameCode.filter((finding) => refMatches(entry.ref, finding));
+  // The gate gives a finding to the first note that matches it, and this note comes last: what the other notes cover is not left for it (a note for
+  // a section counts the findings of that section that no note of an exercise in it covers).
+  const sameNote = (other: Acknowledgement): boolean => other.code === entry.code && other.ref === entry.ref && other.evidence.page === entry.evidence.page;
+  const taken = new Set(judge(collected.findings, notes.acknowledgements.filter((other) => !sameNote(other))).acknowledged.map((item) => item.finding));
+  const candidates = sameCode.filter((finding) => refMatches(entry.ref, finding) && !taken.has(finding));
   if (candidates.length === 0) {
     const none: AcknowledgementIssue = {
       field: 'ref',
-      text: `There is no finding ${entry.code} for ${entry.ref} now, and an acknowledgement is only for a finding that exists.`,
+      text: `There is no finding ${entry.code} for ${entry.ref} now (one that another note covers is not counted), and an acknowledgement is only for a finding that exists.`,
       hint:
         sameCode.length > 0
           ? `The findings ${entry.code} are for: ${listed(sameCode)}. Give --ref exactly as one of them is named (an exercise as SECTION:LABEL, a section as its id).`
@@ -184,7 +188,7 @@ export async function addAcknowledgement(session: ProjectSession, options: Ackno
     throw refusal(issues, parts.join(' '));
   }
 
-  const same = (other: Acknowledgement): boolean => other.code === entry.code && other.ref === entry.ref && other.evidence.page === entry.evidence.page;
+  const same = sameNote;
   const replaced = notes.acknowledgements.some(same);
   const path = await writeNotes(session, { ...notes, acknowledgements: [...notes.acknowledgements.filter((other) => !same(other)), entry] });
   return { path, covers, replaced };
