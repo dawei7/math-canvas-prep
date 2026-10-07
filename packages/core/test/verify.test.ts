@@ -263,6 +263,32 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(refs(make('49', 0.275, 0.32))).toEqual([]);
   });
 
+  it('places a label near the left end of a long joined line from the left end too, where the usual width overshoots the narrow characters on its right', () => {
+    // "shown:142 . If f is 1-periodic": 24 characters to the right of the label, mostly narrow ones (i, l, f, "."): the usual width of the page places
+    // the label too far left; from the left end, by the width of the line itself, it lies where the region of 142 starts.
+    const page: PageText = {
+      page: 0,
+      size: { width: 612, height: 792, rotation: 0 },
+      columns: 1,
+      hasText: true,
+      lines: [
+        { text: 'shown:142 . If f is 1-periodic', rect: { left: 0.3328, top: 0.406, right: 0.5137, bottom: 0.4207 }, fontSize: 8, column: 0, chars: 25 },
+        { text: 'mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm', rect: { left: 0.1, top: 0.5, right: 0.364, bottom: 0.515 }, fontSize: 8, column: 0, chars: 40 },
+        { text: 'mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm', rect: { left: 0.1, top: 0.52, right: 0.364, bottom: 0.535 }, fontSize: 8, column: 0, chars: 40 },
+      ],
+    };
+    const make = (label: string): Project => ({
+      ...newProject({ pdf: { path: 'x.pdf', sha256: 'a'.repeat(64), bytes: 1, pageCount: 1 }, title: 'T' }),
+      outline: { source: 'manual', entries: sectionEntries([{ id: 's', page: 0 }]) },
+      frames: [{ id: 'c', kind: 'exercise', page: 0, rect: { left: 0.3786, top: 0.4, right: 0.8, bottom: 0.43 }, authority: 'book', label, section: 's' }],
+    });
+    const lookup = (number: number): PageText | undefined => (number === 0 ? page : undefined);
+    const refs = (project: Project): string[] => verifyProject(project, lookup).findings.filter((finding) => finding.code === 'label-not-first').map((finding) => finding.ref);
+    expect(refs(make('142'))).toEqual([]);
+    // Another number is not in the line.
+    expect(refs(make('143'))).toEqual(['s:143']);
+  });
+
   it('takes a title with its page number glued to it for a running head, on the row where the pages around it have their page numbers', () => {
     const row = { top: 0.1249, bottom: 0.1361 };
     const size = { width: 595, height: 842, rotation: 0 };

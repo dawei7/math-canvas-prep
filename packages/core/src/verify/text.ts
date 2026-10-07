@@ -57,6 +57,12 @@ function holdsLabel(line: { text: string; rect: Rect }, region: Rect, label: str
     const at = (match.index as number) + match[0].indexOf(match[1] as string);
     const start = line.rect.right - (line.text.length - at) * width;
     if (start >= region.left - TAIL_SLACK && start <= region.right) return true;
+    // A label near the left end of a long line: the error of the usual width adds up over the characters between it and the right end, so it is
+    // also placed from the left end, by the average width of the line itself.
+    if (at < line.text.length - at) {
+      const fromLeft = line.rect.left + at * ((line.rect.right - line.rect.left) / line.text.length);
+      if (fromLeft >= region.left - TAIL_SLACK && fromLeft <= region.right) return true;
+    }
   }
   return false;
 }
