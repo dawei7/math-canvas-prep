@@ -347,8 +347,8 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     const list = (head: string, body = 0.3): PageText[] => [1, 2, 3, 4, 5].map((index) => page(index, index % 2 === 1 ? head : 'A Course in Synthetic Analysis', body));
     const flagged = (pages: PageText[]): boolean | undefined => new PageIndex((n) => pages[n - 1]).page(3).pieces[0]?.headerFooter;
     expect(flagged(list('7. The wave equation'))).toBe(true);
-    // A line of a paragraph right under it is text.
-    expect(flagged(list('7. The wave equation', 0.066))).toBe(false);
+    // The text may start close under it.
+    expect(flagged(list('7. The wave equation', 0.066))).toBe(true);
     // Items numbered one after the other with the same words do not have the same number two pages away, and a keyword item is never a head.
     expect(flagged([1, 2, 3, 4, 5].map((index) => page(index, index % 2 === 1 ? `${index}. The wave equation` : 'A Course in Synthetic Analysis')))).toBe(false);
     expect(flagged(list('Problem 7: The wave equation'))).toBe(false);

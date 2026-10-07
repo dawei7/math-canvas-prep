@@ -178,9 +178,9 @@ export class PageLines {
       if (KEYWORD_ITEM.test(piece.text)) continue;
       if (startsLikeNumber(piece.text) && !/\s\d{1,4}$/.test(piece.text)) {
         // The head of a chapter ("7. The wave equation") that only the pages on one side of the book print (the other pages print the title of the
-        // book) comes back two pages away, at the same place, with the same number and the same words, standing apart from the text. The items of a
-        // set that are numbered one after the other do not: their numbers differ.
-        if ((repeats(piece, -2, true) || repeats(piece, 2, true)) && piece.text.length >= 8 && !this.inBlock(piece)) piece.headerFooter = true;
+        // book) comes back two pages away, at the same place, with the same number and the same words. The items of a set that are numbered one after
+        // the other do not: their numbers differ. (The text may start close under it: the same words twice at the same place are no paragraph.)
+        if ((repeats(piece, -2, true) || repeats(piece, 2, true)) && piece.text.length >= 8) piece.headerFooter = true;
         continue;
       }
       const before = [repeats(piece, -1), repeats(piece, -2)];
