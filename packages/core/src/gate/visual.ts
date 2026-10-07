@@ -135,8 +135,13 @@ const finding = (code: 'visual-missing' | 'visual-mismatch' | 'visual-defect', r
   acknowledgeable: false,
 });
 
-/** Words as they are compared: folded, lower case, without any white space. */
-const compact = (text: string): string => foldText(text).toLowerCase().replace(/\s+/g, '');
+/** Words as they are compared: folded, lower case, without any white space, typographic quotes and apostrophes as typed ("Zorn’s" is "Zorn's"). */
+const compact = (text: string): string =>
+  foldText(text)
+    .toLowerCase()
+    .replace(/[‘’ʼ′]/g, "'")
+    .replace(/[“”″]/g, '"')
+    .replace(/\s+/g, '');
 
 /**
  * Text as a word of the record is looked for in it: compact, and without the marks of umlauts and accents (a text layer of LaTeX sets
@@ -146,6 +151,17 @@ const bare = (text: string): string =>
   compact(text)
     .normalize('NFD')
     .replace(/[̀-ͯ¨´`]/g, '');
+
+/**
+ * Whether the three words that a record gives for the start of an exercise are a piece of the text of its region: the three words together, or
+ * (where the text layer joins or scrambles the pieces of a line) each of them, umlauts folded.
+ */
+export function wordsFit(startsWith: string, regionText: string): boolean {
+  const parts = foldText(startsWith).split(' ').filter((word) => word !== '').slice(0, 3);
+  const words = parts.join('');
+  const haystack = bare(regionText);
+  return compact(regionText).includes(words.toLowerCase().replace(/[‘’ʼ′]/g, "'").replace(/[“”″]/g, '"')) || parts.every((word) => haystack.includes(bare(word)));
+}
 
 const refOf = (frame: Frame): string => bookReference(frame.section as string, normalizeLabel(frame.label as string).label);
 
@@ -241,10 +257,8 @@ export async function checkVisual(session: ProjectSession, file: string, pattern
     // 1. The words: three words of the entry are a piece of the text of the exercise's region.
     const region = index.page(frame.page).read(frame.rect);
     // The three words together, or (where the text layer joins or scrambles the pieces of a line) each of them, umlauts folded.
-    const parts = foldText(entry.startsWith as string).split(' ').filter((word) => word !== '').slice(0, 3);
-    const words = parts.join('');
-    const haystack = bare(region.text);
-    const found = compact(region.text).includes(words.toLowerCase()) || parts.every((word) => haystack.includes(bare(word)));
+    const words = foldText(entry.startsWith as string).split(' ').filter((word) => word !== '').slice(0, 3).join('');
+    const found = wordsFit(entry.startsWith as string, region.text);
     if (words === '') wrong('"startsWith" is empty: write the first three words printed after the number.', 'startsWith is empty');
     else if (!found) wrong(`"${(entry.startsWith as string).slice(0, 40)}" is not in the text of its region.`, `startsWith "${(entry.startsWith as string).slice(0, 40)}" is not in the region`);
 
