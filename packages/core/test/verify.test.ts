@@ -380,6 +380,22 @@ describe('label-not-first and no-text: the region of an exercise', () => {
     expect(flagged(list('Problem 7: The wave equation'))).toBe(false);
   });
 
+  it('does not take the first line of an answer with a dotted label ("5.3.102: ...") for a foot that repeats on the strips around it', () => {
+    const size = { width: 612, height: 100, rotation: 0 };
+    const strip = (index: number, text: string): PageText => ({
+      page: index,
+      size,
+      columns: 1,
+      hasText: true,
+      lines: [{ text, rect: { left: 0.1, right: 0.7, top: 0.85, bottom: 0.97 }, fontSize: 11, column: 0, chars: text.length }],
+    });
+    const flagged = (texts: string[]): boolean | undefined => new PageIndex((n) => (n >= 0 && n < texts.length ? strip(n, texts[n] as string) : undefined)).page(1).pieces[0]?.headerFooter;
+    // Three strips in a row with answers of the same shape: each is an answer.
+    expect(flagged(['5.3.101: Approximately 1991 centimeters', '5.3.102: Approximately 1991 centimeters', '5.3.103: Approximately 1991 centimeters'])).toBe(false);
+    // The same line without a label, three times in a row at the same place, is a foot.
+    expect(flagged(['Solutions to the selected exercises', 'Solutions to the selected exercises', 'Solutions to the selected exercises'])).toBe(true);
+  });
+
   it('takes a head set in capitals with the page number at one end for a head on a page that no neighbour repeats (a clip of a printed page), not an exercise', () => {
     const size = { width: 595, height: 842, rotation: 0 };
     const page = (head: string): PageText => ({

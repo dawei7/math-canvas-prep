@@ -80,8 +80,11 @@ const SAME_PLACE = 0.012;
 const hasWords = (text: string): boolean => /\p{L}{3}/u.test(text);
 /** An exercise named by a keyword and a number ("Exercise 4.3.4: Let", "Problem 7.", "Aufgabe 1.2."). */
 const KEYWORD_ITEM = /^(?:exercise|problem|question|task|aufgabe|übung|uebung)\s+\d[\d.]*[a-z]?\s*[.:)]/iu;
-/** A line that starts like an item ("3. x = 2", "(3)", "5a)", "Exercise 4.3.4:") is an answer or an exercise, never a head. */
-const startsLikeNumber = (text: string): boolean => /^\(?\d{1,4}[a-z]?\s*[.)](?!\d)/.test(text) || KEYWORD_ITEM.test(text);
+/**
+ * A line that starts like an item ("3. x = 2", "(3)", "5a)", "Exercise 4.3.4:", and a dotted label of a book with its colon after the last part:
+ * "5.3.102: Approximately 1991 centimeters") is an answer or an exercise, never a head.
+ */
+const startsLikeNumber = (text: string): boolean => /^\(?\d{1,4}[a-z]?\s*[.)](?!\d)/.test(text) || /^\(?\d{1,4}(?:\.\d{1,4})+[a-z]?\s*:/.test(text) || KEYWORD_ITEM.test(text);
 /**
  * A running head as the pages of a printed book have it: set in capitals, with the number of the page at one end ("144 CHAPTER 3. FINITE-STATE MARKOV
  * CHAINS", "3.8. EXERCISES 143"). A page that stands alone (a clip of a book pasted between other pages) has no neighbour that repeats it; the shape
