@@ -163,6 +163,14 @@ export function wordsFit(startsWith: string, regionText: string): boolean {
   return compact(regionText).includes(words.toLowerCase().replace(/[‘’ʼ′]/g, "'").replace(/[“”″]/g, '"')) || parts.every((word) => haystack.includes(bare(word)));
 }
 
+/**
+ * The text a record's words are looked for in: the text of the region; for a cell that is a picture or a formula and has no text of its own, the lines
+ * that the text layer joined from the left and that come into the region (its number stands in one: "over 222 .").
+ */
+export function startsWithHaystack(region: { text: string; entering: readonly { text: string }[] }): string {
+  return region.text.trim() === '' ? region.entering.map((line) => line.text).join(' ') : region.text;
+}
+
 const refOf = (frame: Frame): string => bookReference(frame.section as string, normalizeLabel(frame.label as string).label);
 
 /** Sheet numbers as a sentence: `sheet 5`, `sheet 5 and 6`, `sheets 1, 4 and 9`. */
@@ -258,7 +266,7 @@ export async function checkVisual(session: ProjectSession, file: string, pattern
     const region = index.page(frame.page).read(frame.rect);
     // The three words together, or (where the text layer joins or scrambles the pieces of a line) each of them, umlauts folded.
     const words = foldText(entry.startsWith as string).split(' ').filter((word) => word !== '').slice(0, 3).join('');
-    const found = wordsFit(entry.startsWith as string, region.text);
+    const found = wordsFit(entry.startsWith as string, startsWithHaystack(region));
     if (words === '') wrong('"startsWith" is empty: write the first three words printed after the number.', 'startsWith is empty');
     else if (!found) wrong(`"${(entry.startsWith as string).slice(0, 40)}" is not in the text of its region.`, `startsWith "${(entry.startsWith as string).slice(0, 40)}" is not in the region`);
 
