@@ -897,7 +897,7 @@ describe('context-inconsistent: an exercise between two that share an instructio
       const region = kind === 'stray' ? around(0, 72, 700, { width: 300 }) : around(0, 72, 78, { width: 460 });
       book.exercise('a', '1', 0, 72, 100);
       book.exercise('a', '2', 0, 72, 140, { extra: { context: [region] } });
-      book.exercise('a', '3', 0, 72, 180);
+      book.exercise('a', '3', 0, 72, 180, { extra: { context: [region] } });
       return book;
     };
     const stray = await check(make('stray'));
@@ -932,6 +932,24 @@ describe('context-inconsistent: an exercise between two that share an instructio
     third.context = [{ page: 0, rect: { ...first.rect, top: first.rect.top - 0.01 } }];
     expect(codes(await check(book))).not.toContain('context-inconsistent');
     expect(codes(await check(book))).not.toContain('context-not-nearest');
+  });
+
+  it('takes a paragraph of five lines or more that one exercise cites for an item of its own, not for the instruction of a group, though a sentence of it tells what to do', async () => {
+    const make = (lines: number): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      const words = ['Add the first two rows to see that c is positive.', 'Add the first and the third row to see that b is positive.', 'Solve for the unknown in the last row.', 'Then reduce the matrix and compare the two results.', 'Subtract the second row from the third to finish the proof.'];
+      for (let at = 0; at < lines; at += 1) book.text(0, 72, 60 + 15 * at, words[at] as string, 11);
+      const region = around(0, 72, 60, { width: 460, lines });
+      book.exercise('a', '1', 0, 72, 200);
+      book.exercise('a', '2', 0, 72, 240, { extra: { context: [region] } });
+      book.exercise('a', '3', 0, 72, 280, { extra: { context: [region] } });
+      return book;
+    };
+    // Five lines: the Topic text that exercise 2 cites. Two lines of the same kind are an instruction that exercise 1 lacks.
+    expect(codes(await check(make(5)))).not.toContain('context-inconsistent');
+    expect(codes(await check(make(5)))).not.toContain('context-not-nearest');
+    expect(refs(await check(make(2)), 'context-inconsistent')).toEqual(['a:1']);
   });
 
   it('finds a running head inside the continuation or the answer of an exercise, and not a continuation that starts below it', async () => {
@@ -1030,8 +1048,8 @@ describe('context-inconsistent: an exercise between two that share an instructio
       return book;
     };
     expect(codes(await check(make(7)))).not.toContain('context-inconsistent');
-    // The same line in the size of the text is an instruction printed right above exercise 4 that exercise 5 does not have either: it starts further down, and that is read in the exercises (acknowledgeable).
-    expect(refs(await check(make(11)), 'context-group-end')).toEqual(['a:4']);
+    // The same line in the size of the text, which only exercise 2 has, is no instruction of a group either: exercise 4 need not have it.
+    expect(codes(await check(make(11)))).not.toContain('context-inconsistent');
   });
 
   it('does not take a numbered heading in bold for an instruction', async () => {

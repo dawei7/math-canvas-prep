@@ -160,6 +160,27 @@ function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]
   return lines === 0 || caption;
 }
 
+/** A region of this many lines or more (the text of a topic, a definition with its conditions, a worked derivation) is an item that an exercise cites, not the line of a group's instruction. */
+const CITED_LINES = 5;
+
+/**
+ * True when the regions hold an item that an exercise cites rather than an instruction for a group: a figure or a table (see `isFigureOnly`), or a paragraph
+ * of at least `CITED_LINES` lines (its sentences may tell what to do, as the steps of a proof do, and are still the text of the item).
+ */
+function isCitedItem(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
+  if (isFigureOnly(run, regions)) return true;
+  let lines = 0;
+  for (const region of regions) {
+    if (region.page < 0 || region.page >= run.project.pdf.pageCount) continue;
+    for (const piece of run.index.page(region.page).pieces) {
+      const centre = (piece.rect.left + piece.rect.right) / 2;
+      const middle = (piece.rect.top + piece.rect.bottom) / 2;
+      if (!piece.headerFooter && centre >= region.rect.left && centre <= region.rect.right && middle >= region.rect.top && middle <= region.rect.bottom) lines += 1;
+    }
+  }
+  return lines >= CITED_LINES;
+}
+
 /** True when a line of text in the regions tells what to do (an instruction, as the lines of a page are classified). */
 function holdsInstruction(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
   return regions.some((region) => {
@@ -251,7 +272,7 @@ export function checkContexts(run: Run): Draft[] {
     const printedAbove = contexts.filter((region) => pos(region.page, region.rect.top) < to);
     // A figure or a table printed below the exercises it serves ("see Figure 1.2.3") is attached from below and holds no instruction to compare; a
     // figure of the chapter text that an exercise cites, printed pages before it, is not an instruction that a later line could replace.
-    if (!holdsInstruction(run, contexts) && (printedAbove.length === 0 || isFigureOnly(run, contexts))) continue;
+    if ((!holdsInstruction(run, contexts) && printedAbove.length === 0) || isCitedItem(run, contexts)) continue;
     const from = printedAbove.length > 0 ? Math.max(...printedAbove.map((region) => pos(region.page, region.rect.bottom))) : Math.max(0, frame.page - 1);
     if (to <= from) continue;
     let nearest: { piece: Piece; page: number; at: number } | undefined;
@@ -335,7 +356,8 @@ export function checkContexts(run: Run): Draft[] {
         });
       };
       // A figure or a table that an exercise cites is its own, not the instruction of a group: it is neither lacking nor shared.
-      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]) && !isFigureOnly(run, [entry]) && !isExerciseText(run, entry.page, entry.rect));
+      // An instruction that only one other exercise has is no group's: that exercise cites the item (the text of a topic, a table), and this one need not.
+      const lacking = above.filter(([id, entry]) => !ownKeys.has(id) && !outside([entry]) && !isCitedItem(run, [entry]) && !isExerciseText(run, entry.page, entry.rect) && entry.owners.filter((owner) => owner !== exercise).length >= 2);
       if (lacking.length > 0) {
         const [, entry] = lacking[lacking.length - 1] as (typeof lacking)[number];
         const owners = entry.owners.filter((owner) => owner !== exercise);
@@ -366,7 +388,7 @@ export function checkContexts(run: Run): Draft[] {
       const shared = before !== undefined ? keyOf(before) : '';
       // (b) and (c) read a practice set, where the exercises of a group follow one another: in a lesson with exercises inline they do not.
       const practice = !run.inline.has(zone);
-      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? []) && !isFigureOnly(run, before.frame.context ?? [])) {
+      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? []) && !isCitedItem(run, before.frame.context ?? [])) {
         // An exercise with no instruction in the middle of a group whose instruction does not say how many exercises it is for ("In the exercises that
         // follow, X denotes ...") may be one that does not use it: that is read in the exercise, and the finding can be acknowledged with the page,
         // for a second reviewer to confirm. Another instruction of its own, or an instruction that counts its exercises, is an error.
@@ -394,7 +416,7 @@ export function checkContexts(run: Run): Draft[] {
       // A heading printed between them ("Aufgaben zum Abgeben") ends the group as well. An instruction that does not say how many exercises it is
       // for ("In den folgenden Aufgaben geht es um Primzahlen") ends where its subject ends: that is read in the exercises, and
       // the finding can be acknowledged with the page, for a second reviewer to confirm.
-      if (practice && before !== undefined && own === '' && group !== '' && !complete && !outside(before.frame.context ?? []) && !isFigureOnly(run, before.frame.context ?? []) && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
+      if (practice && before !== undefined && own === '' && group !== '' && !complete && !outside(before.frame.context ?? []) && !isCitedItem(run, before.frame.context ?? []) && (members.get(group) ?? 0) >= 2 && above.length === 0 && !instructionBetween(run, from, top, frame.page, frame.rect) && !headingBetween(run, from, top, frame.rect)) {
         drafts.push(
           draft(
             counted === undefined ? 'context-group-end' : 'context-inconsistent',
