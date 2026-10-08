@@ -952,6 +952,30 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(make(2)), 'context-inconsistent')).toEqual(['a:1']);
   });
 
+  it('takes a numbered and named item of the text for an item that is cited at any length, and an exercise with the group\'s instruction and one more for lacking nothing', async () => {
+    const make = (item: string): Workbook => {
+      const book = new Workbook(1);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      book.text(0, 72, 60, item, 11);
+      book.text(0, 72, 100, 'Evaluate each expression.', 11, BOLD);
+      const cited = around(0, 72, 60, { width: 400 });
+      book.exercise('a', '1', 0, 72, 140, { extra: { context: [cited] } });
+      book.exercise('a', '2', 0, 72, 180);
+      return book;
+    };
+    // "Definition 1.1 ...": cited as it is, though an instruction line is printed between it and the exercise. A sentence of any other kind is compared with that line.
+    expect(codes(await check(make('Definition 1.1 A set is a collection of elements.')))).not.toContain('context-not-nearest');
+    expect(refs(await check(make('A set is a collection of elements.')), 'context-not-nearest')).toEqual(['a:1']);
+    // The exercise in the middle has the instruction its neighbours share and a cited item besides: nothing is lacking.
+    const { book, frames } = small();
+    book.text(0, 72, 60, 'Evaluate each expression.', 11, BOLD);
+    book.text(0, 72, 420, 'Figure 3.1: A triangle with its three sides.', 11);
+    const shared = around(0, 72, 60, { width: 200 });
+    for (const frame of frames) frame.context = [shared];
+    (frames[1] as Frame).context = [shared, around(0, 72, 420, { width: 300 })];
+    expect(codes(await check(book))).not.toContain('context-inconsistent');
+  });
+
   it('finds a running head inside the continuation or the answer of an exercise, and not a continuation that starts below it', async () => {
     const make = (continuationTop: number): Workbook => {
       const book = new Workbook(3);

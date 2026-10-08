@@ -162,23 +162,29 @@ function isFigureOnly(run: Run, regions: readonly { page: number; rect: Rect }[]
 
 /** A region of this many lines or more (the text of a topic, a definition with its conditions, a worked derivation) is an item that an exercise cites, not the line of a group's instruction. */
 const CITED_LINES = 5;
+/** The first line of a numbered and named item of a text: "1.1 Definition ...", "Example 2.4", "Theorem 2.16", "Proof.", "Satz 3", "Beispiel". */
+const NAMED_ITEM = /^(?:\d+(?:\.\d+)*\.?\s*)?(?:definition|example|theorem|lemma|corollary|proposition|remark|proof|fact|claim|satz|beispiel|korollar|bemerkung|beweis)\b/i;
 
 /**
- * True when the regions hold an item that an exercise cites rather than an instruction for a group: a figure or a table (see `isFigureOnly`), or a paragraph
- * of at least `CITED_LINES` lines (its sentences may tell what to do, as the steps of a proof do, and are still the text of the item).
+ * True when the regions hold an item that an exercise cites rather than an instruction for a group: a figure or a table (see `isFigureOnly`), a paragraph
+ * of at least `CITED_LINES` lines (its sentences may tell what to do, as the steps of a proof do, and are still the text of the item), or a numbered
+ * and named item of the text ("Definition 1.1", "Example 2.4", "Theorem 2.16") at whatever length.
  */
 function isCitedItem(run: Run, regions: readonly { page: number; rect: Rect }[]): boolean {
   if (isFigureOnly(run, regions)) return true;
   let lines = 0;
+  let first: Piece | undefined;
   for (const region of regions) {
     if (region.page < 0 || region.page >= run.project.pdf.pageCount) continue;
     for (const piece of run.index.page(region.page).pieces) {
       const centre = (piece.rect.left + piece.rect.right) / 2;
       const middle = (piece.rect.top + piece.rect.bottom) / 2;
-      if (!piece.headerFooter && centre >= region.rect.left && centre <= region.rect.right && middle >= region.rect.top && middle <= region.rect.bottom) lines += 1;
+      if (piece.headerFooter || centre < region.rect.left || centre > region.rect.right || middle < region.rect.top || middle > region.rect.bottom) continue;
+      lines += 1;
+      if (first === undefined && region === regions[0]) first = piece;
     }
   }
-  return lines >= CITED_LINES;
+  return lines >= CITED_LINES || (first !== undefined && NAMED_ITEM.test(first.text));
 }
 
 /** True when a line of text in the regions tells what to do (an instruction, as the lines of a page are classified). */
@@ -388,7 +394,10 @@ export function checkContexts(run: Run): Draft[] {
       const shared = before !== undefined ? keyOf(before) : '';
       // (b) and (c) read a practice set, where the exercises of a group follow one another: in a lesson with exercises inline they do not.
       const practice = !run.inline.has(zone);
-      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? []) && !isCitedItem(run, before.frame.context ?? [])) {
+      // An exercise that has the group's instruction and a cited item besides (it has more than its neighbours) is not lacking anything.
+      const sharedRegions = (before?.frame.context ?? []).map((region) => regionKey(region.page, region.rect));
+      const hasAll = sharedRegions.length > 0 && sharedRegions.every((id) => ownKeys.has(id));
+      if (practice && before !== undefined && after !== undefined && shared !== '' && shared === keyOf(after) && own !== shared && !hasAll && !(ownKeys.size > 0 && above.some(([id]) => ownKeys.has(id))) && !outside(before.frame.context ?? []) && !isCitedItem(run, before.frame.context ?? [])) {
         // An exercise with no instruction in the middle of a group whose instruction does not say how many exercises it is for ("In the exercises that
         // follow, X denotes ...") may be one that does not use it: that is read in the exercise, and the finding can be acknowledged with the page,
         // for a second reviewer to confirm. Another instruction of its own, or an instruction that counts its exercises, is an error.
