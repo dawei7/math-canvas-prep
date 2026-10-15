@@ -21,6 +21,10 @@ workspace/
 
 A template configuration is provided at [`audit.config.example.json`](../audit.config.example.json).
 
+To create any missing directories automatically without overwriting or deleting existing files:
+- Use the **📁 Create Missing Folders** button in [`docs/config-builder.html`](config-builder.html), or
+- Run `npm run init-workspace` in your terminal.
+
 ---
 
 ## 2. Zero-Friction Workflow (Auto-Mode)
