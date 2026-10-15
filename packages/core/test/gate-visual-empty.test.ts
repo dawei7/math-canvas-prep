@@ -35,4 +35,29 @@ describe('the visual record of a book that prints no exercise', () => {
     expect(missing.summary.exhaustive).toBe(false);
     expect(missing.summary.missing).toBeGreaterThan(0);
   });
+
+  it('leaves the words of a cell that is a picture with no text at all as typed (nothing can be looked in), and still refuses an empty string', async () => {
+    const book = buildSpanBook();
+    const dir = await mkdtemp(join(tmpdir(), 'mcprep-visual-picture-'));
+    folders.push(dir);
+    await writeFile(join(dir, 'book.pdf'), book.pdf);
+    const doc = await PdfDocument.fromBytes(book.pdf);
+    const base = newProject({ pdf: { path: 'book.pdf', sha256: doc.sha256, bytes: doc.bytes, pageCount: book.pageCount }, title: 'Span' });
+    await doc.close();
+    // The first exercise framed on a blank corner of its page: no text in the region and no line coming into it.
+    const first = book.frames[0];
+    if (first === undefined) throw new Error('the span book has no exercise');
+    const { context: _context, solution: _solution, ...bare } = first;
+    const corner = { ...bare, rect: { left: 0.9, top: 0.97, right: 0.99, bottom: 0.995 } };
+    const only: Project = { ...base, outline: { source: 'manual', entries: book.outline }, frames: [corner], seq: 10 };
+    await writeFile(join(dir, 'book.mcprep.json'), `${JSON.stringify(only)}\n`);
+    const ref = `${String(corner.section)}:${String(corner.label)}`;
+    const entry = (startsWith: string): string => JSON.stringify([{ ref, startsWith, instruction: false, answerStartsWith: '', ok: true }]);
+    await writeFile(join(dir, 'visual.json'), entry('4'));
+    const typed = await checkVisual(await ProjectSession.open(join(dir, 'book.mcprep.json')), join(dir, 'visual.json'), []);
+    expect(typed.findings.filter((finding) => finding.code === 'visual-mismatch')).toEqual([]);
+    await writeFile(join(dir, 'visual.json'), entry(''));
+    const blank = await checkVisual(await ProjectSession.open(join(dir, 'book.mcprep.json')), join(dir, 'visual.json'), []);
+    expect(blank.findings.some((finding) => finding.code === 'visual-mismatch' && finding.message.includes('empty'))).toBe(true);
+  });
 });

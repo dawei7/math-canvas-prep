@@ -266,7 +266,10 @@ export async function checkVisual(session: ProjectSession, file: string, pattern
     const region = index.page(frame.page).read(frame.rect);
     // The three words together, or (where the text layer joins or scrambles the pieces of a line) each of them, umlauts folded.
     const words = foldText(entry.startsWith as string).split(' ').filter((word) => word !== '').slice(0, 3).join('');
-    const found = wordsFit(entry.startsWith as string, startsWithHaystack(region));
+    // A cell that is a picture with no text at all (a figure label) and into which no line comes: there is nothing to look the words for; whoever looked
+    // typed what the cell shows (the `no-text` finding of such a cell is acknowledged and confirmed on its own).
+    const haystack = startsWithHaystack(region);
+    const found = haystack.trim() === '' || wordsFit(entry.startsWith as string, haystack);
     if (words === '') wrong('"startsWith" is empty: write the first three words printed after the number.', 'startsWith is empty');
     else if (!found) wrong(`"${(entry.startsWith as string).slice(0, 40)}" is not in the text of its region.`, `startsWith "${(entry.startsWith as string).slice(0, 40)}" is not in the region`);
 
