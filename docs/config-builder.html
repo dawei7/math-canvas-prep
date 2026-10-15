@@ -48,16 +48,27 @@
     <!-- TAB 1: WORKSPACE CONFIG -->
     <section id="tab-config" class="space-y-6">
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-5">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h2 class="text-lg font-semibold text-[var(--foreground)]">1. Workspace Directories</h2>
-            <p class="text-[var(--muted-foreground)] text-sm">Define input, working, batch, and bundle delivery paths.</p>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="text-lg font-semibold text-[var(--foreground)]">1. Workspace Directories</h2>
+              <span id="cfg-source-badge" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>audit.config.json</span>
+              </span>
+            </div>
+            <p class="text-[var(--muted-foreground)] text-sm mt-0.5">Define input, working, batch, and bundle delivery paths.</p>
           </div>
-          <!-- Preset & Load switcher -->
+          <!-- Controls: Reload from disk, Reset to defaults, Import external, and Mode selector -->
           <div class="flex flex-wrap items-center gap-2">
-            <span id="cfg-source-badge" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-900 border border-[var(--border)] text-slate-400">Checking config...</span>
-            <button onclick="document.getElementById('cfg-file-input').click()" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-sky-400 border border-[var(--border)] transition flex items-center gap-1">
-              <span>📂 Load File</span>
+            <button onclick="reloadConfigFromDisk()" id="btn-reload-cfg" title="Reload audit.config.json directly from repository root (no file picker dialog)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
+              <span>🔄 Reload</span>
+            </button>
+            <button onclick="resetToDefaultConfig()" id="btn-reset-cfg" title="Reset fields to factory defaults (./inbox, ./bundles)" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-400 hover:text-slate-200 border border-[var(--border)] transition flex items-center gap-1">
+              <span>↺ Reset</span>
+            </button>
+            <button onclick="document.getElementById('cfg-file-input').click()" title="Import an external JSON config from another location" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-400 hover:text-slate-200 border border-[var(--border)] transition flex items-center gap-1">
+              <span>📂 Import...</span>
             </button>
             <input type="file" id="cfg-file-input" accept=".json" class="hidden" onchange="loadConfigFile(event)">
             <select id="cfg-preset" onchange="applyPathPreset()" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-[var(--border)] text-xs text-sky-300 font-medium">
@@ -628,10 +639,95 @@
       }
 
       const badge = document.getElementById('cfg-source-badge');
-      badge.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800';
-      badge.textContent = `✓ ${sourceLabel || 'Loaded audit.config.json'}`;
+      if (badge) {
+        const label = sourceLabel || 'audit.config.json';
+        badge.className = 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800 flex items-center gap-1.5';
+        badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span><span>${label}</span>`;
+      }
 
       updateConfigOutput();
+    }
+
+    async function reloadConfigFromDisk() {
+      const btn = document.getElementById('btn-reload-cfg');
+      const origText = btn.innerHTML;
+      btn.innerHTML = '<span>⏳ Reading...</span>';
+
+      // 1. Try companion server
+      try {
+        const resp = await fetch(`${SERVER_URL}/api/config`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.ok && data.config) {
+            populateFromConfig(data.config, data.source);
+            btn.innerHTML = '<span class="text-emerald-400">✓ Reloaded!</span>';
+            setTimeout(() => { btn.innerHTML = origText; }, 2000);
+            return;
+          }
+        }
+      } catch (e) {
+        // server offline, fall back
+      }
+
+      // 2. Relative candidates
+      const candidates = [
+        { url: '../audit.config.json', label: 'audit.config.json' },
+        { url: './audit.config.json', label: 'audit.config.json' },
+        { url: '../audit.config.example.json', label: 'audit.config.example.json' },
+        { url: './audit.config.example.json', label: 'audit.config.example.json' },
+      ];
+
+      for (const cand of candidates) {
+        try {
+          const resp = await fetch(cand.url);
+          if (resp.ok) {
+            const text = await resp.text();
+            const json = JSON.parse(text);
+            populateFromConfig(json, cand.label);
+            btn.innerHTML = '<span class="text-emerald-400">✓ Reloaded!</span>';
+            setTimeout(() => { btn.innerHTML = origText; }, 2000);
+            return;
+          }
+        } catch {
+          // ignore, next
+        }
+      }
+
+      btn.innerHTML = origText;
+      alert('Could not reload config. Start the server with "npm run config" to reload directly.');
+    }
+
+    async function resetToDefaultConfig() {
+      const defaultData = {
+        directories: {
+          inbox: './inbox',
+          audit_work: './audit',
+          batch_results: './results',
+          delivered_bundles: './bundles'
+        },
+        library: {
+          defaultFolder: 'Books'
+        },
+        defaults: {
+          sample: 60,
+          solutionSample: 30
+        }
+      };
+
+      try {
+        const resp = await fetch(`${SERVER_URL}/api/config?source=example`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.ok && data.config) {
+            populateFromConfig(data.config, 'Defaults (audit.config.example.json)');
+            return;
+          }
+        }
+      } catch {
+        // fallback
+      }
+
+      populateFromConfig(defaultData, 'Defaults (audit.config.example.json)');
     }
 
     async function tryAutoLoadExistingConfig() {
@@ -643,7 +739,7 @@
         if (resp.ok) {
           const data = await resp.json();
           if (data.ok && data.config) {
-            populateFromConfig(data.config, `Loaded ${data.source}`);
+            populateFromConfig(data.config, data.source);
             return;
           }
         }
@@ -653,10 +749,10 @@
 
       // 2. Relative candidates
       const candidates = [
-        { url: '../audit.config.json', label: 'Loaded audit.config.json' },
-        { url: './audit.config.json', label: 'Loaded audit.config.json' },
-        { url: '../audit.config.example.json', label: 'Loaded audit.config.example.json' },
-        { url: './audit.config.example.json', label: 'Loaded audit.config.example.json' },
+        { url: '../audit.config.json', label: 'audit.config.json' },
+        { url: './audit.config.json', label: 'audit.config.json' },
+        { url: '../audit.config.example.json', label: 'audit.config.example.json' },
+        { url: './audit.config.example.json', label: 'audit.config.example.json' },
       ];
 
       for (const cand of candidates) {
@@ -673,8 +769,10 @@
         }
       }
 
-      badge.className = 'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-slate-400 border border-[var(--border)]';
-      badge.textContent = 'Using default relative paths';
+      if (badge) {
+        badge.className = 'px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900 text-slate-400 border border-[var(--border)]';
+        badge.textContent = 'Using default relative paths';
+      }
     }
 
     function loadConfigFile(event) {
@@ -684,9 +782,11 @@
       reader.onload = (e) => {
         try {
           const json = JSON.parse(e.target.result);
-          populateFromConfig(json, `Loaded ${file.name}`);
+          populateFromConfig(json, file.name);
         } catch (err) {
           alert(`Invalid JSON in ${file.name}: ` + err.message);
+        } finally {
+          event.target.value = '';
         }
       };
       reader.readAsText(file);

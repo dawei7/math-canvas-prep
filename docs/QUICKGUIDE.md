@@ -89,19 +89,23 @@ To customize a book's metadata explicitly before running an audit, place `<name>
 
 ## 6. Interactive Config & Metadata UI
 
-An interactive configuration tool is included at [`docs/config-builder.html`](config-builder.html).
+An interactive configuration and metadata builder is included at [`docs/config-builder.html`](config-builder.html).
 
 ### Launching the Companion Server (Recommended)
 Run:
 ```console
 npm run config
 ```
-This automatically starts a zero-dependency local companion server at `http://localhost:4242` and opens your default browser. It enables:
-- **1-Click Direct Saving:** Saves `audit.config.json` directly to your repository root without any file picker dialogs.
-- **Native File Explorer Popups:** Clicking **📁 Open** beside any directory pops up native Windows File Explorer directly on that folder.
+This automatically starts a zero-dependency local companion server at `http://localhost:4242` and opens your default browser. It bridges the web interface with your local system:
+- **Automatic Configuration Loading:** On startup, the UI automatically detects and loads `audit.config.json` from the repository root. If it doesn't exist yet, it loads the default template from `audit.config.example.json`.
+- **1-Click Silent Save:** Clicking **💾 Save audit.config.json** immediately writes your configuration directly to `audit.config.json` in the repository root without showing any file picker or "Save As" dialog.
+- **🔄 Reload from Disk:** Clicking **🔄 Reload** re-reads `audit.config.json` directly from disk without opening any file dialogs. If you edited `audit.config.json` in VS Code or want to discard UI changes, simply click **Reload**.
+- **↺ Reset to Defaults:** Restores the standard relative defaults (`./inbox`, `./bundles`, `./audit`, `./results`).
+- **📂 Import External File:** If you have a custom configuration file stored elsewhere on your drive, click **Import...** to select and load it.
+- **Native Windows File Explorer Popups:** Clicking **📁 Open** beside any directory (`inbox`, `bundles`, `audit`, `results`) pops open native Windows File Explorer directly on that folder.
 - **Non-Destructive Folder Setup:** Automatically creates any missing folders on disk without deleting or overwriting anything.
 
-Alternatively, you can open `docs/config-builder.html` directly as a standalone HTML file in any browser.
+> **Note on Standalone Mode:** If you open `docs/config-builder.html` directly as a `file:///` page without running `npm run config`, the browser's security sandbox prevents silent file writes and cannot launch Windows executables like `explorer.exe`. In this mode, the UI provides fallback file picker dialogs and copies explorer commands to your clipboard. Running `npm run config` gives the seamless 1-click desktop experience.
 
 ### Opening Folders via CLI
 To quickly open any of your configured workspace folders in Windows File Explorer from your terminal:

@@ -78,11 +78,14 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // 2. GET /api/config: Read current audit.config.json
+    // 2. GET /api/config: Read current audit.config.json or audit.config.example.json
     if (url.pathname === '/api/config' && req.method === 'GET') {
+      const wantExample = url.searchParams.get('source') === 'example';
       const configTarget = join(repoRoot, 'audit.config.json');
       const fallbackTarget = join(repoRoot, 'audit.config.example.json');
-      const target = existsSync(configTarget) ? configTarget : existsSync(fallbackTarget) ? fallbackTarget : null;
+      const target = wantExample
+        ? (existsSync(fallbackTarget) ? fallbackTarget : null)
+        : (existsSync(configTarget) ? configTarget : existsSync(fallbackTarget) ? fallbackTarget : null);
 
       if (!target) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -92,7 +95,12 @@ const server = createServer(async (req, res) => {
 
       const content = await readFile(target, 'utf8');
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, source: target === configTarget ? 'audit.config.json' : 'audit.config.example.json', config: JSON.parse(content) }));
+      res.end(JSON.stringify({
+        ok: true,
+        source: target === configTarget ? 'audit.config.json' : 'audit.config.example.json',
+        isDefault: target !== configTarget,
+        config: JSON.parse(content)
+      }));
       return;
     }
 
