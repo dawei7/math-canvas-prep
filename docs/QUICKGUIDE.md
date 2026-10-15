@@ -90,5 +90,25 @@ To customize a book's metadata explicitly before running an audit, place `<name>
 ## 6. Interactive Config & Metadata UI
 
 An interactive configuration tool is included at [`docs/config-builder.html`](config-builder.html).
-Open it in any modern browser to configure paths (portable relative or custom absolute paths), select category presets, and generate `.meta.json` files visually.
+
+### Launching the Companion Server (Recommended)
+Run:
+```console
+npm run config
+```
+This automatically starts a zero-dependency local companion server at `http://localhost:4242` and opens your default browser. It enables:
+- **1-Click Direct Saving:** Saves `audit.config.json` directly to your repository root without any file picker dialogs.
+- **Native File Explorer Popups:** Clicking **📁 Open** beside any directory pops up native Windows File Explorer directly on that folder.
+- **Non-Destructive Folder Setup:** Automatically creates any missing folders on disk without deleting or overwriting anything.
+
+Alternatively, you can open `docs/config-builder.html` directly as a standalone HTML file in any browser.
+
+### Opening Folders via CLI
+To quickly open any of your configured workspace folders in Windows File Explorer from your terminal:
+```console
+npm run open inbox       # opens your configured inbox folder
+npm run open bundles     # opens your delivered bundles folder
+npm run open results     # opens your batch results folder
+npm run open audit       # opens your audit work folder
+```
 

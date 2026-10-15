@@ -33,6 +33,10 @@
           <h1 class="text-xl md:text-2xl font-bold text-[var(--foreground)]">Math Canvas Prep Config Builder</h1>
         </div>
         <p class="text-[var(--muted-foreground)] text-sm mt-1">Configure workspace directories, generate book metadata sidecars, and inspect batch workflows.</p>
+        <div id="server-status-pill" class="mt-2.5 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-slate-900 border border-slate-700 text-slate-400">
+          <span id="server-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="server-status-text">Checking companion server...</span>
+        </div>
       </div>
       <div class="flex gap-2">
         <button id="tab-btn-config" onclick="switchTab('config')" class="px-4 py-2 rounded-xl text-sm font-semibold transition bg-sky-500 text-slate-950 shadow-sm">Workspace Config</button>
@@ -506,31 +510,67 @@
 
     let currentWorkspaceHandle = null;
 
+    const SERVER_URL = (window.location.protocol.startsWith('http') && window.location.port === '4242')
+      ? window.location.origin
+      : 'http://localhost:4242';
+
+    let companionServerActive = false;
+
+    async function checkServerStatus() {
+      const dot = document.getElementById('server-status-dot');
+      const text = document.getElementById('server-status-text');
+      const pill = document.getElementById('server-status-pill');
+      try {
+        const resp = await fetch(`${SERVER_URL}/api/config`, { method: 'GET' });
+        if (resp.ok) {
+          companionServerActive = true;
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+          pill.className = 'mt-2.5 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/60 border border-emerald-800 text-emerald-300';
+          text.textContent = 'Companion Server Connected (1-Click Silent Save & Native Explorer Popups)';
+          return true;
+        }
+      } catch (e) {
+        companionServerActive = false;
+      }
+      dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+      pill.className = 'mt-2.5 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-slate-900 border border-slate-700 text-slate-300';
+      text.innerHTML = 'Standalone Mode &bull; Run <code class="text-sky-300 font-mono">npm run config</code> for 1-click silent save & Windows Explorer';
+      return false;
+    }
+
     async function saveConfigDirectly() {
       const jsonContent = document.getElementById('cfg-json-output').textContent;
       const statusEl = document.getElementById('cfg-save-status');
 
-      const showSaved = (msg) => {
+      const showSaved = (msg, isSuccess = true) => {
         statusEl.classList.remove('hidden');
+        statusEl.className = `text-xs font-mono mt-1 ${isSuccess ? 'text-emerald-400' : 'text-amber-300'}`;
         statusEl.textContent = `✓ ${msg}`;
-        setTimeout(() => statusEl.classList.add('hidden'), 5000);
+        setTimeout(() => statusEl.classList.add('hidden'), 6000);
       };
 
-      // 1. If we already hold a workspace folder handle from "Create Missing Folders"
-      if (currentWorkspaceHandle && currentWorkspaceHandle.getFileHandle) {
-        try {
-          const fileHandle = await currentWorkspaceHandle.getFileHandle('audit.config.json', { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(jsonContent);
-          await writable.close();
-          showSaved(`Saved audit.config.json directly inside ${currentWorkspaceHandle.name}!`);
+      // 1. Companion Server API (Saves silently straight to repo root without any dialog!)
+      try {
+        const resp = await fetch(`${SERVER_URL}/api/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: jsonContent
+        });
+        if (resp.ok) {
+          const resData = await resp.json();
+          showSaved(`Saved audit.config.json directly to repo root: ${resData.path || 'audit.config.json'}!`);
+          const badge = document.getElementById('cfg-source-badge');
+          if (badge) {
+            badge.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800';
+            badge.textContent = '✓ Saved to audit.config.json';
+          }
           return;
-        } catch (err) {
-          console.warn('Could not write directly to workspace handle:', err);
         }
+      } catch (err) {
+        // Server offline, proceed to fallback
       }
 
-      // 2. Use File System Access API showSaveFilePicker (Chrome/Edge on Windows)
+      // 2. Browser File System Access API
       if (window.showSaveFilePicker) {
         try {
           const fileHandle = await window.showSaveFilePicker({
@@ -543,17 +583,17 @@
           const writable = await fileHandle.createWritable();
           await writable.write(jsonContent);
           await writable.close();
-          showSaved(`Saved directly to ${fileHandle.name}!`);
+          showSaved(`Saved directly to ${fileHandle.name}! (Tip: run "npm run config" to save instantly without this dialog)`);
           return;
         } catch (err) {
-          if (err.name === 'AbortError') return; // User cancelled dialog
+          if (err.name === 'AbortError') return;
           console.error(err);
         }
       }
 
       // 3. Fallback to download
       downloadConfigJson();
-      showSaved('Downloaded audit.config.json (direct save unsupported in this browser)');
+      showSaved('Downloaded audit.config.json. Move it to the repo root folder.', false);
     }
 
     function populateFromConfig(data, sourceLabel) {
@@ -596,6 +636,22 @@
 
     async function tryAutoLoadExistingConfig() {
       const badge = document.getElementById('cfg-source-badge');
+
+      // 1. Check companion server first
+      try {
+        const resp = await fetch(`${SERVER_URL}/api/config`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.ok && data.config) {
+            populateFromConfig(data.config, `Loaded ${data.source}`);
+            return;
+          }
+        }
+      } catch (e) {
+        // server offline, fall back to relative candidates
+      }
+
+      // 2. Relative candidates
       const candidates = [
         { url: '../audit.config.json', label: 'Loaded audit.config.json' },
         { url: './audit.config.json', label: 'Loaded audit.config.json' },
@@ -640,9 +696,34 @@
       const statusDiv = document.getElementById('folder-creation-status');
       statusDiv.classList.remove('hidden');
 
+      // 1. Try companion server first (creates folders on disk without file picker dialogs)
+      try {
+        const directories = {
+          inbox: document.getElementById('cfg-inbox').value.trim(),
+          audit_work: document.getElementById('cfg-work').value.trim(),
+          batch_results: document.getElementById('cfg-results').value.trim(),
+          delivered_bundles: document.getElementById('cfg-bundles').value.trim(),
+        };
+        const resp = await fetch(`${SERVER_URL}/api/create-folders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ directories })
+        });
+        if (resp.ok) {
+          const resData = await resp.json();
+          statusDiv.className = 'p-3.5 rounded-xl text-xs font-mono bg-emerald-950/40 border border-emerald-800 text-emerald-200 leading-relaxed';
+          statusDiv.innerHTML = `<strong>Success!</strong> All directories verified/created on disk:<br>` +
+            resData.results.map(r => `✓ [${r.status}] ${r.dir}`).join('<br>') +
+            '<br><span class="text-emerald-400/90 mt-1 inline-block">✓ Non-destructive: existing files and folders were preserved.</span>';
+          return;
+        }
+      } catch (err) {
+        // server offline, fall back
+      }
+
       if (!window.showDirectoryPicker) {
         statusDiv.className = 'p-3.5 rounded-xl text-xs font-mono bg-amber-950/40 border border-amber-800 text-amber-200 leading-relaxed';
-        statusDiv.innerHTML = 'Browser direct directory creation requires Chrome/Edge File System Access API.<br>Alternatively, run <code>npm run init-workspace</code> in your terminal or use the "Copy Terminal Command" button.';
+        statusDiv.innerHTML = 'Direct folder creation requires companion server (run <code>npm run config</code>) or Chrome/Edge File System Access.<br>Alternatively, run <code>npm run init-workspace</code> or use the "Copy Terminal Command" button.';
         return;
       }
 
@@ -657,7 +738,6 @@
         const results = [];
 
         for (const name of folderNames) {
-          // getDirectoryHandle with create: true creates if missing, or opens if exists. Never overwrites or deletes.
           await rootHandle.getDirectoryHandle(name, { create: true });
           results.push(`✓ ${name}/ ready`);
         }
@@ -693,34 +773,45 @@
       });
     }
 
-    function openFolder(inputId) {
+    async function openFolder(inputId) {
       const input = document.getElementById(inputId);
       if (!input) return;
       let raw = input.value.trim();
       if (!raw) return;
 
       const norm = raw.replace(/\\/g, '/');
-      let fileUrl = norm;
-      if (norm.match(/^[a-zA-Z]:/)) {
-        fileUrl = 'file:///' + norm;
-      } else if (!norm.startsWith('http://') && !norm.startsWith('https://') && !norm.startsWith('file://')) {
-        fileUrl = norm;
-      }
-
-      try {
-        window.open(fileUrl, '_blank');
-      } catch (e) {
-        console.warn(e);
-      }
-
       const winPath = norm.replace(/\//g, '\\');
+      const saveStatus = document.getElementById('cfg-save-status');
+
+      // 1. Try Companion Server API to spawn native Windows File Explorer
+      try {
+        const resp = await fetch(`${SERVER_URL}/api/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: raw })
+        });
+        if (resp.ok) {
+          const resData = await resp.json();
+          if (saveStatus) {
+            saveStatus.classList.remove('hidden');
+            saveStatus.className = 'text-xs font-mono mt-1 text-emerald-400';
+            saveStatus.textContent = `✓ Opened Windows File Explorer: ${resData.path}`;
+            setTimeout(() => saveStatus.classList.add('hidden'), 5000);
+          }
+          return;
+        }
+      } catch (e) {
+        // Server offline
+      }
+
+      // 2. Standalone fallback: DO NOT open unwanted browser tab. Copy explorer command to clipboard and inform user
       const explorerCmd = `explorer.exe "${winPath}"`;
       navigator.clipboard.writeText(explorerCmd).then(() => {
-        const saveStatus = document.getElementById('cfg-save-status');
         if (saveStatus) {
           saveStatus.classList.remove('hidden');
-          saveStatus.textContent = `Opened folder link. Also copied to clipboard: ${explorerCmd}`;
-          setTimeout(() => saveStatus.classList.add('hidden'), 5000);
+          saveStatus.className = 'text-xs font-mono mt-1 text-sky-300';
+          saveStatus.innerHTML = `Copied: <code class="text-white">${explorerCmd}</code><br><span class="text-slate-400">Tip: Run <code class="text-emerald-400">npm run config</code> in terminal to open Windows Explorer directly on click.</span>`;
+          setTimeout(() => saveStatus.classList.add('hidden'), 7000);
         }
       });
     }
@@ -728,7 +819,9 @@
     // Initialize
     updateConfigOutput();
     updateMetaOutput();
-    tryAutoLoadExistingConfig();
+    checkServerStatus().then(() => {
+      tryAutoLoadExistingConfig();
+    });
   </script>
 </body>
 </html>
