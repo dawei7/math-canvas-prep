@@ -1,5 +1,6 @@
 import type { PageText, Rect, Region, TextLine } from '../model/types.js';
 import { bodyFontSize } from '../propose/exercises.js';
+import { LIMITS } from '../rules/constants.js';
 import { DEFAULT_ITEM_PATTERNS, exerciseId } from './exercises.js';
 import {
   buildBlocks,
@@ -103,8 +104,8 @@ export interface ExerciseRef {
 }
 
 
-/** The most regions an answer is given: where it starts and seven more (the pages, columns or lines it goes on in). */
-const MAX_ANSWER_REGIONS = 8;
+/** The most regions an answer is given: where it starts and the rest (the pages, columns or lines it goes on in). */
+const MAX_ANSWER_REGIONS: number = LIMITS.maxSolutionRegions;
 
 const escapeWord = (word: string): string => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

@@ -306,7 +306,7 @@ describe('reading a bundle of a book', () => {
     ['a label without authority', [good('f1', '1.1', '5a', { authority: undefined, section: undefined })], ['label-without-authority']],
     ['a solution on a bookmark', [{ id: 'b', kind: 'bookmark', page: 0, rect: { left: 0.1, top: 0.3, right: 0.9, bottom: 0.35 }, solution: [{ page: 1, rect: { left: 0.1, top: 0.3, right: 0.9, bottom: 0.35 } }] }], ['solution-not-exercise']],
     ['a solution on a page that does not exist', [good('f1', '1.1', '5a', { solution: [{ page: 4, rect: { left: 0.1, top: 0.3, right: 0.9, bottom: 0.35 } }] })], ['page-out-of-range']],
-    ['nine solution regions', [good('f1', '1.1', '5a', { solution: Array.from({ length: 9 }, () => ({ page: 1, rect: { left: 0.1, top: 0.3, right: 0.9, bottom: 0.35 } })) })], ['too-many-regions']],
+    ['seventeen solution regions', [good('f1', '1.1', '5a', { solution: Array.from({ length: 17 }, () => ({ page: 1, rect: { left: 0.1, top: 0.3, right: 0.9, bottom: 0.35 } })) })], ['too-many-regions']],
   ])('rejects %s', async (_name, frames, expected) => {
     const report = await check({ frames });
     expect(report.ok).toBe(false);

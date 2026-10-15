@@ -121,7 +121,7 @@ const ADD_OPTIONS: OptionSpec[] = [
   { name: 'id', type: 'string', value: '<id>', description: 'Your own frame id ([A-Za-z0-9_-], up to 40 characters). Default: generated (f1, f2, ...).' },
   { name: 'context', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'The instruction or statement the learner sees and the AI receives with every check (printed once above 5a and 5b, say); repeatable, up to 8.' },
   { name: 'continues', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'A further region of the same exercise, e.g. on the next page; repeatable, up to 8.' },
-  { name: 'solution', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'Where the answer is printed in this PDF (the answer key at the back, say): hidden from the learner, used only to grade; repeatable, up to 8.' },
+  { name: 'solution', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'Where the answer is printed in this PDF (the answer key at the back, say): hidden from the learner, used only to grade; repeatable, up to 16.' },
   { name: 'no-enlarge', type: 'boolean', description: 'Refuse a rect below the minimum size instead of enlarging it.' },
   { name: 'replace', type: 'boolean', description: 'If the exercise (same section and label) already exists, overwrite it in place instead of failing, keeping its id: page, rect and continuation are replaced (none given: none left); context and solution are replaced when you give them and kept otherwise (clear them with `context remove` and `solution clear`).' },
   ...REPORT_OPTIONS,

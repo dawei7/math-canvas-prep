@@ -16,7 +16,7 @@ const sectionId = z.string().min(1).describe('The id of the outline entry (the s
 const label = z.string().min(1).max(24).describe('The number exactly as the book prints it, without the closing "." or ")": 5, 12, 5a, A.3, II-4 (1 to 24 characters: letters, digits, spaces and . _ - ( ) /).');
 /** A text that starts with @ would be read as a file name by the command line: write it with a second @. */
 const plainText = (text: string): string => (text.startsWith('@') ? `@${text}` : text);
-const regions = (what: string): z.ZodOptional<z.ZodArray<typeof region>> => z.array(region).max(8).optional().describe(what);
+const regions = (what: string, max = 8): z.ZodOptional<z.ZodArray<typeof region>> => z.array(region).max(max).optional().describe(what);
 
 export function registerBookTools({ tool, cli, toResult, projectOf }: ToolApi): void {
   // ------------------------------------------------------------------------------------------------ exercises
@@ -63,7 +63,7 @@ export function registerBookTools({ tool, cli, toResult, projectOf }: ToolApi): 
         id: z.string().optional().describe('Your own frame id ([A-Za-z0-9_-], up to 40 characters); default generated (f1, f2, ...).'),
         context: regions('The instruction or statement the learner sees and the AI receives with every check (printed once above 5a and 5b, say).'),
         continues: regions('Further regions of the same exercise, in reading order (the next page, the next column).'),
-        solution: regions('Where the answer is printed in this PDF (the answer key at the back): hidden from the learner, used only to grade.'),
+        solution: regions('Where the answer is printed in this PDF (the answer key at the back): hidden from the learner, used only to grade. Up to 16 regions.', 16),
         replace: z.boolean().optional().describe('Overwrite the exercise in place if it exists (same section and label).'),
         dry_run: dryRun,
         force,
@@ -144,7 +144,7 @@ export function registerBookTools({ tool, cli, toResult, projectOf }: ToolApi): 
     {
       title: 'Attach a solution region to an exercise',
       description:
-        'Attaches a region of the SAME PDF where the answer is printed (usually the answer key at the back) to an exercise. It is hidden and used only to grade: the learner never sees it with the exercise and it is never sent to a tutor chat. Typically one small region per exercise (the line "22) 0") or one block that answers several exercises (give the same region to each). Up to 8 per exercise. Then LOOK at it: render_crop with region "solution:0". The instruction that the learner does see is context (add_context), not this.',
+        'Attaches a region of the SAME PDF where the answer is printed (usually the answer key at the back) to an exercise. It is hidden and used only to grade: the learner never sees it with the exercise and it is never sent to a tutor chat. Typically one small region per exercise (the line "22) 0") or one block that answers several exercises (give the same region to each). Up to 16 per exercise. Then LOOK at it: render_crop with region "solution:0". The instruction that the learner does see is context (add_context), not this.',
       inputSchema: { project: projectArg, id: exerciseRef, page, rect, snap, dry_run: dryRun, force },
     },
     async (args) => toResult(await cli(['solution', 'add', args.id, '--page', String(args.page), '--rect', rectArg(args.rect), ...flags({ snap: args.snap, dryRun: args.dry_run, force: args.force })], { project: projectOf(args) })),

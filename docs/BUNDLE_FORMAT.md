@@ -144,7 +144,7 @@ This page is the contract. The reference implementation of reading, validating a
 | `authority` | no | `"book"`: an **authoritative exercise**, audited from the book and numbered the way the book numbers it (see "Authoritative exercises"). Only `exercise` frames. Absent: an ordinary exercise, framed by a person for themselves. |
 | `label` | with `authority` | The exercise's number exactly as the book prints it, without the closing `.` or `)`: `5`, `12`, `5a`, `A.3`, `II-4`. 1 to 24 characters: a letter or digit first, then letters, digits, spaces and the characters `. _ - ( ) /` (regular expression `^[\p{L}\p{N}][\p{L}\p{N} ._\-()/]{0,23}$`). Tools warn about a label that ends in `.` or `)` (apart from a closed `(a)`). A reader drops such a closing `.` or `)` before it checks the label (`5.` becomes `5`) and keeps the label so; it drops one character, and the spaces before it, and changes nothing else (`5..` becomes `5.`). |
 | `section` | with `authority` | The `id` of the outline entry (section 4) the exercise belongs to. |
-| `solution` | no | At most 8 regions **of the same document** where the solution or answer of this exercise is printed (for example the answer key at the back of the same PDF). **Hidden**: never shown with the exercise, never sent to a tutor chat, used only to grade. Only `exercise` frames. |
+| `solution` | no | At most 16 regions **of the same document** where the solution or answer of this exercise is printed (for example the answer key at the back of the same PDF). **Hidden**: never shown with the exercise, never sent to a tutor chat, used only to grade. Only `exercise` frames. |
 
 ### Parts (units)
 
@@ -193,7 +193,7 @@ An authoritative exercise with its shared statement as context and its answer in
 `context` is what the learner is shown (the instruction) and what the grader receives. `solution` is the other side: what
 **only the grader** receives, as the answer key to compare the learner's work with.
 
-- A frame has at most 8 solution regions, each a region like those of `continues` and `context` (a valid rect, on a page of
+- A frame has at most 16 solution regions, each a region like those of `continues` and `context` (a valid rect, on a page of
   the document). Solution regions only on `exercise` frames, authoritative or not.
 - Only regions of the same PDF count; a solution printed elsewhere (another file, a web page) is outside the format.
 - Typically the answer key sits at the back of the same PDF: one small region for each exercise (the line "22) 0"), or a
@@ -278,3 +278,7 @@ Added in generator 0.2, all optional: the manifest's `features` and `document.au
 `sourceUrl`, `notice`; the frame fields `authority`, `label`, `section`, `solution`; the outline entry fields `id`, `label`,
 `top`; and the limit for one JSON entry rose from 4 to 16 MiB. An older reader reads such a bundle as before: authoritative
 exercises become ordinary ones, `solution` regions are ignored (so nothing is revealed), and the outline keeps working.
+
+The limit for `solution` regions of one frame rose from 8 to 16 (`continues` and `context` stay at 8): an answer can run over more
+than eight pages. A reader of the earlier limit rejects a frame with more than 8 solution regions and with it the whole bundle, so a
+bundle that uses the new room needs a reader that allows 16; a bundle with 8 or fewer solution regions reads everywhere.

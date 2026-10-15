@@ -630,8 +630,8 @@ The MCP tools have the same names as the commands: `exercises_add`, `exercises_l
 | `E_SECTION` / `bad-section`, `section-missing` | The section is not an id. | The id of an outline entry (`mcprep outline`). |
 | `section-unknown` | The section is not the id of any outline entry (or the project has no outline). | `outline add`/`outline ids`, or `exercises section`. |
 | `duplicate-exercise` / `E_DUPLICATE_EXERCISE` | Two exercises are the same (section, label). | A label of its own, or delete the copy, or `--replace`. |
-| `solution-not-exercise`, `too-many-regions` | A solution on a question or bookmark, or more than 8 regions. | Solutions only on exercises; merge neighbouring regions. |
-| `E_SOLUTION` | A solution operation that cannot work (no such region, more than 8). | `solution list` shows the indexes. |
+| `solution-not-exercise`, `too-many-regions` | A solution on a question or bookmark, or more than 8 continuation or context regions (16 solution regions). | Solutions only on exercises; merge neighbouring regions. |
+| `E_SOLUTION` | A solution operation that cannot work (no such region, more than 16). | `solution list` shows the indexes. |
 | `outline-bad-id`, `outline-duplicate-id`, `outline-bad-label`, `outline-bad-top` | An outline entry's id, label or top is wrong. | `outline update`. |
 | `E_SECTION_IN_USE` | A section with exercises cannot lose its id or be deleted. | Move the exercises first (`exercises section`). |
 | `E_OUTLINE_MODE` | `export --outline pdf` or `none` with book exercises. | Export with the project's own outline (the default). |

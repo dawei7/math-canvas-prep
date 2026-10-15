@@ -320,15 +320,15 @@ describe('solution regions', () => {
     expect(fails(two, { op: 'solution.remove', id: 'f1' }, 'E_SOLUTION').message).toContain('say which');
     fails(two, { op: 'solution.remove', id: 'f1', index: 2 }, 'E_SOLUTION');
     fails(two, { op: 'solution.remove', id: 'f1', index: -1 }, 'E_SOLUTION');
-    const regions = Array.from({ length: 9 }, (_, i) => ({ page: 5, rect: [0.1, 0.05 * i + 0.1, 0.9, 0.05 * i + 0.14] as [number, number, number, number] }));
+    const regions = Array.from({ length: 17 }, (_, i) => ({ page: 5, rect: [0.1, 0.05 * i + 0.1, 0.9, 0.05 * i + 0.14] as [number, number, number, number] }));
     fails(start(), { op: 'solution.set', id: 'f1', regions }, 'E_SOLUTION');
   });
 
-  it('stop at eight', () => {
+  it('stop at sixteen', () => {
     let project = start();
-    for (let i = 0; i < 8; i += 1) project = apply(project, { op: 'solution.add', id: 'f1', page: 5, rect: [0.1, 0.05 * i + 0.1, 0.9, 0.05 * i + 0.14] });
-    expect(frameOf(project, 'f1').solution).toHaveLength(8);
-    fails(project, { op: 'solution.add', id: 'f1', page: 5, rect: [0.1, 0.6, 0.9, 0.65] }, 'E_SOLUTION');
+    for (let i = 0; i < 16; i += 1) project = apply(project, { op: 'solution.add', id: 'f1', page: 5, rect: [0.1, 0.05 * i + 0.1, 0.9, 0.05 * i + 0.14] });
+    expect(frameOf(project, 'f1').solution).toHaveLength(16);
+    fails(project, { op: 'solution.add', id: 'f1', page: 5, rect: [0.1, 0.95, 0.9, 0.98] }, 'E_SOLUTION');
   });
 
   it('can be snapped to the printed lines like any region', () => {

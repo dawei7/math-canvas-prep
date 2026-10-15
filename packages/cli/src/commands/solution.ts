@@ -46,7 +46,7 @@ export const solutionAdd: CommandSpec = {
   name: 'solution add',
   summary: 'Attach a region where the answer is printed (usually the answer key at the back) to an exercise; hidden from the learner.',
   description:
-    'Solution regions are of the same PDF as the exercise. They are used only to grade: the learner never sees them with the exercise and they are never sent to a tutor chat. Typically one small region per exercise in the answer key (the line "22) 0"), or one block that answers several exercises (give the same region to each). Up to 8 regions per exercise. Look at the crop afterwards: `mcprep crop <exercise> --region solution:0`.',
+    'Solution regions are of the same PDF as the exercise. They are used only to grade: the learner never sees them with the exercise and they are never sent to a tutor chat. Typically one small region per exercise in the answer key (the line "22) 0"), or one block that answers several exercises (give the same region to each). Up to 16 regions per exercise. Look at the crop afterwards: `mcprep crop <exercise> --region solution:0`.',
   writes: true,
   args: [{ name: 'frame', description: FRAME, required: true }],
   options: [

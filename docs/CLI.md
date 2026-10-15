@@ -939,7 +939,7 @@ Options:
 - `--authority book`: Make it an authoritative exercise audited from a book (needs --label and --section; it cannot be a part). `mcprep exercises add` is the same without --kind.
 - `--label <5a>`: With --authority book: the number exactly as the book prints it, without the closing "." or ")" (5, 12, 5a, A.3).
 - `--section <id>`: With --authority book: the id of the outline entry (section) the exercise belongs to (`mcprep outline` lists them).
-- `--solution <page:l,t,r,b>`: A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 8. Exercises only.
+- `--solution <page:l,t,r,b>`: A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 16. Exercises only.
 - `--replace`: With --authority book: if the exercise (same section and label) already exists, overwrite it in place, keeping its id, instead of failing: page, rect and continuation are replaced; context and solution are replaced when you give them and kept otherwise.
 - `--dry-run`: Compute and validate the change, but do not write the project.
 - `--force`: Write the change even if it introduces validation errors.
@@ -1412,7 +1412,7 @@ Options:
 - `--id <id>`: Your own frame id ([A-Za-z0-9_-], up to 40 characters). Default: generated (f1, f2, ...).
 - `--context <page:l,t,r,b>`: The instruction or statement the learner sees and the AI receives with every check (printed once above 5a and 5b, say); repeatable, up to 8.
 - `--continues <page:l,t,r,b>`: A further region of the same exercise, e.g. on the next page; repeatable, up to 8.
-- `--solution <page:l,t,r,b>`: Where the answer is printed in this PDF (the answer key at the back, say): hidden from the learner, used only to grade; repeatable, up to 8.
+- `--solution <page:l,t,r,b>`: Where the answer is printed in this PDF (the answer key at the back, say): hidden from the learner, used only to grade; repeatable, up to 16.
 - `--no-enlarge`: Refuse a rect below the minimum size instead of enlarging it.
 - `--replace`: If the exercise (same section and label) already exists, overwrite it in place instead of failing, keeping its id: page, rect and continuation are replaced (none given: none left); context and solution are replaced when you give them and kept otherwise (clear them with `context remove` and `solution clear`).
 - `--dry-run`: Compute and validate the change, but do not write the project.
@@ -1561,7 +1561,7 @@ Attach a region where the answer is printed (usually the answer key at the back)
 mcprep solution add <frame> --page <n> --rect <l,t,r,b> [options]
 ```
 
-Solution regions are of the same PDF as the exercise. They are used only to grade: the learner never sees them with the exercise and they are never sent to a tutor chat. Typically one small region per exercise in the answer key (the line "22) 0"), or one block that answers several exercises (give the same region to each). Up to 8 regions per exercise. Look at the crop afterwards: `mcprep crop <exercise> --region solution:0`.
+Solution regions are of the same PDF as the exercise. They are used only to grade: the learner never sees them with the exercise and they are never sent to a tutor chat. Typically one small region per exercise in the answer key (the line "22) 0"), or one block that answers several exercises (give the same region to each). Up to 16 regions per exercise. Look at the crop afterwards: `mcprep crop <exercise> --region solution:0`.
 
 Arguments:
 
@@ -2015,7 +2015,7 @@ Check the project against every rule of the bundle format; errors name the frame
 mcprep validate [options]
 ```
 
-Errors are what the importer would reject (exit code 4). Repairs are what it fixes silently (a value a hair outside the page, parts that miss tiling by under 0.002); the writer fixes them too. Warnings are allowed but suspicious: overlapping frames, a frame inside another, a frame thinner than a line, an edge that cuts through a line of text, a running header or footer inside a frame, a unit with one frame. For a book audited as an authority the rules are also: a label and a section with every authoritative exercise, the pair (section, label) unique, every section the id of an outline entry, solution regions only on exercises (at most 8, on pages of the document), valid outline ids, labels and tops; warnings for a label written with the "." or ")" the book prints, an exercise printed in another section than the one it is filed under, and a solution region that lies on the exercise or on another exercise.
+Errors are what the importer would reject (exit code 4). Repairs are what it fixes silently (a value a hair outside the page, parts that miss tiling by under 0.002); the writer fixes them too. Warnings are allowed but suspicious: overlapping frames, a frame inside another, a frame thinner than a line, an edge that cuts through a line of text, a running header or footer inside a frame, a unit with one frame. For a book audited as an authority the rules are also: a label and a section with every authoritative exercise, the pair (section, label) unique, every section the id of an outline entry, solution regions only on exercises (at most 16, on pages of the document), valid outline ids, labels and tops; warnings for a label written with the "." or ")" the book prints, an exercise printed in another section than the one it is filed under, and a solution region that lies on the exercise or on another exercise.
 
 Options:
 

@@ -298,14 +298,18 @@ describe('the answers the search found', () => {
     expect(without.findings.find((group) => group.title === 'Exercises without an answer')?.lines).toEqual([{ section: '0.2', text: '0.2: 1, 2' }]);
   });
 
-  it('cannot apply an answer that would need more than eight regions', async () => {
+  it('cannot apply an answer that would need more than sixteen regions', async () => {
     const project = withExercises();
     const answers = clone(await solutionsFor(project));
     const answer = answers.solutions.sections[0]?.answers[0] as SolutionProposal;
-    answer.regions = Array.from({ length: 9 }, (_unused, at) => ({ page: 18, rect: { left: 0.1, top: 0.1 + at * 0.05, right: 0.3, bottom: 0.13 + at * 0.05 } }));
+    answer.regions = Array.from({ length: 17 }, (_unused, at) => ({ page: 18, rect: { left: 0.1, top: 0.05 + at * 0.05, right: 0.3, bottom: 0.08 + at * 0.05 } }));
     const model = bookRows(answers, project.frames);
-    expect(model.byKey.get('0.1:1')?.refusal).toBe('its answer would need 9 regions, at most 8 are allowed');
+    expect(model.byKey.get('0.1:1')?.refusal).toBe('its answer would need 17 regions, at most 16 are allowed');
     expect(planBook('solutions', model.rows, new Set(['0.1:1'])).refused).toHaveLength(1);
+    const nine = clone(answers);
+    const shorter = nine.solutions.sections[0]?.answers[0] as SolutionProposal;
+    shorter.regions = shorter.regions.slice(0, 9);
+    expect(bookRows(nine, project.frames).byKey.get('0.1:1')?.refusal).toBeUndefined();
   });
 });
 

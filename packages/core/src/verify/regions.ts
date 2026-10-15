@@ -291,7 +291,6 @@ export class PageLines {
       const overlap = Math.min(piece.rect.right, region.right) - Math.max(piece.rect.left, region.left);
       return (centre < region.left || centre > region.right) && width > 0 && overlap / width >= STRADDLE;
     }).map((piece) => piece.text);
-    const topmost = inside.length > 0 ? (inside[0] as Piece).rect : undefined;
     const entering = this.within(this.lines, region, (piece) => {
       const centre = (piece.rect.left + piece.rect.right) / 2;
       // A line from the left: its centre is left of the region, or it starts well left of it (joined across the columns).

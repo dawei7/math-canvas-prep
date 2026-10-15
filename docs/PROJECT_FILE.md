@@ -114,7 +114,7 @@ Fields the tools do not know are kept when the file is saved.
   labels, and what they share (the statement printed once above them) is `context` on each. The pair (`section`, `label`) is
   unique; applying an `add` for an exercise that exists is an error unless it says `replace`. A tool can name an
   authoritative exercise as `SECTION:LABEL` (`1.2:5a`) wherever it takes a frame id.
-- `solution` (at most 8 regions of the same PDF, for example the answer key at the back) is hidden from the learner and used
+- `solution` (at most 16 regions of the same PDF, for example the answer key at the back) is hidden from the learner and used
   only to grade; `context` is the instruction the learner sees and the AI receives. Both are only for exercises.
 
 ## The book summary (`book show --json`, `book export`)
@@ -193,7 +193,7 @@ The rules about books have stable codes:
 | `bad-label`, `bad-section` | error | The label is not 1 to 24 allowed characters (judged after the importer has dropped a closing `.` or `)`); the section is not a well-formed id. |
 | `duplicate-exercise` | error | Two frames are the same (`section`, `label`), the label being the one the importer keeps: `5` and `5.` are one. |
 | `section-unknown` | error | The section is not the `id` of an outline entry (or the project has no outline with ids). |
-| `solution-not-exercise`, `too-many-regions`, `bad-region`, `page-out-of-range`, ... | error | Solution regions are only for exercises, at most 8, valid and on pages of the document. |
+| `solution-not-exercise`, `too-many-regions`, `bad-region`, `page-out-of-range`, ... | error | Solution regions are only for exercises, at most 16 (8 for continues and context), valid and on pages of the document. |
 | `outline-bad-id`, `outline-duplicate-id`, `outline-bad-label`, `outline-bad-top` | error | An outline entry's id, label or top is not valid, or an id is used twice. |
 | `info-bad-type`, `info-too-long`, `info-bad-url`, `info-bad-license` | error | The author, series, description, notice, licence or source address in `meta` cannot go into a bundle as it is. |
 | `label-style` | warning | The label ends with the `.` or `)` the book prints after the number (the importer drops it and keeps the label without it, and so does the exporter), or has leading, trailing or repeated spaces (the importer keeps them). |

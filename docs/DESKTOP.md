@@ -110,7 +110,7 @@ exercise, choose the Solution tool, go to the answer key (the exercise stays sel
 answer. Solution regions are drawn **green and dashed with an `S` marker** and the number of the exercise, faintly for all
 exercises and strongly for the selected one, whose regions have a button to remove them right there. Clicking a region selects its
 exercise. The card lists them under "hidden from the learner" with what is printed under each; clicking one goes there. An exercise
-may have up to eight regions of each kind. A solution is never shown with the exercise, never sent to a tutor chat, and used only
+may have up to eight regions of each kind (context, continuation), and up to sixteen solution regions. A solution is never shown with the exercise, never sent to a tutor chat, and used only
 to grade (see [BUNDLE_FORMAT.md](BUNDLE_FORMAT.md)).
 
 ### The panels
@@ -195,7 +195,7 @@ atomic, undoable batch of the operations the command line writes (`add` with the
 compares the operations and the frames. Run again, a book that has everything says so and offers nothing; one line says what was
 applied. What is not a proposal is listed under **To look at**: numbers missing from a section, printed twice, lines that looked
 like exercises and were left out, exercises of the book that the search did not find now, answers without an exercise, exercises
-without an answer, and what cannot be applied (a number the bundle does not allow, an answer of more than eight regions).
+without an answer, and what cannot be applied (a number the bundle does not allow, an answer of more than sixteen regions).
 
 ![Book exercises found in the book: ghosts with the printed numbers and the instruction, the list with the state of each](img/desktop-book-propose.png)
 

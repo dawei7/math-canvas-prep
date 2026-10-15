@@ -77,7 +77,7 @@ export const framesAdd: CommandSpec = {
     { name: 'authority', type: 'string', value: 'book', description: 'Make it an authoritative exercise audited from a book (needs --label and --section; it cannot be a part). `mcprep exercises add` is the same without --kind.' },
     { name: 'label', type: 'string', value: '<5a>', description: 'With --authority book: the number exactly as the book prints it, without the closing "." or ")" (5, 12, 5a, A.3).' },
     { name: 'section', type: 'string', value: '<id>', description: 'With --authority book: the id of the outline entry (section) the exercise belongs to (`mcprep outline` lists them).' },
-    { name: 'solution', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 8. Exercises only.' },
+    { name: 'solution', type: 'string', value: '<page:l,t,r,b>', multiple: true, description: 'A region (of the same PDF) where the answer is printed, hidden from the learner and used only to grade; repeatable, up to 16. Exercises only.' },
     { name: 'replace', type: 'boolean', description: 'With --authority book: if the exercise (same section and label) already exists, overwrite it in place, keeping its id, instead of failing: page, rect and continuation are replaced; context and solution are replaced when you give them and kept otherwise.' },
     ...REPORT_OPTIONS,
   ],

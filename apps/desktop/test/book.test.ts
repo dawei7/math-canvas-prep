@@ -450,13 +450,16 @@ describe('the store: solutions, hidden from the learner', () => {
     expect(store.state.notice).toMatchObject({ kind: 'error' });
   });
 
-  it('allows at most eight regions and says so', async () => {
+  it('allows at most sixteen solution regions and says so', async () => {
     const { store } = await started(workbook({ exercises: true }));
     const book = store.state.project?.frames[0] as Frame;
-    for (let n = 1; n < 8; n += 1) expect(store.addRegion('solution', book.id, 3, key(n)).ok).toBe(true);
-    const ninth = store.addRegion('solution', book.id, 3, key(9));
-    expect(ninth.ok).toBe(false);
-    expect(ninth.error).toContain('at most 8');
+    expect(book.solution).toHaveLength(1);
+    for (let n = 1; n < 15; n += 1) expect(store.addRegion('solution', book.id, 3, key(n)).ok).toBe(true);
+    const last = store.addRegion('solution', book.id, 3, key(15));
+    expect(last.ok).toBe(true);
+    const over = store.addRegion('solution', book.id, 3, key(16));
+    expect(over.ok).toBe(false);
+    expect(over.error).toContain('at most 16');
   });
 
   it('shows a region on its page and marks it for a moment', async () => {

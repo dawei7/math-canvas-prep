@@ -190,15 +190,25 @@ describe('an answer that runs over pages or columns', () => {
     expect(result.sections[0]?.notes).toContain('one answer goes on after the end of its page or column: 4 (pages 0-2, 2 continuation regions)');
   });
 
-  it('keeps at most eight regions of an answer and says so', () => {
+  it('keeps at most sixteen regions of an answer and says so', () => {
     const pages: PageText[] = [page(0, [...keyTop, answer(1, 0.22), { text: '2) a very long answer', left: 0.143, top: 0.8 }, ...paragraph('long answer, first page', 5, 0.8175)])];
-    for (let k = 1; k <= 9; k += 1) pages.push(page(k, paragraph(`long answer, page ${k}`, 46, 0.07)));
-    pages.push(page(10, [...paragraph('long answer, last page', 3, 0.07), answer(3, 0.2)]));
+    for (let k = 1; k <= 17; k += 1) pages.push(page(k, paragraph(`long answer, page ${k}`, 46, 0.07)));
+    pages.push(page(18, [...paragraph('long answer, last page', 3, 0.07), answer(3, 0.2)]));
     const result = proposeSolutions(pages, answerEntries('1.1'), undefined, { answerKey: { page: 0, top: 0.1 } });
     const two = result.sections[0]?.answers.find((entry) => entry.label === '2') as SolutionProposal;
-    expect(two.regions).toHaveLength(8);
-    expect(two.regions.map((region) => region.page)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(result.sections[0]?.notes.join(' ')).toContain('beyond the limit of 7 continuation regions');
+    expect(two.regions).toHaveLength(16);
+    expect(two.regions.map((region) => region.page)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    expect(result.sections[0]?.notes.join(' ')).toContain('beyond the limit of 15 continuation regions');
+  });
+
+  it('keeps a nine-page answer whole (book 23 problem 2 needs nine regions)', () => {
+    const pages: PageText[] = [page(0, [...keyTop, answer(1, 0.22), { text: '2) a nine page answer', left: 0.143, top: 0.8 }, ...paragraph('long answer, first page', 5, 0.8175)])];
+    for (let k = 1; k <= 7; k += 1) pages.push(page(k, paragraph(`long answer, page ${k}`, 46, 0.07)));
+    pages.push(page(8, [...paragraph('long answer, last page', 3, 0.07), answer(3, 0.2)]));
+    const result = proposeSolutions(pages, answerEntries('1.1'), undefined, { answerKey: { page: 0, top: 0.1 } });
+    const two = result.sections[0]?.answers.find((entry) => entry.label === '2') as SolutionProposal;
+    expect(two.regions.map((region) => region.page)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(result.sections[0]?.notes.join(' ')).not.toContain('beyond the limit');
   });
 
   it('goes from the bottom of one column to the top of the next, and from the last column to the next page', () => {

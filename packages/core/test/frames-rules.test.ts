@@ -102,6 +102,13 @@ describe('continues and context', () => {
     expect(codes([{ ...good, context: nine }])).toEqual(['error:too-many-regions']);
   });
 
+  it('allows up to 16 solution regions on an exercise and rejects more', () => {
+    const solutions = (length: number) => Array.from({ length }, () => region);
+    expect(codes([{ ...good, solution: solutions(9) }])).toEqual([]);
+    expect(codes([{ ...good, solution: solutions(16) }])).toEqual([]);
+    expect(codes([{ ...good, solution: solutions(17) }])).toEqual(['error:too-many-regions']);
+  });
+
   it('checks every region like a frame (page range, rect)', () => {
     expect(codes([{ ...good, continues: [{ page: 9, rect: region.rect }] }])).toEqual(['error:page-out-of-range']);
     expect(codes([{ ...good, context: [{ page: 1, rect: { left: 0.1, top: 0.1, right: 0.11, bottom: 0.2 } }] }])).toEqual(['error:rect-too-small']);

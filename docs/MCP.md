@@ -117,7 +117,7 @@ write reads the file fresh under a lock; the desktop app asks which version to k
 
 ## Tool reference
 
-61 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
+62 tools. Arguments marked * are required. Every tool that works on a project also takes an optional `project` (the path of the project file; default: the project created or opened earlier in the session).
 
 ### `create_project`
 
@@ -485,7 +485,7 @@ Arguments:
 - `id` (string): Your own frame id ([A-Za-z0-9_-], up to 40 characters); default generated (f1, f2, ...).
 - `context` ({ page, rect }[]): The instruction or statement the learner sees and the AI receives with every check (printed once above 5a and 5b, say).
 - `continues` ({ page, rect }[]): Further regions of the same exercise, in reading order (the next page, the next column).
-- `solution` ({ page, rect }[]): Where the answer is printed in this PDF (the answer key at the back): hidden from the learner, used only to grade.
+- `solution` ({ page, rect }[]): Where the answer is printed in this PDF (the answer key at the back): hidden from the learner, used only to grade. Up to 16 regions.
 - `replace` (boolean): Overwrite the exercise in place if it exists (same section and label).
 - `dry_run` (boolean): Compute and validate but do not write the project.
 - `force` (boolean): Write even if the change introduces validation errors (almost never what you want).
@@ -536,7 +536,7 @@ Arguments:
 
 ### `solution_add`
 
-Attaches a region of the SAME PDF where the answer is printed (usually the answer key at the back) to an exercise. It is hidden and used only to grade: the learner never sees it with the exercise and it is never sent to a tutor chat. Typically one small region per exercise (the line "22) 0") or one block that answers several exercises (give the same region to each). Up to 8 per exercise. Then LOOK at it: render_crop with region "solution:0". The instruction that the learner does see is context (add_context), not this.
+Attaches a region of the SAME PDF where the answer is printed (usually the answer key at the back) to an exercise. It is hidden and used only to grade: the learner never sees it with the exercise and it is never sent to a tutor chat. Typically one small region per exercise (the line "22) 0") or one block that answers several exercises (give the same region to each). Up to 16 per exercise. Then LOOK at it: render_crop with region "solution:0". The instruction that the learner does see is context (add_context), not this.
 
 Arguments:
 

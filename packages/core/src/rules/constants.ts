@@ -32,8 +32,8 @@ export const LIMITS = {
   sectionIdMax: 60,
   /** An outline entry's printed number ("1.1", "Chapter 3"): 1 to this many characters. */
   outlineLabelMax: 24,
-  /** At most this many `solution` regions per frame (the same number as `continues` and `context`). */
-  maxSolutionRegions: 8,
+  /** At most this many `solution` regions per frame (more than `continues` and `context`: an answer can run over many pages). */
+  maxSolutionRegions: 16,
   /** Texts about the work itself (manifest `document`). */
   authorMax: 200,
   seriesMax: 200,

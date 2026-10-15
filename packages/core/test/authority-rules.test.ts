@@ -127,11 +127,11 @@ describe('an authoritative frame', () => {
 describe('solution regions', () => {
   const region = { page: 5, rect: { left: 0.1, top: 0.4, right: 0.9, bottom: 0.45 } };
 
-  it('are allowed on exercises, up to eight', () => {
+  it('are allowed on exercises, up to sixteen', () => {
     expect(codes([{ ...exercise, solution: [region] }])).toEqual([]);
-    expect(codes([{ ...exercise, solution: Array.from({ length: 8 }, () => region) }])).toEqual([]);
-    expect(codes([{ ...exercise, solution: Array.from({ length: 9 }, () => region) }])).toEqual(['error:too-many-regions']);
-    expect(parseFrames([{ ...exercise, solution: Array.from({ length: 9 }, () => region) }], strict).issues[0]?.message).toContain('"solution"');
+    expect(codes([{ ...exercise, solution: Array.from({ length: 16 }, () => region) }])).toEqual([]);
+    expect(codes([{ ...exercise, solution: Array.from({ length: 17 }, () => region) }])).toEqual(['error:too-many-regions']);
+    expect(parseFrames([{ ...exercise, solution: Array.from({ length: 17 }, () => region) }], strict).issues[0]?.message).toContain('"solution"');
   });
 
   it('are refused on questions and bookmarks, naming the frame', () => {
