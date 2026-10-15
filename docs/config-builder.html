@@ -49,9 +49,13 @@
             <h2 class="text-lg font-semibold text-[var(--foreground)]">1. Workspace Directories</h2>
             <p class="text-[var(--muted-foreground)] text-sm">Define input, working, batch, and bundle delivery paths.</p>
           </div>
-          <!-- Preset switcher -->
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-[var(--muted-foreground)]">Preset:</span>
+          <!-- Preset & Load switcher -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="cfg-source-badge" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-900 border border-[var(--border)] text-slate-400">Checking config...</span>
+            <button onclick="document.getElementById('cfg-file-input').click()" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-sky-400 border border-[var(--border)] transition flex items-center gap-1">
+              <span>📂 Load File</span>
+            </button>
+            <input type="file" id="cfg-file-input" accept=".json" class="hidden" onchange="loadConfigFile(event)">
             <select id="cfg-preset" onchange="applyPathPreset()" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-[var(--border)] text-xs text-sky-300 font-medium">
               <option value="relative" selected>Portable / Relative (./inbox, ./bundles)</option>
               <option value="custom">Custom Absolute Path...</option>
@@ -146,13 +150,19 @@
 
       <!-- Config Preview Box -->
       <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-4">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold text-[var(--foreground)]">Generated <code class="text-sky-400">audit.config.json</code></span>
-          <div class="flex gap-2">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <span class="text-sm font-semibold text-[var(--foreground)]">Generated <code class="text-sky-400">audit.config.json</code></span>
+            <div id="cfg-save-status" class="text-xs text-emerald-400 font-mono mt-0.5 hidden"></div>
+          </div>
+          <div class="flex flex-wrap gap-2">
             <button onclick="copyToClipboard('cfg-json-output', 'cfg-copy-feedback')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-sky-400 border border-slate-700 transition flex items-center gap-1.5">
               <span id="cfg-copy-feedback">Copy JSON</span>
             </button>
-            <button onclick="downloadConfigJson()" class="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-xs font-bold text-slate-950 transition">
+            <button onclick="saveConfigDirectly()" id="btn-save-cfg" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-slate-950 transition flex items-center gap-1.5 shadow-sm">
+              <span>💾 Save audit.config.json</span>
+            </button>
+            <button onclick="downloadConfigJson()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700 transition">
               Download File
             </button>
           </div>
@@ -453,6 +463,138 @@
       URL.revokeObjectURL(url);
     }
 
+    let currentWorkspaceHandle = null;
+
+    async function saveConfigDirectly() {
+      const jsonContent = document.getElementById('cfg-json-output').textContent;
+      const statusEl = document.getElementById('cfg-save-status');
+
+      const showSaved = (msg) => {
+        statusEl.classList.remove('hidden');
+        statusEl.textContent = `✓ ${msg}`;
+        setTimeout(() => statusEl.classList.add('hidden'), 5000);
+      };
+
+      // 1. If we already hold a workspace folder handle from "Create Missing Folders"
+      if (currentWorkspaceHandle && currentWorkspaceHandle.getFileHandle) {
+        try {
+          const fileHandle = await currentWorkspaceHandle.getFileHandle('audit.config.json', { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(jsonContent);
+          await writable.close();
+          showSaved(`Saved audit.config.json directly inside ${currentWorkspaceHandle.name}!`);
+          return;
+        } catch (err) {
+          console.warn('Could not write directly to workspace handle:', err);
+        }
+      }
+
+      // 2. Use File System Access API showSaveFilePicker (Chrome/Edge on Windows)
+      if (window.showSaveFilePicker) {
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: 'audit.config.json',
+            types: [{
+              description: 'JSON Configuration File',
+              accept: { 'application/json': ['.json'] }
+            }]
+          });
+          const writable = await fileHandle.createWritable();
+          await writable.write(jsonContent);
+          await writable.close();
+          showSaved(`Saved directly to ${fileHandle.name}!`);
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return; // User cancelled dialog
+          console.error(err);
+        }
+      }
+
+      // 3. Fallback to download
+      downloadConfigJson();
+      showSaved('Downloaded audit.config.json (direct save unsupported in this browser)');
+    }
+
+    function populateFromConfig(data, sourceLabel) {
+      if (!data || typeof data !== 'object') return;
+      if (data.directories) {
+        if (data.directories.inbox) document.getElementById('cfg-inbox').value = data.directories.inbox;
+        if (data.directories.audit_work) document.getElementById('cfg-work').value = data.directories.audit_work;
+        if (data.directories.batch_results) document.getElementById('cfg-results').value = data.directories.batch_results;
+        if (data.directories.delivered_bundles) document.getElementById('cfg-bundles').value = data.directories.delivered_bundles;
+      }
+      if (data.library?.defaultFolder) {
+        document.getElementById('cfg-default-folder').value = data.library.defaultFolder;
+      }
+      if (data.defaults?.sample) {
+        document.getElementById('cfg-sample').value = data.defaults.sample;
+      }
+      if (data.defaults?.solutionSample) {
+        document.getElementById('cfg-sol-sample').value = data.defaults.solutionSample;
+      }
+
+      const inbox = data.directories?.inbox || '';
+      if (inbox.startsWith('./') || inbox.startsWith('../')) {
+        document.getElementById('cfg-preset').value = 'relative';
+        document.getElementById('cfg-custom-base-wrap').classList.add('hidden');
+      } else {
+        document.getElementById('cfg-preset').value = 'custom';
+        document.getElementById('cfg-custom-base-wrap').classList.remove('hidden');
+        const match = inbox.match(/^(.*)[\/\\]inbox\/?$/i);
+        if (match) {
+          document.getElementById('cfg-custom-base').value = match[1];
+        }
+      }
+
+      const badge = document.getElementById('cfg-source-badge');
+      badge.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800';
+      badge.textContent = `✓ ${sourceLabel || 'Loaded audit.config.json'}`;
+
+      updateConfigOutput();
+    }
+
+    async function tryAutoLoadExistingConfig() {
+      const badge = document.getElementById('cfg-source-badge');
+      const candidates = [
+        { url: '../audit.config.json', label: 'Loaded audit.config.json' },
+        { url: './audit.config.json', label: 'Loaded audit.config.json' },
+        { url: '../audit.config.example.json', label: 'Loaded audit.config.example.json' },
+        { url: './audit.config.example.json', label: 'Loaded audit.config.example.json' },
+      ];
+
+      for (const cand of candidates) {
+        try {
+          const resp = await fetch(cand.url);
+          if (resp.ok) {
+            const text = await resp.text();
+            const json = JSON.parse(text);
+            populateFromConfig(json, cand.label);
+            return;
+          }
+        } catch (e) {
+          // ignore, next
+        }
+      }
+
+      badge.className = 'px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-slate-400 border border-[var(--border)]';
+      badge.textContent = 'Using default relative paths';
+    }
+
+    function loadConfigFile(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const json = JSON.parse(e.target.result);
+          populateFromConfig(json, `Loaded ${file.name}`);
+        } catch (err) {
+          alert(`Invalid JSON in ${file.name}: ` + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
     async function createFoldersInBrowser() {
       const statusDiv = document.getElementById('folder-creation-status');
       statusDiv.classList.remove('hidden');
@@ -468,6 +610,7 @@
         statusDiv.textContent = 'Please choose your workspace root folder in the browser picker...';
 
         const rootHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        currentWorkspaceHandle = rootHandle;
 
         const folderNames = ['inbox', 'audit', 'results', 'bundles'];
         const results = [];
@@ -512,6 +655,7 @@
     // Initialize
     updateConfigOutput();
     updateMetaOutput();
+    tryAutoLoadExistingConfig();
   </script>
 </body>
 </html>
