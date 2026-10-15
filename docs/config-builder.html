@@ -71,35 +71,76 @@
               placeholder="e.g. C:/my_books or /home/user/books"
               class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono text-slate-200">
             <button onclick="applyCustomBase()" class="px-3 py-2 rounded-lg bg-sky-500 text-slate-950 text-xs font-bold hover:bg-sky-400">Apply to Subfolders</button>
+            <button onclick="openFolder('cfg-custom-base')" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700 transition">📁 Open</button>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Inbox Folder (Input)</label>
-            <input type="text" id="cfg-inbox" value="./inbox" oninput="updateConfigOutput()"
-              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Inbox Folder (Input)</label>
+              <button onclick="openFolder('cfg-inbox')" class="text-xs font-medium text-sky-400 hover:text-sky-300 flex items-center gap-1 transition">
+                <span>📁 Open</span>
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <input type="text" id="cfg-inbox" value="./inbox" oninput="updateConfigOutput()"
+                class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+              <button onclick="openFolder('cfg-inbox')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 border border-[var(--border)] transition">
+                📁
+              </button>
+            </div>
             <span class="text-xs text-[var(--muted-foreground)]">Drop incoming textbook PDFs here</span>
           </div>
 
           <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Delivered Bundles (Final Output)</label>
-            <input type="text" id="cfg-bundles" value="./bundles" oninput="updateConfigOutput()"
-              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-emerald-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Delivered Bundles (Final Output)</label>
+              <button onclick="openFolder('cfg-bundles')" class="text-xs font-medium text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition">
+                <span>📁 Open</span>
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <input type="text" id="cfg-bundles" value="./bundles" oninput="updateConfigOutput()"
+                class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-emerald-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+              <button onclick="openFolder('cfg-bundles')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 border border-[var(--border)] transition">
+                📁
+              </button>
+            </div>
             <span class="text-xs text-[var(--muted-foreground)]">Production-ready .mcbundle files for Android</span>
           </div>
 
           <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Audit Work Directory</label>
-            <input type="text" id="cfg-work" value="./audit" oninput="updateConfigOutput()"
-              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Audit Work Directory</label>
+              <button onclick="openFolder('cfg-work')" class="text-xs font-medium text-slate-400 hover:text-slate-300 flex items-center gap-1 transition">
+                <span>📁 Open</span>
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <input type="text" id="cfg-work" value="./audit" oninput="updateConfigOutput()"
+                class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+              <button onclick="openFolder('cfg-work')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 border border-[var(--border)] transition">
+                📁
+              </button>
+            </div>
             <span class="text-xs text-[var(--muted-foreground)]">Internal review crops, gates, and .mcprep.json</span>
           </div>
 
           <div class="space-y-1.5">
-            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Batch Results Directory</label>
-            <input type="text" id="cfg-results" value="./results" oninput="updateConfigOutput()"
-              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Batch Results Directory</label>
+              <button onclick="openFolder('cfg-results')" class="text-xs font-medium text-slate-400 hover:text-slate-300 flex items-center gap-1 transition">
+                <span>📁 Open</span>
+              </button>
+            </div>
+            <div class="flex gap-2">
+              <input type="text" id="cfg-results" value="./results" oninput="updateConfigOutput()"
+                class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+              <button onclick="openFolder('cfg-results')" class="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 border border-[var(--border)] transition">
+                📁
+              </button>
+            </div>
             <span class="text-xs text-[var(--muted-foreground)]">Batch INDEX.md and contact sheets</span>
           </div>
         </div>
@@ -649,6 +690,38 @@
         const orig = btn.innerHTML;
         btn.innerHTML = '<span class="text-emerald-400">Copied PowerShell command!</span>';
         setTimeout(() => btn.innerHTML = orig, 2500);
+      });
+    }
+
+    function openFolder(inputId) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      let raw = input.value.trim();
+      if (!raw) return;
+
+      const norm = raw.replace(/\\/g, '/');
+      let fileUrl = norm;
+      if (norm.match(/^[a-zA-Z]:/)) {
+        fileUrl = 'file:///' + norm;
+      } else if (!norm.startsWith('http://') && !norm.startsWith('https://') && !norm.startsWith('file://')) {
+        fileUrl = norm;
+      }
+
+      try {
+        window.open(fileUrl, '_blank');
+      } catch (e) {
+        console.warn(e);
+      }
+
+      const winPath = norm.replace(/\//g, '\\');
+      const explorerCmd = `explorer.exe "${winPath}"`;
+      navigator.clipboard.writeText(explorerCmd).then(() => {
+        const saveStatus = document.getElementById('cfg-save-status');
+        if (saveStatus) {
+          saveStatus.classList.remove('hidden');
+          saveStatus.textContent = `Opened folder link. Also copied to clipboard: ${explorerCmd}`;
+          setTimeout(() => saveStatus.classList.add('hidden'), 5000);
+        }
       });
     }
 

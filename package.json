@@ -29,7 +29,8 @@
     "docs": "npm run docs:cli && npm run docs:mcp",
     "audit-books": "node scripts/audit-books.mjs",
     "check-delivery": "node scripts/check-delivery.mjs",
-    "init-workspace": "node scripts/init-workspace.mjs"
+    "init-workspace": "node scripts/init-workspace.mjs",
+    "open": "node scripts/open-folder.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
