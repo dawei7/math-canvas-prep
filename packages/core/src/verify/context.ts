@@ -54,7 +54,9 @@ function zoneOf(run: Run, exercise: Exercise): Zone | undefined {
 const COUNT_WORDS: Record<string, number> = { both: 2, beiden: 2, beide: 2, two: 2, zwei: 2, three: 3, drei: 3, four: 4, vier: 4, five: 5, 'fünf': 5, six: 6, sechs: 6 };
 const COUNT_BEFORE = /\b(both|beiden|beide|two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\s+(?:folgenden|nächsten|following|next)\b/iu;
 const COUNT_AFTER = /\b(?:folgenden|nächsten|following|next)\s+(beiden|beide|two|zwei|three|drei|four|vier|five|fünf|six|sechs|\d)\b/iu;
-const UMLAUTS: Record<string, string> = { a: 'ä', o: 'ö', u: 'ü', A: 'Ä', O: 'Ö', U: 'Ü' };
+/** What follows a count that is not an exercise count: the terms, values, numbers or digits that a single exercise asks for. */
+const COUNTED_THINGS = /^\s*(?:terms?|values?|numbers?|digits?|entries|steps?|iterates?|elements?|glieder[n]?|terme[n]?|werte[n]?|zahlen|ziffern|schritte[n]?)\b/iu;
+const UMLAUTS: Record<string, string> ={ a: 'ä', o: 'ö', u: 'ü', A: 'Ä', O: 'Ö', U: 'Ü' };
 /** A text layer of LaTeX sets an umlaut as a diaeresis before its letter ("n¨achsten"): put them together again. */
 const joinUmlauts = (text: string): string => text.normalize('NFC').replace(/(?:\u00a8| ?\u0308)\s?([aouAOU])/gu, (_, vowel: string) => UMLAUTS[vowel] as string);
 
@@ -66,6 +68,8 @@ export function statedCount(run: Run, regions: readonly { page: number; rect: Re
   const folded = joinUmlauts(text);
   const match = COUNT_BEFORE.exec(folded) ?? COUNT_AFTER.exec(folded);
   if (!match) return undefined;
+  // "find the next two terms" counts the terms of a sequence that one exercise asks for, not the exercises that share the instruction.
+  if (COUNTED_THINGS.test(folded.slice(match.index + match[0].length))) return undefined;
   const word = (match[1] as string).toLowerCase();
   return /^\d$/.test(word) ? Number(word) : COUNT_WORDS[word];
 }

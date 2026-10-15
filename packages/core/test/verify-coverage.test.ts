@@ -817,6 +817,21 @@ describe('context-inconsistent: an exercise between two that share an instructio
     expect(refs(await check(counted('In den folgenden Aufgaben geht es um Primzahlen.')), 'context-group-end')).toEqual(['a:3']);
   });
 
+  it('does not read what one exercise asks for ("the next two terms") as the number of exercises that share the instruction', async () => {
+    // Exercises 1 to 4; 1, 2 and 3 share the instruction, 4 has none: "the next two terms" is a task inside each exercise, not a count of exercises.
+    const three = (instruction: string): Workbook => {
+      const book = new Workbook(2);
+      book.outline = sectionEntries([{ id: 'a', page: 0, top: 0.02, label: '1.1', title: 'Whole Numbers' }]);
+      book.text(0, 72, 60, instruction, 11);
+      const region = around(0, 72, 60, { width: 400 });
+      for (let n = 1; n <= 4; n += 1) book.exercise('a', String(n), 0, 72, 100 + 40 * (n - 1), n <= 3 ? { extra: { context: [region] } } : {});
+      return book;
+    };
+    expect(refs(await check(three('For the following patterns find a) the next two terms and b) the 40th term.')), 'context-inconsistent')).toEqual([]);
+    // The same count after the words that name exercises still counts: two exercises, but three share the instruction (the finding names the exercise after the group's end).
+    expect(refs(await check(three('Use the next two exercises to find the 40th term.')), 'context-inconsistent')).toEqual(['a:4']);
+  });
+
   /** Exercises 1 to 4 on one page; 1, 3 and 4 under the instruction printed above them, 2 with none. */
   function holed(instruction: string): Workbook {
     const book = new Workbook(2);
