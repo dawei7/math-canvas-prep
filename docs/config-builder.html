@@ -59,7 +59,7 @@
             </div>
             <p class="text-[var(--muted-foreground)] text-sm mt-0.5">Define input, working, batch, and bundle delivery paths.</p>
           </div>
-          <!-- Controls: Reload from disk, Reset to defaults, Import external, and Mode selector -->
+          <!-- Controls: Reload from disk, Reset to defaults, Open Repo in Explorer, and Mode selector -->
           <div class="flex flex-wrap items-center gap-2">
             <button onclick="reloadConfigFromDisk()" id="btn-reload-cfg" title="Reload audit.config.json directly from repository root (no file picker dialog)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-1.5 shadow-sm">
               <span>🔄 Reload</span>
@@ -67,10 +67,9 @@
             <button onclick="resetToDefaultConfig()" id="btn-reset-cfg" title="Reset fields to factory defaults (./inbox, ./bundles)" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-400 hover:text-slate-200 border border-[var(--border)] transition flex items-center gap-1">
               <span>↺ Reset</span>
             </button>
-            <button onclick="document.getElementById('cfg-file-input').click()" title="Import an external JSON config from another location" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-400 hover:text-slate-200 border border-[var(--border)] transition flex items-center gap-1">
-              <span>📂 Import...</span>
+            <button onclick="openFolder('.')" title="Open math-canvas-prep repository folder in native Windows File Explorer" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-medium text-slate-300 hover:text-white border border-[var(--border)] transition flex items-center gap-1">
+              <span>📁 Open Repo</span>
             </button>
-            <input type="file" id="cfg-file-input" accept=".json" class="hidden" onchange="loadConfigFile(event)">
             <select id="cfg-preset" onchange="applyPathPreset()" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-[var(--border)] text-xs text-sky-300 font-medium">
               <option value="relative" selected>Portable / Relative (./inbox, ./bundles)</option>
               <option value="custom">Custom Absolute Path...</option>
@@ -221,6 +220,10 @@
             <button onclick="downloadConfigJson()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700 transition">
               Download File
             </button>
+            <button onclick="document.getElementById('cfg-file-input').click()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-400 hover:text-slate-200 border border-slate-700 transition" title="Import an external JSON file from your computer (opens browser file picker)">
+              Import JSON...
+            </button>
+            <input type="file" id="cfg-file-input" accept=".json" class="hidden" onchange="loadConfigFile(event)">
           </div>
         </div>
         <pre id="cfg-json-output" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto leading-relaxed"></pre>
@@ -873,10 +876,9 @@
       });
     }
 
-    async function openFolder(inputId) {
-      const input = document.getElementById(inputId);
-      if (!input) return;
-      let raw = input.value.trim();
+    async function openFolder(targetOrInputId) {
+      const input = document.getElementById(targetOrInputId);
+      const raw = input ? input.value.trim() : (typeof targetOrInputId === 'string' ? targetOrInputId.trim() : '');
       if (!raw) return;
 
       const norm = raw.replace(/\\/g, '/');
