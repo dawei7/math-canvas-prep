@@ -23,7 +23,7 @@ Chapter 14 of the [agent guide](docs/AGENT_GUIDE.md) describes it; a transcript 
 | `packages/cli` (`mcprep`) | Works. The whole workflow, `--json` everywhere, and the audit of a book: `exercises`, `solution`, `book` and `outline` commands, and `outline derive --book`, `exercises propose` and `solutions propose` for a whole book, `exercises verify` and `exercises sample` (a text-only check and a fixed review sample, the same for every agent), `pages sheets` (every page of a book on overview sheets, to see its structure), `scripts/audit-books.mjs` for a folder of books and `scripts/check-delivery.mjs` to check again what an agent delivered for each of them. 283 tests, plus 6 end-to-end tests of the built binary. |
 | `packages/mcp` | Works. 61 tools over stdio. 47 tests, plus 3 end-to-end tests of the built server. |
 | `apps/desktop` | Works on Windows (packaged and run). A visual editor with live reload of changes an agent makes to the file, and for auditing a book: book exercises with their printed numbers and sections, hidden solutions drawn on the answer key, the list of sections, the licence and notice of the document, an export that says which parts of the format the bundle uses and checks it as the importer does, and lists that stay quick with 5,000 exercises. It also finds the sections of a book from its printed text (**Derive sections**) and proposes its numbered exercises and the answers of its answer key, with progress and a Stop button, a review of every proposal against what the project has, ghosts on the page and one atomic, undoable, repeatable batch (the same the command line writes). 187 unit tests and 76 end-to-end tests that drive the built application. Not signed, no icon of its own, not tried on macOS or Linux: see [docs/DESKTOP.md](docs/DESKTOP.md). |
-| Docs | [Agent guide](docs/AGENT_GUIDE.md), [audit a book](docs/AUDIT_A_BOOK.md) (also: checking what an agent delivered), [runbook for an audit agent](docs/AGENT_RUNBOOK.md), [prompts](docs/AGENT_PROMPTS.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [reading a bundle](docs/READING_A_BUNDLE.md), [dependencies](docs/DEPENDENCIES.md). |
+| Docs | [Quick guide](docs/QUICKGUIDE.md), [config builder](docs/config-builder.html), [agent guide](docs/AGENT_GUIDE.md), [audit a book](docs/AUDIT_A_BOOK.md) (also: checking what an agent delivered), [runbook for an audit agent](docs/AGENT_RUNBOOK.md), [prompts](docs/AGENT_PROMPTS.md), [CLI](docs/CLI.md), [MCP](docs/MCP.md), [desktop app](docs/DESKTOP.md), [project file](docs/PROJECT_FILE.md), [bundle format](docs/BUNDLE_FORMAT.md), [reading a bundle](docs/READING_A_BUNDLE.md), [dependencies](docs/DEPENDENCIES.md). |
 
 The bundle format ([docs/BUNDLE_FORMAT.md](docs/BUNDLE_FORMAT.md)) is the contract with the Android app; the writer and the
 importer check implement every rule of it. Whether the Android app accepts a bundle made here has been checked against the
@@ -44,6 +44,8 @@ npm run build
 
 `npm install` also downloads Electron's program file (about 100 MB); set `ELECTRON_SKIP_BINARY_DOWNLOAD=1` first if you only
 want the command line and the MCP server.
+
+For an end-to-end walkthrough on batch-auditing textbooks and configuring input/output folders, see the [quick guide](docs/QUICKGUIDE.md) and the [config builder](docs/config-builder.html).
 
 ### For an AI agent
 

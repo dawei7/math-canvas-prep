@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Math Canvas Book Audit Configuration",
+  "description": "Template configuration defining paths and defaults for auditing textbooks and exporting .mcbundle packages.",
+  "directories": {
+    "inbox": "./inbox",
+    "audit_work": "./audit",
+    "batch_results": "./results",
+    "delivered_bundles": "./bundles"
+  },
+  "library": {
+    "defaultFolder": "Books",
+    "description": "Virtual folder structure inside the Math Canvas tablet app library (up to 7 levels separated by /)."
+  },
+  "defaults": {
+    "sample": 60,
+    "solutionSample": 30
+  }
+}
+

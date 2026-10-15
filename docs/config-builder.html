@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Math Canvas Prep - Config & Metadata Builder</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    :root {
+      --background: #0f172a;
+      --foreground: #f8fafc;
+      --card: #1e293b;
+      --card-border: #334155;
+      --border: #334155;
+      --muted: #475569;
+      --muted-foreground: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0ea5e9;
+      --primary-foreground: #0f172a;
+      --accent: #818cf8;
+      --success: #34d399;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased p-4 md:p-6 font-sans">
+  <div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <header class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-lg flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-3">
+          <span class="p-2 rounded-xl bg-sky-500/10 text-sky-400 font-mono text-xl font-bold">∑</span>
+          <h1 class="text-xl md:text-2xl font-bold text-[var(--foreground)]">Math Canvas Prep Config Builder</h1>
+        </div>
+        <p class="text-[var(--muted-foreground)] text-sm mt-1">Configure workspace directories, generate book metadata sidecars, and inspect batch workflows.</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="tab-btn-config" onclick="switchTab('config')" class="px-4 py-2 rounded-xl text-sm font-semibold transition bg-sky-500 text-slate-950 shadow-sm">Workspace Config</button>
+        <button id="tab-btn-meta" onclick="switchTab('meta')" class="px-4 py-2 rounded-xl text-sm font-medium transition bg-slate-800 text-[var(--muted-foreground)] hover:text-white">Book Sidecar</button>
+        <button id="tab-btn-batch" onclick="switchTab('batch')" class="px-4 py-2 rounded-xl text-sm font-medium transition bg-slate-800 text-[var(--muted-foreground)] hover:text-white">Batch & Auto-Mode</button>
+      </div>
+    </header>
+
+    <!-- TAB 1: WORKSPACE CONFIG -->
+    <section id="tab-config" class="space-y-6">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-5">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold text-[var(--foreground)]">1. Workspace Directories</h2>
+            <p class="text-[var(--muted-foreground)] text-sm">Define input, working, batch, and bundle delivery paths.</p>
+          </div>
+          <!-- Preset switcher -->
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-[var(--muted-foreground)]">Preset:</span>
+            <select id="cfg-preset" onchange="applyPathPreset()" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-[var(--border)] text-xs text-sky-300 font-medium">
+              <option value="relative" selected>Portable / Relative (./inbox, ./bundles)</option>
+              <option value="custom">Custom Absolute Path...</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Custom Base Directory (shown if custom preset) -->
+        <div id="cfg-custom-base-wrap" class="hidden p-3 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1.5">
+          <label class="text-xs font-semibold text-sky-400 uppercase tracking-wider">Base Folder Path</label>
+          <div class="flex gap-2">
+            <input type="text" id="cfg-custom-base" value="C:/dawei7/books" oninput="applyCustomBase()"
+              placeholder="e.g. C:/my_books or /home/user/books"
+              class="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono text-slate-200">
+            <button onclick="applyCustomBase()" class="px-3 py-2 rounded-lg bg-sky-500 text-slate-950 text-xs font-bold hover:bg-sky-400">Apply to Subfolders</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Inbox Folder (Input)</label>
+            <input type="text" id="cfg-inbox" value="./inbox" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <span class="text-xs text-[var(--muted-foreground)]">Drop incoming textbook PDFs here</span>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Delivered Bundles (Final Output)</label>
+            <input type="text" id="cfg-bundles" value="./bundles" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-emerald-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <span class="text-xs text-[var(--muted-foreground)]">Production-ready .mcbundle files for Android</span>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Audit Work Directory</label>
+            <input type="text" id="cfg-work" value="./audit" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <span class="text-xs text-[var(--muted-foreground)]">Internal review crops, gates, and .mcprep.json</span>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Batch Results Directory</label>
+            <input type="text" id="cfg-results" value="./results" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            <span class="text-xs text-[var(--muted-foreground)]">Batch INDEX.md and contact sheets</span>
+          </div>
+        </div>
+
+        <div class="border-t border-[var(--border)] pt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Default Library Folder</label>
+            <input type="text" id="cfg-default-folder" value="Books" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-medium text-slate-200">
+            <span class="text-xs text-[var(--muted-foreground)]">Fallback bookshelf folder</span>
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Sample Size (Exercises)</label>
+            <input type="number" id="cfg-sample" value="60" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-medium text-slate-200">
+            <span class="text-xs text-[var(--muted-foreground)]">Contact sheet preview count</span>
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Solution Sample Size</label>
+            <input type="number" id="cfg-sol-sample" value="30" oninput="updateConfigOutput()"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-medium text-slate-200">
+            <span class="text-xs text-[var(--muted-foreground)]">Solution region previews</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Config Preview Box -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-[var(--foreground)]">Generated <code class="text-sky-400">audit.config.json</code></span>
+          <div class="flex gap-2">
+            <button onclick="copyToClipboard('cfg-json-output', 'cfg-copy-feedback')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-sky-400 border border-slate-700 transition flex items-center gap-1.5">
+              <span id="cfg-copy-feedback">Copy JSON</span>
+            </button>
+            <button onclick="downloadConfigJson()" class="px-3 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-xs font-bold text-slate-950 transition">
+              Download File
+            </button>
+          </div>
+        </div>
+        <pre id="cfg-json-output" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto leading-relaxed"></pre>
+      </div>
+    </section>
+
+    <!-- TAB 2: BOOK METADATA GENERATOR -->
+    <section id="tab-meta" class="space-y-6 hidden">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-5">
+        <div>
+          <h2 class="text-lg font-semibold text-[var(--foreground)]">Book Metadata Sidecar Generator</h2>
+          <p class="text-[var(--muted-foreground)] text-sm">Save this as <code class="text-sky-300">&lt;book_name&gt;.meta.json</code> next to your PDF in <code class="text-sky-300">inbox/</code>.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">PDF Filename</label>
+            <input type="text" id="meta-pdf" value="calculus_early_transcendentals.pdf" oninput="updateMetaOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-sky-300">
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Book Title</label>
+            <input type="text" id="meta-title" value="Calculus: Early Transcendentals" oninput="updateMetaOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-medium text-slate-200">
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Author(s)</label>
+            <input type="text" id="meta-author" value="James Stewart" oninput="updateMetaOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-medium text-slate-200">
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Library Folder (Bookshelf Category)</label>
+            <div class="flex gap-2">
+              <select id="meta-folder-preset" onchange="applyFolderPreset()" class="px-3 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-xs text-slate-300 font-medium">
+                <option value="custom">Custom...</option>
+                <option value="Books/Calculus" selected>Books/Calculus</option>
+                <option value="Books/Algebra">Books/Algebra</option>
+                <option value="Books/Linear Algebra">Books/Linear Algebra</option>
+                <option value="Books/Geometry">Books/Geometry</option>
+                <option value="Books/Probability">Books/Probability</option>
+                <option value="Books/Statistics">Books/Statistics</option>
+                <option value="Books/Differential Equations">Books/Differential Equations</option>
+                <option value="Books/Numerical Methods">Books/Numerical Methods</option>
+                <option value="Books/Machine Learning">Books/Machine Learning</option>
+                <option value="University/Analysis">University/Analysis</option>
+                <option value="Exam Preparation">Exam Preparation</option>
+              </select>
+              <input type="text" id="meta-folder" value="Books/Calculus" oninput="updateMetaOutput()"
+                class="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-medium text-slate-200">
+            </div>
+            <span class="text-xs text-[var(--muted-foreground)]">Path shown in Android app (up to 7 levels)</span>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">License Preset</label>
+            <select id="meta-license-preset" onchange="applyLicensePreset()" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm text-slate-300 font-medium">
+              <option value="cc-by-4">Creative Commons Attribution 4.0 (CC BY 4.0)</option>
+              <option value="cc-by-nc-4" selected>Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0)</option>
+              <option value="cc-by-sa-4">Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0)</option>
+              <option value="gfdl-1.3">GNU Free Documentation License 1.3</option>
+              <option value="public-domain">Public Domain</option>
+              <option value="none">None / All Rights Reserved</option>
+            </select>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Source URL (Optional)</label>
+            <input type="text" id="meta-source" value="https://example.org/book" oninput="updateMetaOutput()"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-mono text-slate-300">
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Attribution Notice (Optional)</label>
+          <textarea id="meta-notice" rows="2" oninput="updateMetaOutput()"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-[var(--border)] text-sm font-sans text-slate-200">Sections, exercise numbers and answer regions added by Math Canvas Prep; original PDF unchanged.</textarea>
+        </div>
+      </div>
+
+      <!-- Sidecar Preview Box -->
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold text-[var(--foreground)]">Generated Sidecar: <code id="meta-sidecar-filename" class="text-emerald-400">calculus_early_transcendentals.meta.json</code></span>
+          <div class="flex gap-2">
+            <button onclick="copyToClipboard('meta-json-output', 'meta-copy-feedback')" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-sky-400 border border-slate-700 transition">
+              <span id="meta-copy-feedback">Copy JSON</span>
+            </button>
+            <button onclick="downloadMetaJson()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-slate-950 transition">
+              Download File
+            </button>
+          </div>
+        </div>
+        <pre id="meta-json-output" class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed"></pre>
+      </div>
+    </section>
+
+    <!-- TAB 3: BATCH & AUTO-MODE WORKFLOW -->
+    <section id="tab-batch" class="space-y-6 hidden">
+      <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-5">
+        <div>
+          <h2 class="text-lg font-semibold text-[var(--foreground)]">Batch Processing 20 Books & Auto-Mode</h2>
+          <p class="text-[var(--muted-foreground)] text-sm">How the zero-touch flow works from dropping PDFs to importing bundles on your tablet.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 text-xs flex items-center justify-center font-bold">1</span>
+              <h3 class="text-sm font-semibold text-white">Drop 20 PDFs</h3>
+            </div>
+            <p class="text-xs text-[var(--muted-foreground)]">Drop as many PDFs as you want directly into your configured <code class="text-sky-300">inbox/</code> folder.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-indigo-500/20 text-indigo-400 text-xs flex items-center justify-center font-bold">2</span>
+              <h3 class="text-sm font-semibold text-white">Auto-Discovery</h3>
+            </div>
+            <p class="text-xs text-[var(--muted-foreground)]">The agent reads front matter, extracts author, license, and subject, and writes sidecars automatically.</p>
+          </div>
+
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs flex items-center justify-center font-bold">3</span>
+              <h3 class="text-sm font-semibold text-white">Batch Export</h3>
+            </div>
+            <p class="text-xs text-[var(--muted-foreground)]">Audits proceed sequentially. Completed bundles land in your configured <code class="text-emerald-300">bundles/</code> folder.</p>
+          </div>
+        </div>
+
+        <!-- Prompt Card -->
+        <div class="p-4 rounded-xl bg-sky-950/40 border border-sky-800/60 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-sky-300 uppercase tracking-wider">Auto-Pilot Agent Prompt</span>
+            <button onclick="copyToClipboard('prompt-text', 'prompt-copy-feedback')" class="px-2.5 py-1 rounded bg-sky-500 text-slate-950 text-xs font-bold hover:bg-sky-400 transition">
+              <span id="prompt-copy-feedback">Copy Prompt</span>
+            </button>
+          </div>
+          <p id="prompt-text" class="text-sm text-sky-100 font-mono bg-sky-950/80 p-3 rounded-lg border border-sky-900">
+            Please inspect all new PDFs in the inbox, auto-generate their metadata sidecars with subject library folders, and audit them into verified .mcbundle packages in bundles/.
+          </p>
+        </div>
+
+        <!-- CLI Command -->
+        <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-[var(--muted-foreground)] uppercase tracking-wider">Terminal Command (CLI)</span>
+            <button onclick="copyToClipboard('cli-text', 'cli-copy-feedback')" class="px-2.5 py-1 rounded bg-slate-800 text-slate-300 text-xs font-medium hover:text-white transition">
+              <span id="cli-copy-feedback">Copy Command</span>
+            </button>
+          </div>
+          <code id="cli-text" class="block text-xs text-amber-300 font-mono bg-slate-950 p-3 rounded-lg border border-slate-800">
+            node scripts/audit-books.mjs ./inbox --out ./results
+          </code>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      ['config', 'meta', 'batch'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add('hidden');
+        const btn = document.getElementById(`tab-btn-${t}`);
+        btn.className = 'px-4 py-2 rounded-xl text-sm font-medium transition bg-slate-800 text-[var(--muted-foreground)] hover:text-white';
+      });
+      document.getElementById(`tab-${tab}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-btn-${tab}`);
+      activeBtn.className = 'px-4 py-2 rounded-xl text-sm font-semibold transition bg-sky-500 text-slate-950 shadow-sm';
+    }
+
+    function applyPathPreset() {
+      const mode = document.getElementById('cfg-preset').value;
+      const customWrap = document.getElementById('cfg-custom-base-wrap');
+      if (mode === 'relative') {
+        customWrap.classList.add('hidden');
+        document.getElementById('cfg-inbox').value = './inbox';
+        document.getElementById('cfg-work').value = './audit';
+        document.getElementById('cfg-results').value = './results';
+        document.getElementById('cfg-bundles').value = './bundles';
+      } else {
+        customWrap.classList.remove('hidden');
+        applyCustomBase();
+      }
+      updateConfigOutput();
+    }
+
+    function applyCustomBase() {
+      const base = document.getElementById('cfg-custom-base').value.trim().replace(/\\/g, '/').replace(/\/+$/, '');
+      document.getElementById('cfg-inbox').value = `${base}/inbox`;
+      document.getElementById('cfg-work').value = `${base}/audit`;
+      document.getElementById('cfg-results').value = `${base}/results`;
+      document.getElementById('cfg-bundles').value = `${base}/bundles`;
+      updateConfigOutput();
+    }
+
+    function updateConfigOutput() {
+      const cfg = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Math Canvas Book Audit Configuration",
+        "directories": {
+          "inbox": document.getElementById('cfg-inbox').value,
+          "audit_work": document.getElementById('cfg-work').value,
+          "batch_results": document.getElementById('cfg-results').value,
+          "delivered_bundles": document.getElementById('cfg-bundles').value
+        },
+        "library": {
+          "defaultFolder": document.getElementById('cfg-default-folder').value,
+          "description": "Virtual folder structure inside the Math Canvas tablet app library (up to 7 levels separated by /)."
+        },
+        "defaults": {
+          "sample": parseInt(document.getElementById('cfg-sample').value) || 60,
+          "solutionSample": parseInt(document.getElementById('cfg-sol-sample').value) || 30
+        }
+      };
+      document.getElementById('cfg-json-output').textContent = JSON.stringify(cfg, null, 2);
+    }
+
+    function applyFolderPreset() {
+      const preset = document.getElementById('meta-folder-preset').value;
+      if (preset !== 'custom') {
+        document.getElementById('meta-folder').value = preset;
+        updateMetaOutput();
+      }
+    }
+
+    function applyLicensePreset() {
+      updateMetaOutput();
+    }
+
+    function getLicenseObj() {
+      const val = document.getElementById('meta-license-preset').value;
+      switch (val) {
+        case 'cc-by-4': return { name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/' };
+        case 'cc-by-nc-4': return { name: 'CC BY-NC 4.0', url: 'https://creativecommons.org/licenses/by-nc/4.0/' };
+        case 'cc-by-sa-4': return { name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/licenses/by-sa/4.0/' };
+        case 'gfdl-1.3': return { name: 'GNU Free Documentation License 1.3 or later' };
+        case 'public-domain': return { name: 'Public Domain' };
+        default: return undefined;
+      }
+    }
+
+    function updateMetaOutput() {
+      const pdf = document.getElementById('meta-pdf').value.trim();
+      const stem = pdf.replace(/\.pdf$/i, '');
+      document.getElementById('meta-sidecar-filename').textContent = `${stem}.meta.json`;
+
+      const meta = {
+        title: document.getElementById('meta-title').value.trim(),
+        folder: document.getElementById('meta-folder').value.trim(),
+        author: document.getElementById('meta-author').value.trim()
+      };
+      const license = getLicenseObj();
+      if (license) meta.license = license;
+      const src = document.getElementById('meta-source').value.trim();
+      if (src) meta.sourceUrl = src;
+      const notice = document.getElementById('meta-notice').value.trim();
+      if (notice) meta.notice = notice;
+
+      document.getElementById('meta-json-output').textContent = JSON.stringify(meta, null, 2);
+    }
+
+    function copyToClipboard(elemId, feedbackId) {
+      const text = document.getElementById(elemId).textContent;
+      navigator.clipboard.writeText(text.trim()).then(() => {
+        const feedback = document.getElementById(feedbackId);
+        const orig = feedback.textContent;
+        feedback.textContent = 'Copied!';
+        setTimeout(() => feedback.textContent = orig, 2000);
+      });
+    }
+
+    function downloadConfigJson() {
+      const text = document.getElementById('cfg-json-output').textContent;
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'audit.config.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadMetaJson() {
+      const text = document.getElementById('meta-json-output').textContent;
+      const filename = document.getElementById('meta-sidecar-filename').textContent;
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Initialize
+    updateConfigOutput();
+    updateMetaOutput();
+  </script>
+</body>
+</html>
+
