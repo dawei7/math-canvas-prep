@@ -16,6 +16,7 @@ Thumbs.db
 *.tsbuildinfo
 playwright-report/
 test-results/
+audit.config.json
 # Private documents: a PDF, a project and a bundle may be somebody's own book. Only the synthetic examples are tracked.
 *.pdf
 *.mcbundle
